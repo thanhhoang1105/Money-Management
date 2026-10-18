@@ -1,0 +1,13 @@
+# Cursor Rules for Money Management PWA
+# Detailed architecture rules are located at .agents/RULES.md
+
+Always read and follow .agents/RULES.md before editing or adding code.
+
+Key Architectural Constraints:
+1. Local-First 0$: All data is stored in IndexedDB using Dexie.js v4. No external backend/database.
+2. Dexie Boolean Indexing: IndexedDB cannot index boolean fields. NEVER use .where('isExcludedFromTotal').equals(...) or .where('isDefault').equals(...). Always fetch .toArray() and use .filter() in JavaScript.
+3. Atomic Transactions & Revert: Every balance change must be inside db.transaction('rw', [db.wallets, db.transactions, ...]). On update or delete, always revert the old transaction's impact first before applying new values.
+4. Transfers & Adjustments: TRANSFER transactions must NEVER be added to monthly income/expense totals. Balance adjustment transactions must use categoryId: 'system_adjustment'.
+5. iOS PWA & Anti-Auto-Zoom: All inputs, selects, textareas MUST have font-size >= 16px (use .input-ios). Bottom nav and modals must use safe area padding (env(safe-area-inset-bottom)). Body has overscroll-behavior-y: none.
+6. Styling: Use Tailwind CSS v4 design tokens from src/index.css. Avoid inline styles except for dynamic runtime values (cat.color, dynamic SVG circle, percentage widths).
+7. Git Rules: NEVER push directly to master branch. Always work on feature branches.
