@@ -1,38 +1,62 @@
 // src/components/AnalyticsTab.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import type { Category, Transaction } from '../types';
+import type { Category, Transaction, Wallet } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import {
   formatVND,
   formatMonthDisplay,
   getCurrentMonth,
   getPreviousMonth,
-  formatFriendlyDate
+  formatFriendlyDate,
+  getLastNMonths
 } from '../utils/formatters';
+import { exportTransactionsToExcel } from '../services/backupService';
 import {
   ChevronLeft,
   ChevronRight,
   TrendingDown,
   TrendingUp,
-  X
+  X,
+  PieChart,
+  BarChart3,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Calendar,
+  FileSpreadsheet,
+  RotateCw,
+  Check
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
   onEditTransaction?: (tx: Transaction) => void;
 }
 
+type ReportType = 'EXPENSE' | 'INCOME';
+
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
+  const [reportType, setReportType] = useState<ReportType>('EXPENSE');
   const [drillDownCategory, setDrillDownCategory] = useState<Category | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
 
+  // 1. Dữ liệu Danh mục và Ví
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
-  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+  const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
 
-  const prevMonth = getPreviousMonth(selectedMonth);
+  const categoryMap = useMemo(() => {
+    return new Map<string, Category>(categories.map((c) => [c.id, c]));
+  }, [categories]);
 
-  // Lấy toàn bộ giao dịch của tháng hiện tại và tháng trước để so sánh MoM
+  const walletMap = useMemo(() => {
+    return new Map<string, Wallet>(wallets.map((w) => [w.id, w]));
+  }, [wallets]);
+
+  // 2. Dữ liệu tháng hiện tại và tháng liền trước (MoM Analysis)
+  const prevMonth = useMemo(() => getPreviousMonth(selectedMonth), [selectedMonth]);
+
   const thisMonthTxs = useLiveQuery(
     () => db.transactions.filter((tx) => tx.date.startsWith(selectedMonth)).toArray(),
     [selectedMonth]
@@ -43,61 +67,175 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     [prevMonth]
   ) || [];
 
-  // Tính toán số liệu tháng hiện tại
-  let thisIncome = 0;
-  let thisExpense = 0;
-  const thisCatExpenseMap: Record<string, number> = {};
+  // 3. Dữ liệu 6 tháng gần nhất cho Biểu đồ cột Xu hướng (FR-A-04)
+  const last6Months = useMemo(() => getLastNMonths(selectedMonth, 6), [selectedMonth]);
+  const minMonth = last6Months[0];
 
-  thisMonthTxs.forEach((tx) => {
-    if (tx.type === 'INCOME') thisIncome += tx.amount;
-    if (tx.type === 'EXPENSE') {
-      thisExpense += tx.amount;
-      if (tx.categoryId) {
-        thisCatExpenseMap[tx.categoryId] = (thisCatExpenseMap[tx.categoryId] || 0) + tx.amount;
+  const multiMonthTxs = useLiveQuery(
+    () =>
+      db.transactions
+        .filter((tx) => tx.date >= `${minMonth}-01` && tx.date <= `${selectedMonth}-31`)
+        .toArray(),
+    [selectedMonth, minMonth]
+  ) || [];
+
+  // Tính toán số liệu tháng hiện tại
+  const { thisIncome, thisExpense, thisNet, thisCatExpenseMap, thisCatIncomeMap } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    const catExpMap: Record<string, number> = {};
+    const catIncMap: Record<string, number> = {};
+
+    thisMonthTxs.forEach((tx) => {
+      if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+        inc += tx.amount;
+        if (tx.categoryId) {
+          catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
+        }
+      } else if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+        exp += tx.amount;
+        if (tx.categoryId) {
+          catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
+        }
       }
-    }
-  });
+    });
+
+    return {
+      thisIncome: inc,
+      thisExpense: exp,
+      thisNet: inc - exp,
+      thisCatExpenseMap: catExpMap,
+      thisCatIncomeMap: catIncMap
+    };
+  }, [thisMonthTxs]);
 
   // Tính toán số liệu tháng trước để so sánh MoM
-  let prevExpense = 0;
-  const prevCatExpenseMap: Record<string, number> = {};
+  const { prevIncome, prevExpense, prevCatExpenseMap, prevCatIncomeMap } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    const catExpMap: Record<string, number> = {};
+    const catIncMap: Record<string, number> = {};
 
-  prevMonthTxs.forEach((tx) => {
-    if (tx.type === 'EXPENSE') {
-      prevExpense += tx.amount;
-      if (tx.categoryId) {
-        prevCatExpenseMap[tx.categoryId] = (prevCatExpenseMap[tx.categoryId] || 0) + tx.amount;
+    prevMonthTxs.forEach((tx) => {
+      if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+        inc += tx.amount;
+        if (tx.categoryId) {
+          catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
+        }
+      } else if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+        exp += tx.amount;
+        if (tx.categoryId) {
+          catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
+        }
       }
-    }
-  });
+    });
 
-  // Tính % thay đổi tổng chi tiêu so với tháng trước
+    return {
+      prevIncome: inc,
+      prevExpense: exp,
+      prevCatExpenseMap: catExpMap,
+      prevCatIncomeMap: catIncMap
+    };
+  }, [prevMonthTxs]);
+
+  // Chỉ số chênh lệch MoM tổng thể
   const expenseDiff = thisExpense - prevExpense;
   const expenseMoMPercent =
     prevExpense > 0 ? (expenseDiff / prevExpense) * 100 : thisExpense > 0 ? 100 : 0;
 
-  // Sắp xếp danh mục theo chi tiêu từ cao xuống thấp
-  const sortedCategories = Object.entries(thisCatExpenseMap)
-    .map(([catId, amount]) => {
-      const cat = categoryMap.get(catId);
-      const prevCatAmount = prevCatExpenseMap[catId] || 0;
-      const catDiff = amount - prevCatAmount;
-      const catMoMPercent =
-        prevCatAmount > 0 ? (catDiff / prevCatAmount) * 100 : amount > 0 ? 100 : 0;
-      const percentage = thisExpense > 0 ? (amount / thisExpense) * 100 : 0;
+  const incomeDiff = thisIncome - prevIncome;
+  const incomeMoMPercent =
+    prevIncome > 0 ? (incomeDiff / prevIncome) * 100 : thisIncome > 0 ? 100 : 0;
 
+  // Dữ liệu biểu đồ cột xu hướng 6 tháng gần nhất (FR-A-04)
+  const trendData = useMemo(() => {
+    return last6Months.map((mStr) => {
+      let income = 0;
+      let expense = 0;
+      multiMonthTxs.forEach((tx) => {
+        if (tx.date.startsWith(mStr)) {
+          if (tx.type === 'INCOME' || tx.type === 'BORROW') income += tx.amount;
+          if (tx.type === 'EXPENSE' || tx.type === 'LEND') expense += tx.amount;
+        }
+      });
+      const net = income - expense;
+      const monthNum = parseInt(mStr.split('-')[1], 10);
       return {
-        catId,
-        category: cat,
-        amount,
-        prevAmount: prevCatAmount,
-        diff: catDiff,
-        momPercent: catMoMPercent,
-        percentage
+        monthStr: mStr,
+        label: `T${monthNum}`,
+        income,
+        expense,
+        net
       };
-    })
-    .filter((item) => item.category !== undefined)
-    .sort((a, b) => b.amount - a.amount);
+    });
+  }, [last6Months, multiMonthTxs]);
+
+  // Giá trị trần cho biểu đồ cột
+  const maxTrendValue = useMemo(() => {
+    let max = 0;
+    trendData.forEach((d) => {
+      if (d.income > max) max = d.income;
+      if (d.expense > max) max = d.expense;
+    });
+    return max > 0 ? max : 1;
+  }, [trendData]);
+
+  // Danh mục phân loại theo chế độ chọn (EXPENSE hoặc INCOME)
+  const activeCatMap = reportType === 'EXPENSE' ? thisCatExpenseMap : thisCatIncomeMap;
+  const prevActiveCatMap = reportType === 'EXPENSE' ? prevCatExpenseMap : prevCatIncomeMap;
+  const activeTotal = reportType === 'EXPENSE' ? thisExpense : thisIncome;
+
+  const sortedCategories = useMemo(() => {
+    return Object.entries(activeCatMap)
+      .map(([catId, amount]) => {
+        const cat = categoryMap.get(catId);
+        const prevCatAmount = prevActiveCatMap[catId] || 0;
+        const catDiff = amount - prevCatAmount;
+        const catMoMPercent =
+          prevCatAmount > 0 ? (catDiff / prevCatAmount) * 100 : amount > 0 ? 100 : 0;
+        const percentage = activeTotal > 0 ? (amount / activeTotal) * 100 : 0;
+
+        return {
+          catId,
+          category: cat,
+          amount,
+          prevAmount: prevCatAmount,
+          diff: catDiff,
+          momPercent: catMoMPercent,
+          percentage
+        };
+      })
+      .filter((item) => item.category !== undefined)
+      .sort((a, b) => b.amount - a.amount);
+  }, [activeCatMap, prevActiveCatMap, activeTotal, categoryMap]);
+
+  // Tính toán góc cho Biểu đồ Donut SVG
+  const donutSegments = useMemo(() => {
+    const segments: Array<(typeof sortedCategories)[0] & { startAngle: number; angle: number }> = [];
+    let currentAngle = 0;
+    for (const item of sortedCategories) {
+      const angle = (item.percentage / 100) * 360;
+      segments.push({
+        ...item,
+        startAngle: currentAngle,
+        angle
+      });
+      currentAngle += angle;
+    }
+    return segments;
+  }, [sortedCategories]);
+
+  // Các giao dịch thuộc danh mục đang Drill-down
+  const drillDownTxs = useMemo(() => {
+    if (!drillDownCategory) return [];
+    return thisMonthTxs
+      .filter((tx) => tx.type === reportType && tx.categoryId === drillDownCategory.id)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [drillDownCategory, thisMonthTxs, reportType]);
+
+  const drillDownTotal = useMemo(() => {
+    return drillDownTxs.reduce((sum, tx) => sum + tx.amount, 0);
+  }, [drillDownTxs]);
 
   // Điều hướng tháng
   const handlePrevMonth = () => setSelectedMonth((m) => getPreviousMonth(m));
@@ -112,113 +250,266 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     setSelectedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
 
-  // Tính toán các cung góc cho Donut Chart SVG
-  let cumulativeAngle = 0;
-  const donutSegments = sortedCategories.map((item) => {
-    const angle = (item.percentage / 100) * 360;
-    const startAngle = cumulativeAngle;
-    cumulativeAngle += angle;
-    return {
-      ...item,
-      startAngle,
-      angle
-    };
-  });
-
-  // Các giao dịch thuộc danh mục đang Drill-down
-  const drillDownTxs = drillDownCategory
-    ? thisMonthTxs
-        .filter((tx) => tx.type === 'EXPENSE' && tx.categoryId === drillDownCategory.id)
-        .sort((a, b) => b.date.localeCompare(a.date))
-    : [];
+  // Xuất báo cáo Excel nhanh cho tháng hiện tại (FR-E-01)
+  const handleExportMonth = async () => {
+    if (thisMonthTxs.length === 0) {
+      alert(`Tháng ${formatMonthDisplay(selectedMonth)} chưa có giao dịch nào để xuất.`);
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const res = await exportTransactionsToExcel({ month: selectedMonth });
+      setExportToast(`Đã xuất ${res.transactionCount} giao dịch tháng ${selectedMonth}!`);
+      setTimeout(() => setExportToast(null), 3000);
+    } catch (err: any) {
+      alert(err?.message || 'Có lỗi khi xuất file Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
-    <div className="pb-24">
-      {/* 1. Header chọn tháng */}
-      <div className="px-5 pt-4 pb-2.5 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={handlePrevMonth}
-          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
-        >
-          <ChevronLeft size={20} />
-        </button>
+    <div className="pb-28">
+      {/* 1. Header Chọn Tháng & Nút Xuất Excel Tháng */}
+      <div className="flex items-center justify-between mx-4 pt-3 pb-1">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
+            title="Tháng trước"
+          >
+            <ChevronLeft size={20} />
+          </button>
 
-        <div className="text-center">
-          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
-            Báo cáo chi tiêu
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/50 border border-white/6">
+            <Calendar size={15} className="text-sky-400" />
+            <span className="text-[14px] font-bold text-slate-100">
+              {formatMonthDisplay(selectedMonth)}
+            </span>
           </div>
-          <div className="text-base font-bold text-slate-100">
-            {formatMonthDisplay(selectedMonth)}
-          </div>
+
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
+            title="Tháng sau"
+          >
+            <ChevronRight size={20} />
+          </button>
         </div>
 
+        {/* Nút Xuất Excel nhanh theo tháng */}
         <button
           type="button"
-          onClick={handleNextMonth}
-          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
+          onClick={handleExportMonth}
+          disabled={isExporting}
+          className="touch-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 text-xs font-semibold hover:bg-emerald-500/25 cursor-pointer transition-colors"
+          title={`Xuất báo cáo Excel tháng ${selectedMonth}`}
         >
-          <ChevronRight size={20} />
+          {isExporting ? (
+            <RotateCw size={14} className="animate-spin" />
+          ) : (
+            <FileSpreadsheet size={14} />
+          )}
+          <span>Xuất Excel</span>
         </button>
       </div>
 
-      {/* 2. Tổng quan MoM (Month-over-Month) Badge */}
-      <div className="glass-panel mx-4 my-2 rounded-3xl p-5 bg-gradient-to-br from-slate-800/80 to-slate-900/90 border border-white/10 shadow-lg">
+      {/* Thông báo xuất thành công */}
+      {exportToast && (
+        <div className="mx-4 mt-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+          <Check size={15} />
+          <span>{exportToast}</span>
+        </div>
+      )}
+
+      {/* 2. Thẻ Tổng Quan Dòng Tiền & MoM (Month-over-Month Cashflow Hero) */}
+      <div className="mx-4 my-2.5 rounded-3xl p-5 bg-gradient-to-br from-slate-800/95 to-slate-900/98 border border-white/10 shadow-xl backdrop-blur-md">
+        {/* Hàng 1: Dòng tiền ròng (Net Savings) */}
         <div className="flex justify-between items-start">
           <div>
-            <span className="text-xs text-slate-400 font-medium">Tổng chi tiêu tháng</span>
-            <div className="font-heading text-3xl font-extrabold text-rose-500 mt-0.5 tracking-tight">
-              {formatVND(thisExpense)}
+            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              Dòng tiền ròng tháng này
+            </span>
+            <div
+              className={`font-heading text-3xl font-black mt-1 tracking-tight ${
+                thisNet >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}
+            >
+              {thisNet >= 0 ? `+${formatVND(thisNet)}` : formatVND(thisNet)}
             </div>
           </div>
 
-          {/* Badge so sánh MoM với tháng trước */}
-          {prevExpense > 0 && (
-            <div
-              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold border ${
-                expenseDiff > 0
-                  ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-              }`}
-            >
-              {expenseDiff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-              <span>
-                {expenseDiff > 0 ? `+${expenseMoMPercent.toFixed(1)}%` : `${expenseMoMPercent.toFixed(1)}%`}
-              </span>
-            </div>
-          )}
+          <div
+            className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1 ${
+              thisNet >= 0
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
+                : 'bg-rose-500/15 text-rose-400 border-rose-500/25'
+            }`}
+          >
+            {thisNet >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+            <span>{thisNet >= 0 ? 'Thặng dư' : 'Thâm hụt'}</span>
+          </div>
         </div>
 
-        <div className="text-xs text-slate-400 mt-2">
-          {prevExpense > 0 ? (
-            expenseDiff > 0 ? (
-              <span>
-                Tăng <b className="text-rose-400">{formatVND(expenseDiff)}</b> so với tháng trước ({formatVND(prevExpense)})
-              </span>
-            ) : (
-              <span>
-                Tiết kiệm được <b className="text-emerald-400">{formatVND(Math.abs(expenseDiff))}</b> so với tháng trước ({formatVND(prevExpense)})
-              </span>
-            )
-          ) : (
-            <span className="text-slate-500">Tháng trước chưa có dữ liệu chi tiêu</span>
-          )}
+        {/* Hàng 2: Grid Thu vs Chi kèm so sánh MoM */}
+        <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-white/10">
+          {/* Tổng Thu */}
+          <div className="p-3 rounded-2xl bg-slate-800/60 border border-white/5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <ArrowDownLeft size={14} className="text-emerald-400" />
+              <span>Tổng thu nhập</span>
+            </div>
+            <div className="text-base font-extrabold text-income mt-1">
+              +{formatVND(thisIncome)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1">
+              {prevIncome > 0 ? (
+                <span className={incomeDiff >= 0 ? 'text-emerald-400' : 'text-slate-400'}>
+                  {incomeDiff >= 0 ? `▲ +${incomeMoMPercent.toFixed(0)}%` : `▼ ${incomeMoMPercent.toFixed(0)}%`}{' '}
+                  <span className="text-slate-500">vs T trước</span>
+                </span>
+              ) : (
+                <span className="text-slate-500">Tháng trước: 0đ</span>
+              )}
+            </div>
+          </div>
+
+          {/* Tổng Chi */}
+          <div className="p-3 rounded-2xl bg-slate-800/60 border border-white/5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <ArrowUpRight size={14} className="text-rose-400" />
+              <span>Tổng chi tiêu</span>
+            </div>
+            <div className="text-base font-extrabold text-expense mt-1">
+              -{formatVND(thisExpense)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1">
+              {prevExpense > 0 ? (
+                <span className={expenseDiff > 0 ? 'text-rose-400' : 'text-emerald-400'}>
+                  {expenseDiff > 0 ? `▲ +${expenseMoMPercent.toFixed(0)}%` : `▼ ${expenseMoMPercent.toFixed(0)}%`}{' '}
+                  <span className="text-slate-500">vs T trước</span>
+                </span>
+              ) : (
+                <span className="text-slate-500">Tháng trước: 0đ</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 3. Interactive SVG Donut Chart */}
+      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG 6 THÁNG GẦN NHẤT (FR-A-04 Cashflow Trend Chart) */}
+      <div className="mx-4 my-3 rounded-3xl p-4 bg-slate-900/80 border border-white/10 shadow-lg">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={17} className="text-sky-400" />
+            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              Xu hướng dòng tiền 6 tháng
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Thu
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              Chi
+            </span>
+          </div>
+        </div>
+
+        {/* Khung Biểu đồ cột */}
+        <div className="grid grid-cols-6 gap-2 pt-2 pb-1 border-b border-white/6 items-end h-28">
+          {trendData.map((d) => {
+            const isSelected = d.monthStr === selectedMonth;
+            // Chiều cao cột (tối đa 80px)
+            const incomeHeight = d.income > 0 ? Math.max(6, Math.round((d.income / maxTrendValue) * 80)) : 0;
+            const expenseHeight = d.expense > 0 ? Math.max(6, Math.round((d.expense / maxTrendValue) * 80)) : 0;
+
+            return (
+              <div
+                key={d.monthStr}
+                onClick={() => setSelectedMonth(d.monthStr)}
+                className={`touch-btn flex flex-col items-center justify-end h-full cursor-pointer p-1 rounded-xl transition-all ${
+                  isSelected ? 'bg-white/8 border border-white/15' : 'hover:bg-white/4'
+                }`}
+                title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}`}
+              >
+                {/* 2 cột Thu (xanh) và Chi (đỏ) */}
+                <div className="flex items-end gap-1 h-[80px] w-full justify-center">
+                  {/* Cột Thu */}
+                  <div
+                    className="w-2.5 rounded-t-sm bg-emerald-500 transition-all duration-300"
+                    style={{ height: `${incomeHeight}px` }}
+                  />
+                  {/* Cột Chi */}
+                  <div
+                    className="w-2.5 rounded-t-sm bg-rose-500 transition-all duration-300"
+                    style={{ height: `${expenseHeight}px` }}
+                  />
+                </div>
+
+                {/* Nhãn tháng */}
+                <span
+                  className={`text-[11px] font-bold mt-1.5 ${
+                    isSelected ? 'text-sky-400' : 'text-slate-400'
+                  }`}
+                >
+                  {d.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="text-[10px] text-slate-500 text-center mt-2">
+          Chạm vào cột tháng bất kỳ để xem phân tích chi tiết của tháng đó
+        </div>
+      </div>
+
+      {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ PHÂN TÍCH: CHI TIÊU VS THU NHẬP */}
+      <div className="mx-4 mt-4 mb-2 flex items-center p-1 rounded-2xl bg-slate-900 border border-white/8">
+        <button
+          type="button"
+          onClick={() => setReportType('EXPENSE')}
+          className={`touch-btn flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            reportType === 'EXPENSE'
+              ? 'bg-rose-500 text-white shadow-md shadow-rose-500/25'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <PieChart size={14} />
+          <span>Cơ cấu Chi tiêu ({sortedCategories.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReportType('INCOME')}
+          className={`touch-btn flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            reportType === 'INCOME'
+              ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <PieChart size={14} />
+          <span>Cơ cấu Thu nhập</span>
+        </button>
+      </div>
+
+      {/* 5. INTERACTIVE DONUT CHART (Cơ cấu chi/thu) */}
       {sortedCategories.length > 0 ? (
-        <div className="glass-panel mx-4 my-3 rounded-3xl p-5 text-center border border-white/10">
-          <div className="text-sm font-bold text-slate-100 mb-3">
-            Cơ cấu chi tiêu (Chạm vào để xem chi tiết)
+        <div className="mx-4 my-2.5 rounded-3xl p-5 bg-slate-900/80 border border-white/10 shadow-lg text-center">
+          <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+            {reportType === 'EXPENSE' ? 'Tỷ trọng các nhóm chi tiêu' : 'Tỷ trọng các nguồn thu nhập'}
           </div>
 
-          {/* Biểu đồ Donut SVG */}
+          {/* SVG Donut Chart */}
           <div className="relative w-48 h-48 mx-auto">
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
               {donutSegments.map((item) => {
-                const strokeDasharray = `${(item.percentage * 251.2) / 100} 251.2`;
-                const strokeDashoffset = -((item.startAngle * 251.2) / 360);
+                const strokeDasharray = `${(item.percentage * 251.327) / 100} 251.327`;
+                const strokeDashoffset = -((item.startAngle * 251.327) / 360);
                 return (
                   <circle
                     key={item.catId}
@@ -227,10 +518,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                     r="40"
                     fill="transparent"
                     stroke={item.category?.color || '#64748b'}
-                    strokeWidth="16"
+                    strokeWidth="15"
                     strokeDasharray={strokeDasharray}
                     strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="round"
+                    strokeLinecap="butt"
                     className="cursor-pointer transition-all hover:opacity-80"
                     onClick={() => setDrillDownCategory(item.category || null)}
                   />
@@ -239,8 +530,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
             </svg>
 
             {/* Tâm biểu đồ Donut */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-[11px] text-slate-400 font-medium">Khoản chi lớn nhất</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4">
+              <span className="text-[10px] text-slate-400 font-medium">Chiếm lớn nhất</span>
               <span
                 className="text-sm font-extrabold max-w-[120px] truncate"
                 style={{ color: sortedCategories[0]?.category?.color || '#38BDF8' }}
@@ -252,17 +543,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               </span>
             </div>
           </div>
+          <div className="text-[11px] text-slate-500 mt-3">
+            Chạm vào danh mục bên dưới để xem toàn bộ giao dịch chi tiết
+          </div>
         </div>
       ) : (
-        <div className="py-10 px-5 text-center text-slate-500 text-sm">
-          Chưa có khoản chi nào để vẽ biểu đồ
+        <div className="mx-4 my-4 p-8 rounded-3xl bg-slate-900/40 border border-white/5 text-center text-slate-500 text-xs">
+          Chưa có dữ liệu {reportType === 'EXPENSE' ? 'chi tiêu' : 'thu nhập'} trong tháng này để vẽ biểu đồ
         </div>
       )}
 
-      {/* 4. Danh sách Hạng Mục Phân Tích Kèm So Sánh MoM (Bấm vào để Drill-down) */}
-      <div className="px-4 mt-2">
-        <div className="text-sm font-bold text-slate-100 mb-2.5 px-1">
-          Chi tiết từng danh mục (Chạm để xem lịch sử)
+      {/* 6. DANH SÁCH DANH MỤC PHÂN TÍCH KÈM SO SÁNH MOM & DRILL-DOWN */}
+      <div className="px-4 mt-3">
+        <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5 px-1">
+          Bảng kê tỷ trọng & Biến động tháng (MoM)
         </div>
 
         <div className="flex flex-col gap-2.5">
@@ -270,13 +564,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
             <div
               key={item.catId}
               onClick={() => setDrillDownCategory(item.category || null)}
-              className="glass-panel touch-btn rounded-2xl p-3.5 sm:p-4 cursor-pointer border border-white/5 hover:border-white/15 transition-all"
+              className="touch-btn rounded-2xl p-3.5 bg-slate-900/70 border border-white/6 hover:border-white/15 cursor-pointer transition-all"
             >
               <div className="flex justify-between items-center">
-                {/* Trái: Icon + Tên */}
-                <div className="flex items-center gap-3">
+                {/* Trái: Icon + Tên Danh mục */}
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="cat-badge"
+                    className="cat-badge shrink-0"
                     style={{ backgroundColor: item.category?.color || '#3b82f6' }}
                   >
                     <CategoryIcon
@@ -285,31 +579,43 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                       color="#ffffff"
                     />
                   </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-100">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-100 truncate">
                       {item.category?.name}
                     </div>
                     <div className="text-xs text-slate-400 mt-0.5">
-                      {item.percentage.toFixed(1)}% tổng chi
+                      {item.percentage.toFixed(1)}% tổng {reportType === 'EXPENSE' ? 'chi' : 'thu'}
                     </div>
                   </div>
                 </div>
 
-                {/* Phải: Số tiền + Badge MoM */}
-                <div className="text-right">
-                  <div className="text-sm font-bold text-slate-100">
-                    {formatVND(item.amount)}
+                {/* Phải: Số tiền + Badge MoM so sánh tháng trước */}
+                <div className="text-right shrink-0 ml-3">
+                  <div
+                    className={`text-sm font-bold ${
+                      reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                    }`}
+                  >
+                    {reportType === 'EXPENSE'
+                      ? `-${formatVND(item.amount)}`
+                      : `+${formatVND(item.amount)}`}
                   </div>
-                  {/* MoM % Badge cho từng danh mục */}
+
                   <div className="mt-0.5">
                     {item.prevAmount > 0 ? (
                       <span
                         className={`text-[11px] font-semibold ${
-                          item.diff > 0 ? 'text-rose-400' : 'text-emerald-400'
+                          reportType === 'EXPENSE'
+                            ? item.diff > 0
+                              ? 'text-rose-400'
+                              : 'text-emerald-400'
+                            : item.diff >= 0
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
                         }`}
                       >
-                        {item.diff > 0 ? `▲ +${item.momPercent.toFixed(0)}%` : `▼ ${item.momPercent.toFixed(0)}%`}{' '}
-                        <span className="text-slate-500 font-normal">vs tháng trước</span>
+                        {item.diff >= 0 ? `▲ +${item.momPercent.toFixed(0)}%` : `▼ ${item.momPercent.toFixed(0)}%`}{' '}
+                        <span className="text-slate-500 font-normal">vs T trước</span>
                       </span>
                     ) : (
                       <span className="text-[11px] text-slate-500 font-medium">Mới phát sinh</span>
@@ -318,7 +624,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                 </div>
               </div>
 
-              {/* Thanh Progress Bar tỷ lệ % */}
+              {/* Thanh Progress Bar tỷ lệ % danh mục */}
               <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-300"
@@ -333,18 +639,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </div>
       </div>
 
-      {/* 5. MODAL DRILL-DOWN CHI TIẾT GIAO DỊCH CỦA DANH MỤC */}
+      {/* 7. P5 MODAL: DRILL-DOWN CHI TIẾT TỪNG GIAO DỊCH CỦA DANH MỤC */}
       {drillDownCategory && (
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end max-w-[480px] mx-auto"
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end items-center"
           onClick={() => setDrillDownCategory(null)}
         >
           <div
-            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 max-h-[85vh] flex flex-col pb-[max(20px,env(safe-area-inset-bottom,0px))]"
+            className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] border-t border-white/10 max-h-[85vh] flex flex-col pb-[max(24px,env(safe-area-inset-bottom,0px))] animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header Drill-down */}
-            <div className="px-5 pt-4.5 pb-3.5 border-b border-white/10 flex items-center justify-between">
+            <div className="px-5 pt-4 pb-3.5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div
                   className="cat-badge"
@@ -365,43 +671,77 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               <button
                 type="button"
                 onClick={() => setDrillDownCategory(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border-none cursor-pointer touch-btn"
               >
                 <X size={18} />
               </button>
             </div>
 
+            {/* Thẻ tóm tắt tổng tiền danh mục */}
+            <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-slate-800/60 border border-white/6 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] text-slate-400">Tổng phát sinh danh mục</span>
+                <div
+                  className={`text-xl font-extrabold mt-0.5 ${
+                    reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                  }`}
+                >
+                  {reportType === 'EXPENSE'
+                    ? `-${formatVND(drillDownTotal)}`
+                    : `+${formatVND(drillDownTotal)}`}
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[11px] text-slate-400">Tỷ trọng tháng</span>
+                <div className="text-base font-bold text-slate-200 mt-0.5">
+                  {activeTotal > 0 ? ((drillDownTotal / activeTotal) * 100).toFixed(1) : 0}%
+                </div>
+              </div>
+            </div>
+
             {/* Danh sách giao dịch chi tiết */}
-            <div className="p-4 overflow-y-auto flex flex-col gap-2">
+            <div className="p-4 overflow-y-auto flex flex-col gap-2.5">
               {drillDownTxs.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
-                  Không có giao dịch nào
+                  Không có giao dịch nào trong danh mục này
                 </div>
               ) : (
-                drillDownTxs.map((tx) => (
-                  <div
-                    key={tx.id}
-                    onClick={() => {
-                      if (onEditTransaction) {
-                        setDrillDownCategory(null);
-                        onEditTransaction(tx);
-                      }
-                    }}
-                    className="touch-btn flex items-center justify-between p-3 bg-slate-800/80 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
-                  >
-                    <div>
-                      <div className="text-xs font-semibold text-slate-100">
-                        {tx.note || drillDownCategory.name}
+                drillDownTxs.map((tx) => {
+                  const wallet = walletMap.get(tx.walletId);
+                  return (
+                    <div
+                      key={tx.id}
+                      onClick={() => {
+                        if (onEditTransaction) {
+                          setDrillDownCategory(null);
+                          onEditTransaction(tx);
+                        }
+                      }}
+                      className="touch-btn flex items-center justify-between p-3.5 bg-slate-800/70 rounded-2xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-100 truncate">
+                          {tx.note || drillDownCategory.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                          <span>{formatFriendlyDate(tx.date)} lúc {tx.time}</span>
+                          <span>•</span>
+                          <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {formatFriendlyDate(tx.date)} • {tx.time}
+                      <div
+                        className={`text-sm font-bold shrink-0 ml-3 ${
+                          tx.type === 'EXPENSE' ? 'text-expense' : 'text-income'
+                        }`}
+                      >
+                        {tx.type === 'EXPENSE'
+                          ? `-${formatVND(tx.amount)}`
+                          : `+${formatVND(tx.amount)}`}
                       </div>
                     </div>
-                    <div className="text-sm font-bold text-rose-500">
-                      -{formatVND(tx.amount)}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

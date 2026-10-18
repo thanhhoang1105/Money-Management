@@ -72,177 +72,201 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent;
+/* ==========================================================================
+   BASE LAYER - Cấu hình Viewport, Nền & Reset không đè bẹp Tailwind classes
+   ========================================================================== */
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: #090d16;
+  }
+
+  body {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: #090d16;
+    color: #f8fafc;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 480px; /* Khung chuẩn cho màn hình iPhone / Mobile */
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background-color: #090d16;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Scrollable Container (Main app views) */
+  main, .app-scroll-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  button {
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:focus-visible {
+    outline: none;
+  }
+
+  /* Chống Auto-Zoom iOS Safari */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+    font-family: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"] {
+    font-size: 16px !important;
+    min-height: 42px;
+  }
 }
 
 /* ==========================================================================
-   CẤU HÌNH VIEWPORT & NỀN TỐI CHUẨN IOS PWA
-   Khử hoàn toàn khoảng hở đáy (dưới Bottom Nav) bằng min-height: 100dvh
-   và màu nền tối #090d16 đồng nhất trên cả html, body, #root.
+   COMPONENTS LAYER (REUSABLE UI ATOMS)
    ========================================================================== */
-html {
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  background-color: #090d16;
-}
+@layer components {
+  .glass-panel {
+    background-color: rgba(18, 24, 38, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
 
-body {
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  margin: 0;
-  padding: 0;
-  background-color: #090d16;
-  color: #f8fafc;
-  font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior-y: none;
-  -webkit-overflow-scrolling: touch;
-}
+  .glass-nav {
+    background-color: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
 
-#root {
-  width: 100%;
-  max-width: 480px; /* Khung chuẩn cho màn hình iPhone / Mobile */
-  min-height: 100vh;
-  min-height: 100dvh;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  background-color: #090d16;
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-}
+  .glass-card {
+    background-color: #1e293b;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
 
-/* Scrollable Container (Main app views) */
-main, .app-scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  /* Phản hồi cảm ứng (Touch Feedback) */
+  .touch-btn {
+    transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+
+  .touch-btn:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+
+  .touch-bounce:active {
+    transform: scale(0.92);
+  }
+
+  /* Category Badge */
+  .cat-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  /* Input chuẩn iOS */
+  .input-ios {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background-color: #1e293b;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 16px !important;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .input-ios:focus {
+    border-color: rgba(56, 189, 248, 0.5);
+  }
+
+  /* Numpad Specialized Key */
+  .numpad-key {
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    transition: transform 0.08s ease, background-color 0.1s ease;
+  }
+
+  .numpad-key:active {
+    transform: scale(0.94);
+    filter: brightness(1.2);
+  }
 }
 
 /* ==========================================================================
-   CHỐNG AUTO-ZOOM TRÊN IPHONE / IOS SAFARI
-   Quy tắc cốt lõi: Tất cả input, select, textarea PHẢI có font-size >= 16px.
+   UTILITIES LAYER
    ========================================================================== */
-input,
-select,
-textarea {
-  font-size: 16px !important;
-  font-family: inherit;
-  user-select: text;
-  -webkit-user-select: text;
-}
+@layer utilities {
+  .font-heading {
+    font-family: var(--font-heading);
+  }
 
-input[type="date"],
-input[type="datetime-local"],
-input[type="time"] {
-  font-size: 16px !important;
-  min-height: 42px;
-}
+  .font-body {
+    font-family: var(--font-body);
+  }
 
-.selectable-text {
-  user-select: text;
-  -webkit-user-select: text;
-}
+  .selectable-text {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 
-/* ==========================================================================
-   LỚP TIỆN ÍCH DÙNG LẠI (REUSABLE UTILITIES & COMPONENTS)
-   ========================================================================== */
-.glass-panel {
-  background: rgba(18, 24, 38, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
+  .safe-padding-top {
+    padding-top: max(14px, env(safe-area-inset-top, 0px));
+  }
 
-.glass-nav {
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
+  .safe-padding-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
 
-.glass-card {
-  background-color: #1e293b;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* Phản hồi cảm ứng (Touch Feedback) */
-.touch-btn {
-  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  touch-action: manipulation;
-}
-
-.touch-btn:active {
-  transform: scale(0.96);
-  opacity: 0.85;
-}
-
-.touch-bounce:active {
-  transform: scale(0.92);
-}
-
-/* Kiểu phông chữ */
-.font-heading {
-  font-family: var(--font-heading);
-}
-
-.font-body {
-  font-family: var(--font-body);
-}
-
-/* Category Badge glow */
-.cat-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
-/* Input chuẩn iOS */
-.input-ios {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background-color: #1e293b;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 16px !important;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.input-ios:focus {
-  border-color: rgba(56, 189, 248, 0.5);
-}
-
-/* Safe areas */
-.safe-padding-top {
-  padding-top: max(14px, env(safe-area-inset-top, 0px));
-}
-
-.safe-padding-bottom {
-  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
-}
-
-.safe-nav-bottom {
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  .safe-nav-bottom {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* Custom Scrollbar */
@@ -258,7 +282,7 @@ input[type="time"] {
   border-radius: 999px;
 }
 
-/* Animations */
+/* Keyframe Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -275,22 +299,4 @@ input[type="time"] {
 
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Numpad Specialized Key */
-.numpad-key {
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  transition: transform 0.08s ease, background-color 0.1s ease;
-}
-
-.numpad-key:active {
-  transform: scale(0.94);
-  filter: brightness(1.2);
 }

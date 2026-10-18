@@ -56,12 +56,27 @@ Khi **SỬA (Update)** hoặc **XÓA (Delete)** bất kỳ giao dịch nào, h�
    - Áp dụng số tiền mới lên ví mới (`newTx.walletId` và `newTx.toWalletId` nếu có).
    - Cơ chế này đảm bảo số dư ví **chính xác 100% tuyệt đối** ngay cả khi người dùng đổi số tiền, đổi từ ví A sang ví B, hoặc đổi loại từ Chi sang Thu.
 
-### 2.4. Quy tắc Nghiệp vụ TRANSFER & ADJUSTMENT
-- **TRANSFER (Chuyển ví):** 
-  - Chỉ làm thay đổi số dư giữa 2 ví nội bộ (Ví gửi giảm, Ví nhận tăng).
-  - **TUYỆT ĐỐI KHÔNG ĐƯỢC** cộng vào Tổng Thu (Total Income) hay Tổng Chi (Total Expense) của tháng trong các màn hình Báo cáo và Danh sách.
-- **ADJUSTMENT (Điều chỉnh số dư thực tế):**
-  - Khi người dùng chọn "Tự động tạo giao dịch chênh lệch", giao dịch sinh ra phải được gán `categoryId: 'system_adjustment'` (Danh mục hệ thống "Điều chỉnh số dư") để phân biệt với chi tiêu sinh hoạt thông thường.
+### 2.4. Quy tắc Nghiệp vụ 6 Loại Giao Dịch Chuẩn
+Hệ thống hỗ trợ 6 loại nghiệp vụ tài chính độc lập trong `TransactionType`:
+1. **EXPENSE (Chi tiền):** Giảm số dư ví chi trả (`balance - amount`). Tính vào Tổng Chi tháng.
+2. **INCOME (Thu tiền):** Tăng số dư ví thụ hưởng (`balance + amount`). Tính vào Tổng Thu tháng.
+3. **LEND (Cho vay):** Giảm số dư ví (`balance - amount`). Khoản cho người khác vay, hiển thị badge "Cho vay" màu hổ phách.
+4. **BORROW (Đi vay):** Tăng số dư ví (`balance + amount`). Khoản mình vay từ ngân hàng/người khác, hiển thị badge "Đi vay" màu tím.
+5. **TRANSFER (Chuyển khoản):** Giảm ví gửi, tăng ví nhận. **TUYỆT ĐỐI KHÔNG ĐƯỢC** tính vào Tổng Thu hay Tổng Chi tháng.
+6. **ADJUST (Điều chỉnh số dư thực tế):** Nhập số dư thực tế mới của ví, hệ thống tự động cập nhật số dư ví và tạo giao dịch cân bằng với `categoryId: 'system_adjustment'` để phân biệt với chi tiêu sinh hoạt thông thường.
+
+### 2.5. Cấu trúc Điều Hướng 5 Menu & Màn Hình Khởi Động Mặc Định
+- **Bottom Navigation (5 nút chuẩn):**
+  1. `overview`: **Tổng quan** (trước đây là Sổ thu chi).
+  2. `wallets`: **Tài khoản** (Quản lý các tài khoản ngân hàng, ví điện tử, tiền mặt).
+  3. `+`: **Ghi giao dịch** (nút nổi bật chính giữa, mở thẳng Màn hình Ghi giao dịch Full-Screen).
+  4. `analytics`: **Báo cáo** (Phân tích cơ cấu chi tiêu, xu hướng 6 tháng).
+  5. `more`: **Khác** (Hạn mức chi tiêu, Hạng mục thu/chi, Giao diện tối/sáng, Ghi chép định kỳ, Chia tiền nhóm, Cài đặt dữ liệu & Sao lưu).
+- **Màn hình mở app mặc định:** Cho phép người dùng tùy chọn tab khởi động đầu tiên trong Cài đặt (`app_default_tab`), mặc định là **Tổng quan** (`overview`).
+
+### 2.6. Thiết Kế Màn Hình Ghi Giao Dịch Toàn Màn Hình (Full-Screen View)
+- Không dùng popup modal dạng bottom-sheet cho màn hình ghi chép vì dễ gây lỗi scroll-chaining trên Safari di động.
+- Thẻ ngày tháng thiết kế gọn gàng, hiển thị thân thiện tiếng Việt (`Hôm nay, 18/10`), lớp phủ native date picker trong suốt, không bao giờ bị phình chữ hay co kéo biến dạng trên màn hình nhỏ.
 
 ---
 
@@ -131,8 +146,11 @@ Khi mở modal ghi chép mới:
   - Lớp tiện ích: `.glass-panel`, `.glass-card`, `.glass-nav`, `.touch-btn`, `.numpad-key`, `.cat-badge`, `.input-ios`.
 - **Nghiêm cấm lạm dụng `style={{ ... }}`:** Tuyệt đối không viết CSS inline cho màu sắc cố định, padding, margin, flexbox hay border. CSS inline **chỉ được phép** dùng cho các giá trị động tính toán runtime (ví dụ: `style={{ backgroundColor: cat.color }}`, góc quay SVG hoặc `%` độ rộng của progress bar).
 
-### 5.3. Quy tắc Kiểm tra & Git Branching
+### 5.3. Quy tắc Kiểm tra & Git Conventions
 - **Biên dịch & Linter:** Trước khi hoàn tất bất kỳ tính năng nào, bắt buộc phải chạy:
   - `npm run build` (kiểm tra TypeScript và build production với Vite, đảm bảo 0 lỗi).
   - `npm run lint` (kiểm tra chuẩn mã nguồn).
-- **Quy tắc Git:** **TUYỆT ĐỐI KHÔNG PUSH TRỰC TIẾP LÊN NHÁNH `master`**. Mọi công việc phát triển tính năng mới hoặc sửa lỗi đều phải thực hiện trên nhánh feature tương ứng (ví dụ: `feature/pwa-core-...`) và đẩy lên remote trên nhánh đó.
+- **CẤM TỰ Ý COMMIT & PUSH (BẮT BUỘC):**
+  - Sau khi hoàn thành code, sửa lỗi hoặc thêm tính năng, các tác tử AI **TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ Ý CHẠY `git commit` HOẶC `git push`**.
+  - Luôn để nguyên trạng thái các file đã chỉnh sửa (Unstaged / Staged changes) để người dùng tự kiểm tra (code review) và chủ động commit/push theo ý họ, TRỪ KHI người dùng có câu lệnh yêu cầu rõ ràng (ví dụ: "hãy commit cho tôi...", "push code lên github...").
+- **Quy tắc Nhánh Git:** **TUYỆT ĐỐI KHÔNG PUSH TRỰC TIẾP LÊN NHÁNH `master`**. Khi người dùng yêu cầu commit/push, chỉ được phép thực hiện trên nhánh feature tương ứng (ví dụ: `feature/pwa-core-...`) và đẩy lên remote trên nhánh đó.

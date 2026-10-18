@@ -1,6 +1,6 @@
 // src/types/index.ts
 
-export type WalletType = 'CASH' | 'BANK' | 'E_WALLET' | 'CREDIT';
+export type WalletType = 'CASH' | 'BANK' | 'E_WALLET' | 'CREDIT' | 'INVESTMENT' | 'OTHER';
 
 export interface Wallet {
   id: string;               // UUID
@@ -16,20 +16,25 @@ export interface Wallet {
   updatedAt: string;
 }
 
-export type CategoryType = 'EXPENSE' | 'INCOME';
+export type CategoryType = 'EXPENSE' | 'INCOME' | 'DEBT';
 
 export interface Category {
   id: string;
-  name: string;             // 'Ăn uống', 'Lương', 'Đi lại'
+  name: string;             // 'Ăn uống', 'Lương', 'Must have'...
   type: CategoryType;
+  parentId?: string;        // null/undefined: Hạng mục cha; có giá trị: Hạng mục con
   icon: string;             // Lucide icon name
   color: string;            // Mã màu HEX
   quickTags?: string[];     // Danh sách gợi ý ghi chú nhanh
   isDefault: boolean;
+  isStarred?: boolean;      // true: Được gắn sao ưu tiên trong mục Hay dùng
   createdAt: string;
+  updatedAt?: string;
 }
 
-export type TransactionType = 'EXPENSE' | 'INCOME' | 'TRANSFER';
+export type AppStartupTab = 'overview' | 'wallets' | 'analytics' | 'more' | 'editor';
+
+export type TransactionType = 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LEND' | 'BORROW' | 'ADJUST';
 
 export interface Transaction {
   id: string;
@@ -42,6 +47,7 @@ export interface Transaction {
   time: string;             // 'HH:mm'
   note?: string;            // Ghi chú
   createdAt: string;
+  updatedAt?: string;       // ISO 8601 phục vụ đồng bộ 2 chiều
 }
 
 export interface Budget {
@@ -55,6 +61,39 @@ export interface Budget {
 export interface Setting {
   key: string;
   value: any;
+}
+
+export interface DeletedEntitiesTracking {
+  transactionIds: string[];
+  walletIds: string[];
+  categoryIds: string[];
+  budgetIds: string[];
+}
+
+export interface SyncDataPayload {
+  version: string;
+  appName: string;
+  syncedAt: string;
+  deviceId?: string;
+  data: {
+    wallets: Wallet[];
+    categories: Category[];
+    transactions: Transaction[];
+    budgets: Budget[];
+    settings: Setting[];
+  };
+  deletedIds?: DeletedEntitiesTracking;
+}
+
+export interface SyncResult {
+  success: boolean;
+  message: string;
+  syncedAt?: string;
+  changes?: {
+    addedTransactions: number;
+    updatedTransactions: number;
+    deletedTransactions: number;
+  };
 }
 
 export interface MonthSummary {

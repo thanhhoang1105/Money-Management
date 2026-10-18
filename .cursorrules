@@ -10,4 +10,6 @@ Key Architectural Constraints:
 4. Transfers & Adjustments: TRANSFER transactions must NEVER be added to monthly income/expense totals. Balance adjustment transactions must use categoryId: 'system_adjustment'.
 5. iOS PWA & Anti-Auto-Zoom: All inputs, selects, textareas MUST have font-size >= 16px (use .input-ios). Bottom nav and modals must use safe area padding (env(safe-area-inset-bottom)). Body has overscroll-behavior-y: none.
 6. Styling: Use Tailwind CSS v4 design tokens from src/index.css. Avoid inline styles except for dynamic runtime values (cat.color, dynamic SVG circle, percentage widths).
-7. Git Rules: NEVER push directly to master branch. Always work on feature branches.
+7. Git Rules:
+   - NEVER automatically commit or push code. Leave modified files unstaged/staged for the user to review, unless explicitly instructed by the user to commit/push.
+   - NEVER push directly to master branch. Always work on feature branches when commit/push is requested.

@@ -85,3 +85,24 @@ export function formatFriendlyDate(dateStr: string): string {
 
   return `${dayName}, ${d}/${m}`;
 }
+
+/**
+ * Lấy danh sách N tháng gần nhất kết thúc tại referenceMonth (Ví dụ: 6 tháng gần nhất)
+ */
+export function getLastNMonths(referenceMonth: string, count: number = 6): string[] {
+  const [yearStr, mStr] = referenceMonth.split('-');
+  let year = parseInt(yearStr, 10);
+  let month = parseInt(mStr, 10);
+  const months: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    months.unshift(`${year}-${String(month).padStart(2, '0')}`);
+    month -= 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+  }
+
+  return months;
+}

@@ -26,4 +26,5 @@ Mọi tác tử AI phải đọc và tuân thủ các nguyên tắc cốt lõi s
    - Tách biệt logic DB trong `src/services/` khỏi UI trong `src/components/`.
    - Dùng Tailwind CSS v4 design tokens (`src/index.css`), **không dùng CSS inline** trừ giá trị runtime động (`cat.color`, góc SVG, % width).
    - Chạy `npm run build` và `npm run lint` đạt 0 lỗi trước khi hoàn tất.
-   - **KHÔNG BAO GIỜ push trực tiếp lên `master`**, luôn làm việc trên nhánh feature branch.
+   - **CẤM TỰ Ý COMMIT & PUSH:** Khi hoàn thành code hoặc sửa lỗi, AI **tuyệt đối KHÔNG tự động chạy `git commit` hay `git push`**. Hãy để người dùng tự review và quyết định commit/push, trừ khi người dùng ra lệnh cụ thể.
+   - **KHÔNG BAO GIỜ push trực tiếp lên `master`**, luôn làm việc trên nhánh feature branch nếu người dùng yêu cầu commit/push.
