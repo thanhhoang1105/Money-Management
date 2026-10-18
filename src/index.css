@@ -1,4 +1,50 @@
-/* src/index.css - iOS PWA Design System for Sổ Thu Chi Cá Nhân */
+@import "tailwindcss";
+
+/* ==========================================================================
+   GLOBAL DESIGN TOKENS (TAILWIND CSS V4 THEME CONFIG)
+   Dùng trực tiếp bằng các utility class của Tailwind:
+   - Màu sắc: bg-app-bg, bg-app-card, text-income, text-expense, text-transfer, text-main, text-muted...
+   - Phông chữ: font-heading, font-body
+   - Bo góc & Độ bóng chuẩn iOS
+   ========================================================================== */
+@theme {
+  /* Màu nền & Lớp giao diện (Layering) */
+  --color-app-bg: #090d16;
+  --color-app-card: #121826;
+  --color-app-card-hover: #182238;
+  --color-app-elevated: #1a2236;
+  --color-app-border: rgba(255, 255, 255, 0.08);
+
+  /* Màu ngữ cảnh dòng tiền (Semantic Cashflow Colors) */
+  --color-income: #10b981;
+  --color-income-glow: rgba(16, 185, 129, 0.2);
+  --color-expense: #f43f5e;
+  --color-expense-glow: rgba(244, 63, 94, 0.2);
+  --color-transfer: #38bdf8;
+  --color-transfer-glow: rgba(56, 189, 248, 0.2);
+
+  /* Màu văn bản (Text Colors) */
+  --color-text-main: #f8fafc;
+  --color-text-muted: #94a3b8;
+  --color-text-sub: #64748b;
+
+  /* Họ phông chữ (Typography) */
+  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Cỡ chữ số tiền chuyên dụng */
+  --text-money-hero: 2.25rem;
+  --text-money-card: 1.625rem;
+  --text-money-item: 0.9375rem;
+
+  /* Animation */
+  --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ==========================================================================
+   CSS CUSTOM PROPERTIES CHO TƯƠNG THÍCH NGƯỢC
+   ========================================================================== */
 :root {
   --bg-primary: #090d16;
   --bg-card: #121826;
@@ -52,7 +98,7 @@ body {
   margin: 0;
   padding: 0;
   background-color: #090d16;
-  color: var(--text-main);
+  color: #f8fafc;
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -79,13 +125,12 @@ main, .app-scroll-container {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain; /* Cô lập sự kiện cuộn bên trong danh sách */
+  overscroll-behavior-y: contain;
 }
 
 /* ==========================================================================
    CHỐNG AUTO-ZOOM TRÊN IPHONE / IOS SAFARI
    Quy tắc cốt lõi: Tất cả input, select, textarea PHẢI có font-size >= 16px.
-   Nếu font-size < 16px, Safari iOS sẽ tự động phóng to giao diện khi focus.
    ========================================================================== */
 input,
 select,
@@ -96,7 +141,6 @@ textarea {
   -webkit-user-select: text;
 }
 
-/* Date/Time input chuẩn iOS */
 input[type="date"],
 input[type="datetime-local"],
 input[type="time"] {
@@ -104,18 +148,19 @@ input[type="time"] {
   min-height: 42px;
 }
 
-/* Cho phép chọn văn bản trong các vùng hiển thị số tiền / ghi chú */
 .selectable-text {
   user-select: text;
   -webkit-user-select: text;
 }
 
-/* Glassmorphism Classes */
+/* ==========================================================================
+   LỚP TIỆN ÍCH DÙNG LẠI (REUSABLE UTILITIES & COMPONENTS)
+   ========================================================================== */
 .glass-panel {
   background: rgba(18, 24, 38, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-nav {
@@ -125,12 +170,19 @@ input[type="time"] {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Touch Feedback */
+.glass-card {
+  background-color: #1e293b;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Phản hồi cảm ứng (Touch Feedback) */
 .touch-btn {
   transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 .touch-btn:active {
@@ -142,9 +194,55 @@ input[type="time"] {
   transform: scale(0.92);
 }
 
-/* Typography styles */
+/* Kiểu phông chữ */
 .font-heading {
   font-family: var(--font-heading);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Category Badge glow */
+.cat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+/* Input chuẩn iOS */
+.input-ios {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background-color: #1e293b;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 16px !important;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input-ios:focus {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+/* Safe areas */
+.safe-padding-top {
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+}
+
+.safe-padding-bottom {
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-nav-bottom {
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Custom Scrollbar */
@@ -177,25 +275,4 @@ input[type="time"] {
 
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Category Badge glow */
-.cat-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
-/* Safe areas */
-.safe-padding-top {
-  padding-top: max(16px, env(safe-area-inset-top));
-}
-
-.safe-padding-bottom {
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
 }

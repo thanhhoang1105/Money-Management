@@ -16,44 +16,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onOpenQuickAdd
 }) => {
   return (
-    <nav
-      className="glass-nav"
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        maxWidth: 480,
-        margin: '0 auto',
-        paddingTop: 8,
-        paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-around',
-        zIndex: 50,
-        backgroundColor: '#0f172a',
-        borderTop: '1px solid rgba(255, 255, 255, 0.08)'
-      }}
-    >
+    <nav className="glass-nav fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto pt-2 safe-nav-bottom flex items-center justify-around z-50 bg-[#0f172a] border-t border-white/8">
       {/* Tab 1: Sổ Giao Dịch */}
       <button
         type="button"
         onClick={() => onSelectTab('transactions')}
-        className="touch-btn"
-        style={{
-          background: 'none',
-          border: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          color: currentTab === 'transactions' ? '#10B981' : '#64748B',
-          flex: 1
-        }}
+        className={`touch-btn flex-1 flex flex-col items-center gap-1 cursor-pointer bg-transparent border-none ${
+          currentTab === 'transactions' ? 'text-income' : 'text-slate-400'
+        }`}
       >
         <BookOpen size={22} strokeWidth={currentTab === 'transactions' ? 2.5 : 2} />
-        <span style={{ fontSize: 11, fontWeight: currentTab === 'transactions' ? 600 : 500 }}>
+        <span className={`text-[11px] ${currentTab === 'transactions' ? 'font-semibold' : 'font-medium'}`}>
           Sổ thu chi
         </span>
       </button>
@@ -62,45 +35,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       <button
         type="button"
         onClick={() => onSelectTab('analytics')}
-        className="touch-btn"
-        style={{
-          background: 'none',
-          border: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          color: currentTab === 'analytics' ? '#10B981' : '#64748B',
-          flex: 1
-        }}
+        className={`touch-btn flex-1 flex flex-col items-center gap-1 cursor-pointer bg-transparent border-none ${
+          currentTab === 'analytics' ? 'text-income' : 'text-slate-400'
+        }`}
       >
         <PieChart size={22} strokeWidth={currentTab === 'analytics' ? 2.5 : 2} />
-        <span style={{ fontSize: 11, fontWeight: currentTab === 'analytics' ? 600 : 500 }}>
+        <span className={`text-[11px] ${currentTab === 'analytics' ? 'font-semibold' : 'font-medium'}`}>
           Báo cáo
         </span>
       </button>
 
       {/* Center Nút Thêm [+] Nhanh Chuẩn iOS */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+      <div className="flex-1 flex justify-center">
         <button
           type="button"
           onClick={onOpenQuickAdd}
-          className="touch-btn touch-bounce"
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 26,
-            background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ffffff',
-            boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)',
-            cursor: 'pointer',
-            transform: 'translateY(-12px)'
-          }}
+          className="touch-btn touch-bounce w-[52px] h-[52px] rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-500/40 -translate-y-3 cursor-pointer border-none"
         >
           <Plus size={28} strokeWidth={2.8} />
         </button>
@@ -110,21 +60,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       <button
         type="button"
         onClick={() => onSelectTab('budgets')}
-        className="touch-btn"
-        style={{
-          background: 'none',
-          border: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          color: currentTab === 'budgets' ? '#10B981' : '#64748B',
-          flex: 1
-        }}
+        className={`touch-btn flex-1 flex flex-col items-center gap-1 cursor-pointer bg-transparent border-none ${
+          currentTab === 'budgets' ? 'text-income' : 'text-slate-400'
+        }`}
       >
         <Target size={22} strokeWidth={currentTab === 'budgets' ? 2.5 : 2} />
-        <span style={{ fontSize: 11, fontWeight: currentTab === 'budgets' ? 600 : 500 }}>
+        <span className={`text-[11px] ${currentTab === 'budgets' ? 'font-semibold' : 'font-medium'}`}>
           Hạn mức
         </span>
       </button>
@@ -133,24 +74,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       <button
         type="button"
         onClick={() => onSelectTab('wallets')}
-        className="touch-btn"
-        style={{
-          background: 'none',
-          border: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          color: currentTab === 'wallets' ? '#10B981' : '#64748B',
-          flex: 1
-        }}
+        className={`touch-btn flex-1 flex flex-col items-center gap-1 cursor-pointer bg-transparent border-none ${
+          currentTab === 'wallets' ? 'text-income' : 'text-slate-400'
+        }`}
       >
         <WalletIcon size={22} strokeWidth={currentTab === 'wallets' ? 2.5 : 2} />
-        <span style={{ fontSize: 11, fontWeight: currentTab === 'wallets' ? 600 : 500 }}>
+        <span className={`text-[11px] ${currentTab === 'wallets' ? 'font-semibold' : 'font-medium'}`}>
           Tài khoản
         </span>
       </button>
     </nav>
   );
 };
+
+export default BottomNav;
