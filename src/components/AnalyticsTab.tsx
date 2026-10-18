@@ -133,41 +133,22 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     : [];
 
   return (
-    <div style={{ paddingBottom: 90 }}>
+    <div className="pb-24">
       {/* 1. Header chọn tháng */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px 10px'
-        }}
-      >
+      <div className="px-5 pt-4 pb-2.5 flex items-center justify-between">
         <button
           type="button"
           onClick={handlePrevMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
         >
           <ChevronLeft size={20} />
         </button>
 
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+        <div className="text-center">
+          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
             Báo cáo chi tiêu
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+          <div className="text-base font-bold text-slate-100">
             {formatMonthDisplay(selectedMonth)}
           </div>
         </div>
@@ -175,42 +156,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         <button
           type="button"
           onClick={handleNextMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
         >
           <ChevronRight size={20} />
         </button>
       </div>
 
       {/* 2. Tổng quan MoM (Month-over-Month) Badge */}
-      <div
-        className="glass-panel"
-        style={{
-          margin: '8px 16px',
-          borderRadius: 24,
-          padding: '20px 18px',
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.08)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="glass-panel mx-4 my-2 rounded-3xl p-5 bg-gradient-to-br from-slate-800/80 to-slate-900/90 border border-white/10 shadow-lg">
+        <div className="flex justify-between items-start">
           <div>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Tổng chi tiêu tháng</span>
-            <div
-              className="font-heading"
-              style={{ fontSize: 28, fontWeight: 800, color: '#F43F5E', marginTop: 2 }}
-            >
+            <span className="text-xs text-slate-400 font-medium">Tổng chi tiêu tháng</span>
+            <div className="font-heading text-3xl font-extrabold text-rose-500 mt-0.5 tracking-tight">
               {formatVND(thisExpense)}
             </div>
           </div>
@@ -218,19 +175,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           {/* Badge so sánh MoM với tháng trước */}
           {prevExpense > 0 && (
             <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '6px 12px',
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-                backgroundColor:
-                  expenseDiff > 0 ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                color: expenseDiff > 0 ? '#F43F5E' : '#10B981',
-                border: `1px solid ${expenseDiff > 0 ? 'rgba(244,63,94,0.3)' : 'rgba(16,185,129,0.3)'}`
-              }}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                expenseDiff > 0
+                  ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+              }`}
             >
               {expenseDiff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
               <span>
@@ -240,42 +189,33 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           )}
         </div>
 
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+        <div className="text-xs text-slate-400 mt-2">
           {prevExpense > 0 ? (
             expenseDiff > 0 ? (
               <span>
-                Tăng <b>{formatVND(expenseDiff)}</b> so với tháng trước ({formatVND(prevExpense)})
+                Tăng <b className="text-rose-400">{formatVND(expenseDiff)}</b> so với tháng trước ({formatVND(prevExpense)})
               </span>
             ) : (
               <span>
-                Tiết kiệm được <b>{formatVND(Math.abs(expenseDiff))}</b> so với tháng trước ({formatVND(prevExpense)})
+                Tiết kiệm được <b className="text-emerald-400">{formatVND(Math.abs(expenseDiff))}</b> so với tháng trước ({formatVND(prevExpense)})
               </span>
             )
           ) : (
-            <span>Tháng trước chưa có dữ liệu chi tiêu</span>
+            <span className="text-slate-500">Tháng trước chưa có dữ liệu chi tiêu</span>
           )}
         </div>
       </div>
 
       {/* 3. Interactive SVG Donut Chart */}
       {sortedCategories.length > 0 ? (
-        <div
-          className="glass-panel"
-          style={{
-            margin: '12px 16px',
-            borderRadius: 24,
-            padding: '20px',
-            textAlign: 'center',
-            border: '1px solid rgba(255, 255, 255, 0.08)'
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', marginBottom: 12 }}>
+        <div className="glass-panel mx-4 my-3 rounded-3xl p-5 text-center border border-white/10">
+          <div className="text-sm font-bold text-slate-100 mb-3">
             Cơ cấu chi tiêu (Chạm vào để xem chi tiết)
           </div>
 
           {/* Biểu đồ Donut SVG */}
-          <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto' }}>
-            <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ transform: 'rotate(-90deg)' }}>
+          <div className="relative w-48 h-48 mx-auto">
+            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
               {donutSegments.map((item) => {
                 const strokeDasharray = `${(item.percentage * 251.2) / 100} 251.2`;
                 const strokeDashoffset = -((item.startAngle * 251.2) / 360);
@@ -291,10 +231,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                     strokeDasharray={strokeDasharray}
                     strokeDashoffset={strokeDashoffset}
                     strokeLinecap="round"
-                    style={{
-                      cursor: 'pointer',
-                      transition: 'stroke-width 0.2s ease, opacity 0.2s ease'
-                    }}
+                    className="cursor-pointer transition-all hover:opacity-80"
                     onClick={() => setDrillDownCategory(item.category || null)}
                   />
                 );
@@ -302,73 +239,42 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
             </svg>
 
             {/* Tâm biểu đồ Donut */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                pointerEvents: 'none'
-              }}
-            >
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>Khoản chi lớn nhất</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[11px] text-slate-400 font-medium">Khoản chi lớn nhất</span>
               <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: sortedCategories[0]?.category?.color || '#38BDF8',
-                  maxWidth: 120,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
+                className="text-sm font-extrabold max-w-[120px] truncate"
+                style={{ color: sortedCategories[0]?.category?.color || '#38BDF8' }}
               >
                 {sortedCategories[0]?.category?.name}
               </span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
+              <span className="text-xs font-bold text-slate-100">
                 {sortedCategories[0]?.percentage.toFixed(1)}%
               </span>
             </div>
           </div>
         </div>
       ) : (
-        <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>
+        <div className="py-10 px-5 text-center text-slate-500 text-sm">
           Chưa có khoản chi nào để vẽ biểu đồ
         </div>
       )}
 
       {/* 4. Danh sách Hạng Mục Phân Tích Kèm So Sánh MoM (Bấm vào để Drill-down) */}
-      <div style={{ padding: '0 16px' }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: '#f8fafc',
-            marginBottom: 10,
-            paddingLeft: 4
-          }}
-        >
+      <div className="px-4 mt-2">
+        <div className="text-sm font-bold text-slate-100 mb-2.5 px-1">
           Chi tiết từng danh mục (Chạm để xem lịch sử)
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {sortedCategories.map((item) => (
             <div
               key={item.catId}
               onClick={() => setDrillDownCategory(item.category || null)}
-              className="glass-panel touch-btn"
-              style={{
-                borderRadius: 18,
-                padding: '14px 16px',
-                cursor: 'pointer',
-                border: '1px solid rgba(255, 255, 255, 0.06)'
-              }}
+              className="glass-panel touch-btn rounded-2xl p-3.5 sm:p-4 cursor-pointer border border-white/5 hover:border-white/15 transition-all"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="flex justify-between items-center">
                 {/* Trái: Icon + Tên */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="flex items-center gap-3">
                   <div
                     className="cat-badge"
                     style={{ backgroundColor: item.category?.color || '#3b82f6' }}
@@ -380,57 +286,45 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+                    <div className="text-sm font-bold text-slate-100">
                       {item.category?.name}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                    <div className="text-xs text-slate-400 mt-0.5">
                       {item.percentage.toFixed(1)}% tổng chi
                     </div>
                   </div>
                 </div>
 
                 {/* Phải: Số tiền + Badge MoM */}
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-slate-100">
                     {formatVND(item.amount)}
                   </div>
                   {/* MoM % Badge cho từng danh mục */}
-                  <div style={{ marginTop: 2 }}>
+                  <div className="mt-0.5">
                     {item.prevAmount > 0 ? (
                       <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: item.diff > 0 ? '#F43F5E' : '#10B981'
-                        }}
+                        className={`text-[11px] font-semibold ${
+                          item.diff > 0 ? 'text-rose-400' : 'text-emerald-400'
+                        }`}
                       >
                         {item.diff > 0 ? `▲ +${item.momPercent.toFixed(0)}%` : `▼ ${item.momPercent.toFixed(0)}%`}{' '}
-                        <span style={{ color: '#64748b' }}>vs tháng trước</span>
+                        <span className="text-slate-500 font-normal">vs tháng trước</span>
                       </span>
                     ) : (
-                      <span style={{ fontSize: 11, color: '#64748b' }}>Mới phát sinh</span>
+                      <span className="text-[11px] text-slate-500 font-medium">Mới phát sinh</span>
                     )}
                   </div>
                 </div>
               </div>
 
               {/* Thanh Progress Bar tỷ lệ % */}
-              <div
-                style={{
-                  width: '100%',
-                  height: 5,
-                  borderRadius: 999,
-                  backgroundColor: '#1e293b',
-                  marginTop: 12,
-                  overflow: 'hidden'
-                }}
-              >
+              <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
                 <div
+                  className="h-full rounded-full transition-all duration-300"
                   style={{
                     width: `${item.percentage}%`,
-                    height: '100%',
-                    backgroundColor: item.category?.color || '#3b82f6',
-                    borderRadius: 999
+                    backgroundColor: item.category?.color || '#3b82f6'
                   }}
                 />
               </div>
@@ -442,45 +336,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       {/* 5. MODAL DRILL-DOWN CHI TIẾT GIAO DỊCH CỦA DANH MỤC */}
       {drillDownCategory && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            backdropFilter: 'blur(10px)',
-            zIndex: 130,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            maxWidth: 480,
-            margin: '0 auto'
-          }}
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end max-w-[480px] mx-auto"
           onClick={() => setDrillDownCategory(null)}
         >
           <div
-            className="glass-panel animate-slide-up"
-            style={{
-              backgroundColor: '#0f172a',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              maxHeight: '85vh',
-              display: 'flex',
-              flexDirection: 'column',
-              paddingBottom: 'max(20px, env(safe-area-inset-bottom, 0px))'
-            }}
+            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 max-h-[85vh] flex flex-col pb-[max(20px,env(safe-area-inset-bottom,0px))]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header Drill-down */}
-            <div
-              style={{
-                padding: '18px 20px 14px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="px-5 pt-4.5 pb-3.5 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
                 <div
                   className="cat-badge"
                   style={{ backgroundColor: drillDownCategory.color }}
@@ -488,10 +353,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                   <CategoryIcon name={drillDownCategory.icon} size={22} color="#ffffff" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>
+                  <div className="text-base font-bold text-slate-100">
                     {drillDownCategory.name}
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  <div className="text-xs text-slate-400">
                     {formatMonthDisplay(selectedMonth)} • {drillDownTxs.length} giao dịch
                   </div>
                 </div>
@@ -500,36 +365,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               <button
                 type="button"
                 onClick={() => setDrillDownCategory(null)}
-                className="touch-btn"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: '#1e293b',
-                  border: 'none',
-                  color: '#94a3b8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
             {/* Danh sách giao dịch chi tiết */}
-            <div
-              style={{
-                padding: '12px 16px',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8
-              }}
-            >
+            <div className="p-4 overflow-y-auto flex flex-col gap-2">
               {drillDownTxs.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '30px 0', color: '#64748b' }}>
+                <div className="text-center py-8 text-slate-500 text-xs">
                   Không có giao dịch nào
                 </div>
               ) : (
@@ -542,27 +387,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                         onEditTransaction(tx);
                       }
                     }}
-                    className="touch-btn"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 14px',
-                      backgroundColor: '#1e293b',
-                      borderRadius: 14,
-                      border: '1px solid rgba(255, 255, 255, 0.04)',
-                      cursor: 'pointer'
-                    }}
+                    className="touch-btn flex items-center justify-between p-3 bg-slate-800/80 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
                   >
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc' }}>
+                      <div className="text-xs font-semibold text-slate-100">
                         {tx.note || drillDownCategory.name}
                       </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
                         {formatFriendlyDate(tx.date)} • {tx.time}
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#F43F5E' }}>
+                    <div className="text-sm font-bold text-rose-500">
                       -{formatVND(tx.amount)}
                     </div>
                   </div>

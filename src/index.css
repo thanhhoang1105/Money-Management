@@ -276,3 +276,21 @@ input[type="time"] {
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Numpad Specialized Key */
+.numpad-key {
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: transform 0.08s ease, background-color 0.1s ease;
+}
+
+.numpad-key:active {
+  transform: scale(0.94);
+  filter: brightness(1.2);
+}

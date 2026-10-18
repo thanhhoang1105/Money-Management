@@ -99,99 +99,46 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   };
 
   return (
-    <div style={{ paddingBottom: 90 }}>
+    <div className="pb-24">
       {/* 1. Header Card: Tổng số dư & Dòng tiền tháng */}
-      <div
-        className="glass-panel"
-        style={{
-          margin: '12px 16px',
-          borderRadius: 24,
-          padding: '20px 18px',
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="glass-panel mx-4 my-3 rounded-[24px] p-5 bg-gradient-to-br from-slate-800/90 to-slate-900/95 shadow-xl">
+        <div className="flex justify-between items-center">
           <div>
-            <span style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-medium">
               Tổng tài sản khả dụng
             </span>
-            <div
-              className="font-heading"
-              style={{ fontSize: 26, fontWeight: 800, color: '#f8fafc', marginTop: 2 }}
-            >
+            <div className="font-heading text-[26px] font-extrabold text-slate-100 mt-0.5">
               {formatVND(totalBalance)}
             </div>
           </div>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              backgroundColor: 'rgba(16, 185, 129, 0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#10B981'
-            }}
-          >
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
             <WalletIcon size={24} />
           </div>
         </div>
 
         {/* Khung Thu / Chi tháng */}
-        <div
-          style={{
-            marginTop: 18,
-            paddingTop: 14,
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            justifyContent: 'space-between'
-          }}
-        >
+        <div className="mt-4 pt-3.5 border-t border-white/8 flex justify-between items-center">
           {/* Thu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#10B981'
-              }}
-            >
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-[10px] bg-emerald-500/15 flex items-center justify-center text-emerald-400">
               <ArrowDownLeft size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>Thu tháng này</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#10B981' }}>
+              <div className="text-[11px] text-slate-400">Thu tháng này</div>
+              <div className="text-[13px] font-bold text-income">
                 +{formatVND(monthIncome)}
               </div>
             </div>
           </div>
 
           {/* Chi */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                backgroundColor: 'rgba(244, 63, 94, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#F43F5E'
-              }}
-            >
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-[10px] bg-rose-500/15 flex items-center justify-center text-rose-400">
               <ArrowUpRight size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>Chi tháng này</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#F43F5E' }}>
+              <div className="text-[11px] text-slate-400">Chi tháng này</div>
+              <div className="text-[13px] font-bold text-expense">
                 -{formatVND(monthExpense)}
               </div>
             </div>
@@ -200,37 +147,18 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       </div>
 
       {/* 2. Bộ Chuyển Tháng */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '4px 20px 12px'
-        }}
-      >
+      <div className="flex items-center justify-between px-5 py-2">
         <button
           type="button"
           onClick={handlePrevMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="touch-btn w-9 h-9 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center cursor-pointer border-none hover:text-white"
         >
           <ChevronLeft size={20} />
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Calendar size={16} color="#38bdf8" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
+        <div className="flex items-center gap-1.5">
+          <Calendar size={16} className="text-sky-400" />
+          <span className="text-[15px] font-bold text-slate-100">
             {formatMonthDisplay(selectedMonth)}
           </span>
         </div>
@@ -238,19 +166,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         <button
           type="button"
           onClick={handleNextMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="touch-btn w-9 h-9 rounded-xl bg-slate-800 text-slate-400 flex items-center justify-center cursor-pointer border-none hover:text-white"
         >
           <ChevronRight size={20} />
         </button>
@@ -258,40 +174,24 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
       {/* 3. Danh Sách Giao Dịch Gom Nhóm Theo Ngày */}
       {sortedDates.length === 0 ? (
-        <div
-          style={{
-            padding: '50px 20px',
-            textAlign: 'center',
-            color: '#64748b'
-          }}
-        >
-          <div style={{ fontSize: 40, marginBottom: 10 }}>📝</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#94a3b8' }}>
+        <div className="py-12 px-5 text-center text-slate-500">
+          <div className="text-4xl mb-2.5">📝</div>
+          <div className="text-[15px] font-semibold text-slate-400">
             Chưa có giao dịch nào trong {formatMonthDisplay(selectedMonth)}
           </div>
-          <p style={{ fontSize: 13, marginTop: 4, marginBottom: 14 }}>
+          <p className="text-xs text-slate-500 mt-1 mb-3.5">
             Bấm nút bên dưới để ghi nhanh khoản chi đầu tiên!
           </p>
           <button
             type="button"
             onClick={onOpenQuickAdd}
-            className="touch-btn"
-            style={{
-              backgroundColor: '#10B981',
-              color: '#ffffff',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: 14,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
+            className="touch-btn bg-emerald-500 text-white border-none py-2.5 px-5 rounded-2xl text-sm font-semibold cursor-pointer shadow-lg shadow-emerald-500/30"
           >
             + Ghi khoản chi mới
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 16px' }}>
+        <div className="flex flex-col gap-3.5 px-4">
           {sortedDates.map((dateStr) => {
             const dayTxs = groupedTransactions[dateStr];
             let dayIncome = 0;
@@ -304,40 +204,26 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             return (
               <div
                 key={dateStr}
-                className="glass-panel"
-                style={{
-                  borderRadius: 20,
-                  overflow: 'hidden',
-                  border: '1px solid rgba(255, 255, 255, 0.06)'
-                }}
+                className="glass-panel rounded-[20px] overflow-hidden border border-white/6"
               >
                 {/* Header Ngày */}
-                <div
-                  style={{
-                    padding: '10px 16px',
-                    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.04)'
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                <div className="py-2.5 px-4 bg-slate-800/50 flex justify-between items-center border-b border-white/4">
+                  <span className="text-[13px] font-bold text-slate-100">
                     {formatFriendlyDate(dateStr)}
                   </span>
-                  <div style={{ fontSize: 12, fontWeight: 600, display: 'flex', gap: 10 }}>
+                  <div className="text-xs font-semibold flex gap-2.5">
                     {dayIncome > 0 && (
-                      <span style={{ color: '#10B981' }}>+{formatVND(dayIncome)}</span>
+                      <span className="text-income">+{formatVND(dayIncome)}</span>
                     )}
                     {dayExpense > 0 && (
-                      <span style={{ color: '#F43F5E' }}>-{formatVND(dayExpense)}</span>
+                      <span className="text-expense">-{formatVND(dayExpense)}</span>
                     )}
                   </div>
                 </div>
 
                 {/* Danh sách các giao dịch trong ngày */}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {dayTxs.map((tx, idx) => {
+                <div className="flex flex-col">
+                  {dayTxs.map((tx) => {
                     const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
                     const wallet = walletMap.get(tx.walletId);
                     const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
@@ -346,21 +232,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                       <div
                         key={tx.id}
                         onClick={() => setSelectedTxForAction(tx)}
-                        className="touch-btn"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          borderBottom:
-                            idx < dayTxs.length - 1
-                              ? '1px solid rgba(255, 255, 255, 0.04)'
-                              : 'none'
-                        }}
+                        className="touch-btn flex items-center justify-between py-3 px-4 cursor-pointer border-b border-white/4 last:border-none hover:bg-white/2"
                       >
                         {/* Cột Trái: Icon & Tên Danh mục / Ghi chú */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div className="flex items-center gap-3">
                           <div
                             className="cat-badge"
                             style={{
@@ -381,14 +256,14 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                             />
                           </div>
                           <div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc' }}>
+                            <div className="text-sm font-semibold text-slate-100">
                               {tx.type === 'TRANSFER'
                                 ? `Chuyển ví`
                                 : cat?.name || 'Chưa phân loại'}
                             </div>
-                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                            <div className="text-xs text-slate-400 mt-0.5">
                               {tx.note ? (
-                                <span style={{ color: '#cbd5e1' }}>{tx.note} • </span>
+                                <span className="text-slate-300">{tx.note} • </span>
                               ) : null}
                               <span>
                                 {tx.type === 'TRANSFER'
@@ -400,18 +275,15 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                         </div>
 
                         {/* Cột Phải: Số tiền */}
-                        <div style={{ textAlign: 'right' }}>
+                        <div className="text-right">
                           <div
-                            style={{
-                              fontSize: 15,
-                              fontWeight: 700,
-                              color:
-                                tx.type === 'EXPENSE'
-                                  ? '#F43F5E'
-                                  : tx.type === 'INCOME'
-                                  ? '#10B981'
-                                  : '#38BDF8'
-                            }}
+                            className={`text-[15px] font-bold ${
+                              tx.type === 'EXPENSE'
+                                ? 'text-expense'
+                                : tx.type === 'INCOME'
+                                ? 'text-income'
+                                : 'text-transfer'
+                            }`}
                           >
                             {tx.type === 'EXPENSE'
                               ? `-${formatVND(tx.amount)}`
@@ -419,7 +291,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                               ? `+${formatVND(tx.amount)}`
                               : formatVND(tx.amount)}
                           </div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
                             {tx.time}
                           </div>
                         </div>
@@ -436,38 +308,18 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       {/* Modal Action Sheet khi Chạm vào 1 giao dịch */}
       {selectedTxForAction && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(6px)',
-            zIndex: 120,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            maxWidth: 480,
-            margin: '0 auto'
-          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end max-w-[480px] mx-auto"
           onClick={() => setSelectedTxForAction(null)}
         >
           <div
-            className="glass-panel animate-slide-up"
-            style={{
-              backgroundColor: '#0f172a',
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: '20px 20px max(24px, env(safe-area-inset-bottom, 0px))',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}
+            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ textAlign: 'center', marginBottom: 6 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+            <div className="text-center mb-1.5">
+              <div className="text-base font-bold text-slate-100">
                 Tùy chọn giao dịch
               </div>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
+              <div className="text-xs text-slate-400 mt-0.5">
                 {formatVND(selectedTxForAction.amount)} • {selectedTxForAction.date}
               </div>
             </div>
@@ -480,21 +332,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 setSelectedTxForAction(null);
                 onEditTransaction(tx);
               }}
-              className="touch-btn"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                padding: '14px',
-                borderRadius: 14,
-                backgroundColor: '#1e293b',
-                color: '#38BDF8',
-                border: 'none',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
+              className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-slate-800 text-sky-400 border-none text-[15px] font-semibold cursor-pointer"
             >
               <Edit3 size={18} />
               <span>Chỉnh sửa giao dịch</span>
@@ -504,21 +342,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             <button
               type="button"
               onClick={() => handleDelete(selectedTxForAction.id)}
-              className="touch-btn"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                padding: '14px',
-                borderRadius: 14,
-                backgroundColor: 'rgba(244, 63, 94, 0.12)',
-                color: '#F43F5E',
-                border: '1px solid rgba(244, 63, 94, 0.2)',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
+              className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-rose-500/12 text-rose-400 border border-rose-500/20 text-[15px] font-semibold cursor-pointer"
             >
               <Trash2 size={18} />
               <span>Xóa giao dịch (Hoàn tác số dư)</span>
@@ -528,17 +352,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             <button
               type="button"
               onClick={() => setSelectedTxForAction(null)}
-              className="touch-btn"
-              style={{
-                padding: '12px',
-                borderRadius: 14,
-                backgroundColor: 'transparent',
-                color: '#94a3b8',
-                border: 'none',
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
+              className="touch-btn p-3 rounded-2xl bg-transparent text-slate-400 border-none text-sm font-medium cursor-pointer"
             >
               Đóng
             </button>

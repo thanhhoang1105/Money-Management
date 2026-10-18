@@ -1,10 +1,15 @@
 // src/components/WalletsTab.tsx
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import * as XLSX from 'xlsx';
 import { db } from '../db';
 import { ensureDefaultWallets } from '../db/seed';
 import { transferFunds, adjustWalletBalance } from '../services/transactionService';
+import {
+  exportTransactionsToExcel,
+  exportFullBackupJSON,
+  downloadOrShareFile,
+  restoreBackupData
+} from '../services/backupService';
 import type { Wallet, WalletType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
@@ -48,7 +53,6 @@ const WALLET_COLORS = [
 export const WalletsTab: React.FC = () => {
   // Lấy danh sách ví bằng .toArray() để lọc bằng JS (tránh lỗi IDBKeyRange với kiểu boolean)
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
-  const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
   // Đảm bảo có sẵn 2 ví mặc định nếu DB chưa có ví nào
   useEffect(() => {
@@ -118,11 +122,9 @@ export const WalletsTab: React.FC = () => {
   // Mở modal Chuyển tiền nội bộ (có thể chỉ định trước ví gửi)
   const openTransferModal = (defaultFromId?: string) => {
     const fromId = defaultFromId || wallets[0]?.id || '';
-    const otherWallets = wallets.filter((w) => w.id !== fromId);
-    const toId = otherWallets[0]?.id || '';
-
+    const otherWallet = wallets.find((w) => w.id !== fromId);
     setTransferFromId(fromId);
-    setTransferToId(toId);
+    setTransferToId(otherWallet ? otherWallet.id : '');
     setTransferAmountStr('');
     setTransferDate(getCurrentDate());
     setTransferTime(getCurrentTime());
@@ -131,55 +133,46 @@ export const WalletsTab: React.FC = () => {
     setIsTransferModalOpen(true);
   };
 
-  // Tính chênh lệch khi sửa số dư ví (Balance Adjustment)
-  const rawCurrentBalance = Number(balanceStr.replace(/[^0-9-]/g, '')) || 0;
-  const balanceDiff = editingWallet ? rawCurrentBalance - editingWallet.balance : 0;
+  // Tính chênh lệch số dư khi chỉnh sửa ví
+  const parsedTargetBalance = Number(balanceStr.replace(/[^0-9-]/g, '')) || 0;
+  const balanceDiff = editingWallet ? parsedTargetBalance - editingWallet.balance : 0;
 
-  // Lưu ví (Thêm mới hoặc Cập nhật kèm Điều chỉnh số dư)
+  // Lưu ví (Thêm mới hoặc Cập nhật)
   const handleSaveWallet = async () => {
     if (!name.trim()) {
-      alert('Vui lòng nhập tên ví');
+      alert('Vui lòng nhập tên ví!');
       return;
     }
 
+    const targetBalance = parsedTargetBalance;
     const now = new Date().toISOString();
 
     if (editingWallet) {
-      // 1. Nếu có thay đổi số dư, xử lý điều chỉnh số dư thực tế
       if (balanceDiff !== 0) {
         await adjustWalletBalance({
           walletId: editingWallet.id,
-          newBalance: rawCurrentBalance,
-          autoCreateAdjustmentTx,
-          date: getCurrentDate(),
-          time: getCurrentTime()
+          newBalance: targetBalance,
+          autoCreateAdjustmentTx
         });
       }
 
-      // 2. Cập nhật các thông tin còn lại của ví
       await db.wallets.update(editingWallet.id, {
         name: name.trim(),
         type,
-        balance: rawCurrentBalance,
         icon,
         color,
         isExcludedFromTotal: isExcluded,
         updatedAt: now
       });
 
-      showStatus(
-        balanceDiff !== 0 && autoCreateAdjustmentTx
-          ? `Đã cập nhật ví "${name.trim()}" & ghi nhận giao dịch chênh lệch ${formatVND(Math.abs(balanceDiff))}!`
-          : `Đã cập nhật ví "${name.trim()}"!`
-      );
+      showStatus(`Đã cập nhật ví "${name}" thành công!`);
     } else {
-      // Thêm ví mới hoàn toàn
       await db.wallets.add({
         id: crypto.randomUUID(),
         name: name.trim(),
         type,
-        balance: rawCurrentBalance,
-        initialBalance: rawCurrentBalance,
+        balance: targetBalance,
+        initialBalance: targetBalance,
         currency: 'VND',
         icon,
         color,
@@ -188,15 +181,14 @@ export const WalletsTab: React.FC = () => {
         updatedAt: now
       });
 
-      showStatus(`Đã tạo ví mới "${name.trim()}" thành công!`);
+      showStatus(`Đã thêm ví "${name}" thành công!`);
     }
 
     setIsWalletModalOpen(false);
   };
 
-  // Xóa ví với cơ chế chặn an toàn nếu đã có giao dịch phát sinh
+  // Xóa ví
   const handleDeleteWallet = async (w: Wallet) => {
-    // Đếm giao dịch liên quan đến ví này (cả ví gửi và ví nhận chuyển khoản)
     const txCount = await db.transactions
       .filter((t) => t.walletId === w.id || t.toWalletId === w.id)
       .count();
@@ -260,110 +252,33 @@ export const WalletsTab: React.FC = () => {
     }
   };
 
-  // Dữ liệu hỗ trợ xem trước số dư sau khi chuyển (Transfer preview)
   const transferFromWallet = wallets.find((w) => w.id === transferFromId);
   const transferToWallet = wallets.find((w) => w.id === transferToId);
   const currentTransferAmount = Number(transferAmountStr.replace(/[^0-9]/g, '')) || 0;
 
-  // 1. XUẤT BÁO CÁO EXCEL (.xlsx)
+  // Xuất file Excel
   const handleExportExcel = async () => {
     try {
-      const allTxs = await db.transactions.toArray();
-      const catMap = new Map(categories.map((c) => [c.id, c.name]));
-      const wMap = new Map(wallets.map((w) => [w.id, w.name]));
-
-      const txRows = allTxs.map((t) => ({
-        'Mã GD': t.id,
-        'Ngày': t.date,
-        'Giờ': t.time,
-        'Loại': t.type === 'EXPENSE' ? 'Chi tiền' : t.type === 'INCOME' ? 'Thu tiền' : 'Chuyển ví nội bộ',
-        'Số tiền (VNĐ)': t.amount,
-        'Hạng mục': t.categoryId ? catMap.get(t.categoryId) || 'Chưa phân loại' : 'Chuyển ví nội bộ',
-        'Ví gửi': wMap.get(t.walletId) || t.walletId,
-        'Ví nhận': t.toWalletId ? wMap.get(t.toWalletId) || t.toWalletId : '',
-        'Ghi chú': t.note || ''
-      }));
-
-      const walletRows = wallets.map((w) => ({
-        'Tên ví': w.name,
-        'Loại': w.type,
-        'Số dư hiện tại (VNĐ)': w.balance,
-        'Không tính vào tổng': w.isExcludedFromTotal ? 'Có' : 'Không'
-      }));
-
-      const wb = XLSX.utils.book_new();
-      const wsTx = XLSX.utils.json_to_sheet(txRows);
-      const wsW = XLSX.utils.json_to_sheet(walletRows);
-
-      XLSX.utils.book_append_sheet(wb, wsTx, 'Lịch sử giao dịch');
-      XLSX.utils.book_append_sheet(wb, wsW, 'Tổng hợp ví');
-
-      const fileName = `SoThuChi_BaoCao_${getCurrentDate()}.xlsx`;
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      });
-
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], fileName)] })) {
-        const file = new File([blob], fileName, { type: blob.type });
-        await navigator.share({
-          files: [file],
-          title: 'Báo cáo Sổ Thu Chi',
-          text: 'Báo cáo chi tiêu cá nhân xuất từ Sổ Thu Chi'
-        });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      await exportTransactionsToExcel();
       showStatus('Xuất file Excel thành công!');
     } catch (err: any) {
       alert('Lỗi xuất file Excel: ' + err?.message);
     }
   };
 
-  // 2. SAO LƯU ĐẦY ĐỦ JSON
+  // Sao lưu JSON
   const handleBackupJSON = async () => {
     try {
-      const data = {
-        version: 2,
-        exportedAt: new Date().toISOString(),
-        wallets: await db.wallets.toArray(),
-        categories: await db.categories.toArray(),
-        transactions: await db.transactions.toArray(),
-        budgets: await db.budgets.toArray(),
-        settings: await db.settings.toArray()
-      };
-
-      const jsonStr = JSON.stringify(data, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const fileName = `SoThuChi_Backup_${getCurrentDate()}.json`;
-
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], fileName)] })) {
-        const file = new File([blob], fileName, { type: 'application/json' });
-        await navigator.share({
-          files: [file],
-          title: 'Sao lưu dữ liệu Sổ Thu Chi',
-          text: 'File sao lưu toàn bộ cơ sở dữ liệu Sổ Thu Chi cá nhân'
-        });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      const jsonStr = await exportFullBackupJSON();
+      const fileName = `SoThuChi_Backup_${getCurrentDate().replace(/-/g, '')}.json`;
+      await downloadOrShareFile(jsonStr, fileName, 'application/json');
       showStatus('Sao lưu dữ liệu JSON thành công!');
     } catch (err: any) {
       alert('Lỗi sao lưu JSON: ' + err?.message);
     }
   };
 
-  // 3. PHỤC HỒI DỮ LIỆU JSON
+  // Khôi phục JSON
   const handleRestoreJSON = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -372,35 +287,13 @@ export const WalletsTab: React.FC = () => {
     reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
-        const parsed = JSON.parse(content);
-
-        if (!parsed.wallets || !parsed.categories || !parsed.transactions) {
-          throw new Error('Định dạng file sao lưu không hợp lệ!');
-        }
-
         if (
           window.confirm(
-            `Tìm thấy ${parsed.transactions.length} giao dịch và ${parsed.wallets.length} ví trong bản sao lưu ngày ${
-              parsed.exportedAt?.slice(0, 10) || ''
-            }. Bạn có chắc muốn khôi phục? (Dữ liệu hiện tại sẽ được thay thế).`
+            'Bạn có chắc chắn muốn khôi phục dữ liệu từ file này? Dữ liệu hiện tại trên máy sẽ được thay thế.'
           )
         ) {
-          await db.transaction('rw', [db.wallets, db.categories, db.transactions, db.budgets, db.settings], async () => {
-            await db.wallets.clear();
-            await db.categories.clear();
-            await db.transactions.clear();
-            await db.budgets.clear();
-            await db.settings.clear();
-
-            await db.wallets.bulkAdd(parsed.wallets);
-            await db.categories.bulkAdd(parsed.categories);
-            await db.transactions.bulkAdd(parsed.transactions);
-            if (parsed.budgets?.length) await db.budgets.bulkAdd(parsed.budgets);
-            if (parsed.settings?.length) await db.settings.bulkAdd(parsed.settings);
-          });
-
-          alert('Khôi phục dữ liệu thành công!');
-          window.location.reload();
+          const res = await restoreBackupData(content);
+          showStatus(res.message);
         }
       } catch (err: any) {
         alert('Lỗi khôi phục: ' + err?.message);
@@ -410,78 +303,33 @@ export const WalletsTab: React.FC = () => {
   };
 
   return (
-    <div style={{ paddingBottom: 110 }}>
-      {/* 1. THẺ TỔNG TÀI SẢN KHẢ DỤNG (TOTAL AVAILABLE ASSETS) */}
-      <div
-        className="glass-panel"
-        style={{
-          margin: '12px 16px',
-          borderRadius: 24,
-          padding: '20px 20px',
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)',
-          border: '1px solid rgba(255, 255, 255, 0.08)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className="pb-28">
+      {/* 1. THẺ TỔNG TÀI SẢN KHẢ DỤNG */}
+      <div className="glass-panel mx-4 my-3 rounded-[24px] p-5 bg-gradient-to-br from-slate-800/95 to-slate-900/98 shadow-xl border border-white/8">
+        <div className="flex justify-between items-start">
           <div>
-            <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>
+            <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
               Tổng tài sản khả dụng
             </div>
-            <div
-              className="font-heading"
-              style={{
-                fontSize: 32,
-                fontWeight: 800,
-                color: '#f8fafc',
-                margin: '6px 0 4px',
-                letterSpacing: -0.5
-              }}
-            >
+            <div className="font-heading text-[32px] font-extrabold text-white my-1.5 tracking-tight">
               {formatVND(totalBalance)}
             </div>
-            <div style={{ fontSize: 11, color: '#64748b' }}>
+            <div className="text-[11px] text-slate-500">
               {wallets.length} ví hoạt động • {wallets.filter((w) => !w.isExcludedFromTotal).length} ví tính vào tổng
             </div>
           </div>
 
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
-            }}
-          >
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-500/30">
             <WalletIcon size={24} />
           </div>
         </div>
 
         {/* 2 HÀNH ĐỘNG CỐT LÕI: CHUYỂN TIỀN & THÊM VÍ */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
+        <div className="grid grid-cols-2 gap-2.5 mt-4">
           <button
             type="button"
             onClick={() => openTransferModal()}
-            className="touch-btn"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '12px 14px',
-              borderRadius: 14,
-              backgroundColor: 'rgba(56, 189, 248, 0.15)',
-              color: '#38BDF8',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
+            className="touch-btn flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/30 text-sm font-bold cursor-pointer"
           >
             <ArrowRightLeft size={16} /> Chuyển tiền
           </button>
@@ -489,21 +337,7 @@ export const WalletsTab: React.FC = () => {
           <button
             type="button"
             onClick={openAddModal}
-            className="touch-btn"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '12px 14px',
-              borderRadius: 14,
-              backgroundColor: 'rgba(16, 185, 129, 0.15)',
-              color: '#10B981',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
+            className="touch-btn flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-sm font-bold cursor-pointer"
           >
             <Plus size={16} /> Thêm ví mới
           </button>
@@ -512,52 +346,27 @@ export const WalletsTab: React.FC = () => {
 
       {/* Thông báo thao tác thành công (Toast) */}
       {statusMsg && (
-        <div
-          className="animate-fade-in"
-          style={{
-            margin: '0 16px 14px',
-            padding: '12px 16px',
-            borderRadius: 14,
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            color: '#10B981',
-            fontSize: 13,
-            fontWeight: 600,
-            textAlign: 'center',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8
-          }}
-        >
+        <div className="animate-fade-in mx-4 mb-3.5 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[13px] font-semibold text-center flex items-center justify-center gap-2">
           <CheckCircle2 size={16} />
-          {statusMsg}
+          <span>{statusMsg}</span>
         </div>
       )}
 
       {/* 2. DANH SÁCH VÍ & TÀI KHOẢN */}
-      <div style={{ padding: '0 16px' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', marginBottom: 10 }}>
+      <div className="px-4">
+        <div className="text-sm font-bold text-slate-100 mb-2.5">
           Danh sách nguồn tiền ({wallets.length})
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {wallets.map((w) => (
             <div
               key={w.id}
-              className="glass-panel"
-              style={{
-                borderRadius: 20,
-                padding: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                border: '1px solid rgba(255, 255, 255, 0.06)'
-              }}
+              className="glass-panel rounded-[20px] p-4 flex items-center justify-between border border-white/6 hover:bg-white/2 transition-colors"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div className="flex items-center gap-3.5">
                 <div
-                  className="cat-badge"
+                  className="cat-badge shadow-md"
                   style={{
                     backgroundColor: w.color || '#3B82F6',
                     boxShadow: `0 4px 12px ${w.color}40`
@@ -566,10 +375,10 @@ export const WalletsTab: React.FC = () => {
                   <CategoryIcon name={w.icon || 'Wallet'} size={22} color="#ffffff" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
+                  <div className="text-[15px] font-bold text-slate-100">
                     {w.name}
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                  <div className="text-xs text-slate-400 mt-0.5">
                     {w.type === 'CASH'
                       ? 'Tiền mặt'
                       : w.type === 'BANK'
@@ -578,89 +387,46 @@ export const WalletsTab: React.FC = () => {
                       ? 'Ví điện tử'
                       : 'Thẻ tín dụng'}
                     {w.isExcludedFromTotal && (
-                      <span style={{ color: '#F59E0B', marginLeft: 6 }}>• Không tính tổng</span>
+                      <span className="text-amber-400 ml-1.5">• Không tính tổng</span>
                     )}
                   </div>
                 </div>
               </div>
 
-              <div style={{ textAlign: 'right' }}>
+              <div className="text-right">
                 <div
-                  className="font-heading"
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: w.balance < 0 ? '#F43F5E' : '#f8fafc',
-                    letterSpacing: -0.2
-                  }}
+                  className={`font-heading text-base font-extrabold ${
+                    w.balance < 0 ? 'text-expense' : 'text-slate-100'
+                  }`}
                 >
                   {formatVND(w.balance)}
                 </div>
 
                 {/* Các nút hành động nhanh trên từng ví */}
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
-                  {/* Nút Chuyển tiền từ ví này */}
+                <div className="flex gap-1.5 mt-2 justify-end">
                   <button
                     type="button"
                     onClick={() => openTransferModal(w.id)}
-                    className="touch-btn"
+                    className="touch-btn w-8 h-8 rounded-[10px] bg-sky-500/12 text-sky-400 border-none flex items-center justify-center cursor-pointer hover:bg-sky-500/20"
                     title="Chuyển tiền từ ví này"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 10,
-                      backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                      border: 'none',
-                      color: '#38BDF8',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
                   >
                     <ArrowRightLeft size={14} />
                   </button>
 
-                  {/* Nút Sửa ví & Điều chỉnh số dư */}
                   <button
                     type="button"
                     onClick={() => openEditModal(w)}
-                    className="touch-btn"
+                    className="touch-btn w-8 h-8 rounded-[10px] bg-slate-800 text-slate-400 border-none flex items-center justify-center cursor-pointer hover:text-white"
                     title="Chỉnh sửa ví & điều chỉnh số dư"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 10,
-                      backgroundColor: '#1e293b',
-                      border: 'none',
-                      color: '#94a3b8',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
                   >
                     <Edit2 size={14} />
                   </button>
 
-                  {/* Nút Xóa ví */}
                   <button
                     type="button"
                     onClick={() => handleDeleteWallet(w)}
-                    className="touch-btn"
+                    className="touch-btn w-8 h-8 rounded-[10px] bg-rose-500/12 text-rose-400 border-none flex items-center justify-center cursor-pointer hover:bg-rose-500/20"
                     title="Xóa ví"
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 10,
-                      backgroundColor: 'rgba(244, 63, 94, 0.12)',
-                      border: 'none',
-                      color: '#F43F5E',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -671,130 +437,68 @@ export const WalletsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. KHU VỰC SAO LƯU & XUẤT BÁO CÁO (MODULE 6) */}
-      <div style={{ padding: '24px 16px 0' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', marginBottom: 12 }}>
+      {/* 3. KHU VỰC SAO LƯU & XUẤT BÁO CÁO */}
+      <div className="px-4 pt-6">
+        <div className="text-sm font-bold text-slate-100 mb-3">
           Sao lưu & Dữ liệu độc lập (0đ chi phí)
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {/* Nút 1: Xuất Excel */}
           <button
             type="button"
             onClick={handleExportExcel}
-            className="glass-panel touch-btn"
-            style={{
-              padding: '16px',
-              borderRadius: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
-            }}
+            className="glass-panel touch-btn p-4 rounded-[18px] flex items-center justify-between cursor-pointer border border-white/8 hover:bg-white/2"
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#10B981'
-                }}
-              >
+            <div className="flex items-center gap-3">
+              <div className="w-[42px] h-[42px] rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
                 <FileSpreadsheet size={22} />
               </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+              <div className="text-left">
+                <div className="text-sm font-bold text-slate-100">
                   Xuất báo cáo Excel (.xlsx)
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                <div className="text-xs text-slate-400">
                   Bảng kê chi tiết giao dịch & số dư các ví
                 </div>
               </div>
             </div>
-            <Download size={18} color="#10B981" />
+            <Download size={18} className="text-emerald-400" />
           </button>
 
           {/* Nút 2: Sao lưu JSON */}
           <button
             type="button"
             onClick={handleBackupJSON}
-            className="glass-panel touch-btn"
-            style={{
-              padding: '16px',
-              borderRadius: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
-            }}
+            className="glass-panel touch-btn p-4 rounded-[18px] flex items-center justify-between cursor-pointer border border-white/8 hover:bg-white/2"
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#38BDF8'
-                }}
-              >
+            <div className="flex items-center gap-3">
+              <div className="w-[42px] h-[42px] rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400">
                 <ShieldCheck size={22} />
               </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+              <div className="text-left">
+                <div className="text-sm font-bold text-slate-100">
                   Sao lưu toàn bộ dữ liệu (JSON)
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                <div className="text-xs text-slate-400">
                   Bản lưu 100% không mất mát, lưu lên Google Drive/iCloud
                 </div>
               </div>
             </div>
-            <Download size={18} color="#38BDF8" />
+            <Download size={18} className="text-sky-400" />
           </button>
 
           {/* Nút 3: Khôi phục JSON */}
-          <label
-            className="glass-panel touch-btn"
-            style={{
-              padding: '16px',
-              borderRadius: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#A855F7'
-                }}
-              >
-                <Download size={22} style={{ transform: 'rotate(180deg)' }} />
+          <label className="glass-panel touch-btn p-4 rounded-[18px] flex items-center justify-between cursor-pointer border border-white/8 hover:bg-white/2">
+            <div className="flex items-center gap-3">
+              <div className="w-[42px] h-[42px] rounded-xl bg-purple-500/15 flex items-center justify-center text-purple-400">
+                <Download size={22} className="rotate-180" />
               </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+              <div className="text-left">
+                <div className="text-sm font-bold text-slate-100">
                   Khôi phục dữ liệu từ JSON
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                <div className="text-xs text-slate-400">
                   Phục hồi nguyên trạng cơ sở dữ liệu trên máy
                 </div>
               </div>
@@ -803,68 +507,31 @@ export const WalletsTab: React.FC = () => {
               type="file"
               accept=".json"
               onChange={handleRestoreJSON}
-              style={{ display: 'none' }}
+              className="hidden"
             />
           </label>
         </div>
       </div>
 
-      {/* =====================================================================
-          4. MODAL THÊM / SỬA VÍ & ĐIỀU CHỈNH SỐ DƯ THỰC TẾ
-         ===================================================================== */}
+      {/* 4. MODAL THÊM / SỬA VÍ & ĐIỀU CHỈNH SỐ DƯ THỰC TẾ */}
       {isWalletModalOpen && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            zIndex: 130,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            maxWidth: 480,
-            margin: '0 auto'
-          }}
+          className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] flex flex-col justify-end max-w-[480px] mx-auto"
           onClick={() => setIsWalletModalOpen(false)}
         >
           <div
-            className="glass-panel animate-slide-up"
-            style={{
-              backgroundColor: '#0f172a',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: '20px 20px max(24px, env(safe-area-inset-bottom, 0px))',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              maxHeight: '90dvh',
-              overflowY: 'auto'
-            }}
+            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-3.5 max-h-[90dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header Modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>
+            <div className="flex justify-between items-center">
+              <div className="text-[17px] font-extrabold text-slate-100">
                 {editingWallet ? 'Chỉnh sửa ví & Điều chỉnh số dư' : 'Thêm ví mới'}
               </div>
               <button
                 type="button"
                 onClick={() => setIsWalletModalOpen(false)}
-                className="touch-btn"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: '#1e293b',
-                  border: 'none',
-                  color: '#94a3b8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="touch-btn w-8 h-8 rounded-full bg-slate-800 border-none text-slate-400 flex items-center justify-center cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -872,7 +539,7 @@ export const WalletsTab: React.FC = () => {
 
             {/* Tên ví */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              <label className="text-xs text-slate-400 block mb-1">
                 Tên ví (Ví dụ: Tiền mặt, Techcombank, MoMo...)
               </label>
               <input
@@ -880,22 +547,13 @@ export const WalletsTab: React.FC = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Nhập tên ví..."
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  backgroundColor: '#1e293b',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 16,
-                  outline: 'none'
-                }}
+                className="input-ios"
               />
             </div>
 
             {/* Loại ví */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              <label className="text-xs text-slate-400 block mb-1">
                 Phân loại ví
               </label>
               <select
@@ -917,16 +575,7 @@ export const WalletsTab: React.FC = () => {
                     setColor('#F59E0B');
                   }
                 }}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  backgroundColor: '#1e293b',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 16,
-                  outline: 'none'
-                }}
+                className="input-ios"
               >
                 <option value="CASH">💵 Tiền mặt</option>
                 <option value="BANK">🏦 Tài khoản Ngân hàng</option>
@@ -937,25 +586,19 @@ export const WalletsTab: React.FC = () => {
 
             {/* Chọn Icon */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+              <label className="text-xs text-slate-400 block mb-1.5">
                 Biểu tượng
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 6 }}>
+              <div className="grid grid-cols-9 gap-1.5">
                 {WALLET_ICONS.map((ic) => (
                   <button
                     key={ic}
                     type="button"
                     onClick={() => setIcon(ic)}
-                    className="touch-btn"
+                    className="touch-btn h-9.5 rounded-[10px] flex items-center justify-center cursor-pointer border-none"
                     style={{
-                      height: 38,
-                      borderRadius: 10,
                       backgroundColor: icon === ic ? color : '#1e293b',
-                      border: icon === ic ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.06)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer'
+                      border: icon === ic ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.06)'
                     }}
                   >
                     <CategoryIcon name={ic} size={18} color={icon === ic ? '#ffffff' : '#94a3b8'} />
@@ -966,37 +609,33 @@ export const WalletsTab: React.FC = () => {
 
             {/* Chọn Mã màu */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+              <label className="text-xs text-slate-400 block mb-1.5">
                 Màu sắc nhận diện
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div className="flex gap-2">
                 {WALLET_COLORS.map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
-                    className="touch-btn"
+                    className="touch-btn flex-1 h-8 rounded-lg cursor-pointer border-none"
                     style={{
-                      flex: 1,
-                      height: 32,
-                      borderRadius: 8,
                       backgroundColor: c,
-                      border: color === c ? '2.5px solid #ffffff' : 'none',
-                      cursor: 'pointer'
+                      border: color === c ? '2.5px solid #ffffff' : 'none'
                     }}
                   />
                 ))}
               </div>
             </div>
 
-            {/* Số dư hiện tại & Điều chỉnh số dư thực tế (Balance Adjustment) */}
+            {/* Số dư hiện tại & Điều chỉnh số dư thực tế */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <label style={{ fontSize: 12, color: '#94a3b8' }}>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs text-slate-400">
                   {editingWallet ? 'Số dư thực tế ngoài đời (VNĐ)' : 'Số dư khởi tạo ban đầu (VNĐ)'}
                 </label>
                 {editingWallet && (
-                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                  <span className="text-xs text-slate-500">
                     Hiện tại trong sổ: <b>{formatVND(editingWallet.balance)}</b>
                   </span>
                 )}
@@ -1010,209 +649,106 @@ export const WalletsTab: React.FC = () => {
                   setBalanceStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
                 }}
                 placeholder="0"
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  backgroundColor: '#1e293b',
-                  color: '#10B981',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 18,
-                  fontWeight: 700,
-                  outline: 'none'
-                }}
+                className="input-ios text-income font-bold text-lg"
               />
 
               {/* Thông báo chênh lệch và Tùy chọn tự động tạo giao dịch điều chỉnh */}
               {editingWallet && balanceDiff !== 0 && (
                 <div
-                  className="animate-fade-in"
-                  style={{
-                    marginTop: 10,
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    backgroundColor: balanceDiff > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.12)',
-                    border: `1px solid ${balanceDiff > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`
-                  }}
+                  className={`animate-fade-in mt-2.5 p-2.5 rounded-xl border ${
+                    balanceDiff > 0
+                      ? 'bg-emerald-500/12 border-emerald-500/30'
+                      : 'bg-rose-500/12 border-rose-500/30'
+                  }`}
                 >
                   <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: balanceDiff > 0 ? '#10B981' : '#F43F5E',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
-                    }}
+                    className={`text-[13px] font-bold flex items-center gap-1.5 ${
+                      balanceDiff > 0 ? 'text-income' : 'text-expense'
+                    }`}
                   >
                     {balanceDiff > 0 ? '📈 Tiền thực tế tăng thêm:' : '📉 Tiền thực tế giảm đi:'}
                     <span>{balanceDiff > 0 ? `+${formatVND(balanceDiff)}` : `-${formatVND(Math.abs(balanceDiff))}`}</span>
                   </div>
 
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginTop: 8,
-                      cursor: 'pointer'
-                    }}
-                  >
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={autoCreateAdjustmentTx}
                       onChange={(e) => setAutoCreateAdjustmentTx(e.target.checked)}
-                      style={{ width: 18, height: 18, accentColor: '#10B981' }}
+                      className="w-4 h-4 rounded text-emerald-500 accent-emerald-500 cursor-pointer"
                     />
-                    <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 600 }}>
-                      Tự động tạo giao dịch {balanceDiff > 0 ? 'Thu nhập' : 'Chi tiêu'} chênh lệch để lịch sử luôn khớp
+                    <span className="text-xs text-slate-300 font-medium">
+                      Tự động tạo giao dịch thu/chi chênh lệch vào sổ
                     </span>
                   </label>
                 </div>
               )}
             </div>
 
-            {/* Tùy chọn bỏ qua khỏi Tổng tài sản */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 4 }}>
+            {/* Bỏ qua khỏi tổng tài sản */}
+            <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/60 cursor-pointer select-none border border-white/6">
               <input
                 type="checkbox"
                 checked={isExcluded}
                 onChange={(e) => setIsExcluded(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: '#10B981' }}
+                className="w-4 h-4 rounded text-emerald-500 accent-emerald-500 cursor-pointer"
               />
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>
-                Không tính số dư này vào tổng tài sản khả dụng
-              </span>
+              <div>
+                <div className="text-[13px] font-semibold text-slate-200">
+                  Không tính ví này vào Tổng tài sản
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Thích hợp cho quỹ nhóm, thẻ tín dụng, hoặc tiền tiết kiệm dài hạn
+                </div>
+              </div>
             </label>
 
-            {/* Nút Submit Lưu Ví */}
+            {/* Nút Lưu */}
             <button
               type="button"
               onClick={handleSaveWallet}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#10B981',
-                color: '#ffffff',
-                border: 'none',
-                padding: '14px',
-                borderRadius: 14,
-                fontSize: 16,
-                fontWeight: 700,
-                cursor: 'pointer',
-                marginTop: 8
-              }}
+              className="touch-btn bg-emerald-500 text-slate-900 border-none p-3.5 rounded-2xl text-base font-extrabold cursor-pointer mt-1.5 shadow-lg shadow-emerald-500/30"
             >
-              {editingWallet ? 'Lưu thay đổi' : 'Thêm ví ngay'}
+              {editingWallet ? 'Lưu thay đổi ví' : 'Tạo ví mới'}
             </button>
           </div>
         </div>
       )}
 
-      {/* =====================================================================
-          5. MODAL CHUYỂN TIỀN NỘI BỘ (INTERNAL TRANSFER MODAL - ATOMIC)
-         ===================================================================== */}
+      {/* 5. MODAL CHUYỂN TIỀN NỘI BỘ GIỮA 2 VÍ */}
       {isTransferModalOpen && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            zIndex: 130,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            maxWidth: 480,
-            margin: '0 auto'
-          }}
+          className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] flex flex-col justify-end max-w-[480px] mx-auto"
           onClick={() => setIsTransferModalOpen(false)}
         >
           <div
-            className="glass-panel animate-slide-up"
-            style={{
-              backgroundColor: '#0f172a',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: '20px 20px max(24px, env(safe-area-inset-bottom, 0px))',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 14,
-              maxHeight: '90dvh',
-              overflowY: 'auto'
-            }}
+            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-3.5 max-h-[90dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header Modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#38BDF8'
-                  }}
-                >
-                  <ArrowRightLeft size={18} />
-                </div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>
-                  Chuyển tiền nội bộ giữa các ví
-                </div>
+            <div className="flex justify-between items-center">
+              <div className="text-[17px] font-extrabold text-slate-100 flex items-center gap-2">
+                <ArrowRightLeft size={18} className="text-sky-400" />
+                <span>Chuyển tiền giữa các ví</span>
               </div>
-
               <button
                 type="button"
                 onClick={() => setIsTransferModalOpen(false)}
-                className="touch-btn"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: '#1e293b',
-                  border: 'none',
-                  color: '#94a3b8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="touch-btn w-8 h-8 rounded-full bg-slate-800 border-none text-slate-400 flex items-center justify-center cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Chọn Ví gửi và Ví nhận */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {/* Ví Gửi */}
+            {/* Lựa chọn 2 ví */}
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                  Từ ví gửi
+                <label className="text-xs text-slate-400 block mb-1">
+                  Chuyển từ ví
                 </label>
                 <select
                   value={transferFromId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setTransferFromId(id);
-                    if (id === transferToId) {
-                      const other = wallets.find((w) => w.id !== id);
-                      if (other) setTransferToId(other.id);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    backgroundColor: '#1e293b',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    fontSize: 16,
-                    outline: 'none'
-                  }}
+                  onChange={(e) => setTransferFromId(e.target.value)}
+                  className="input-ios"
                 >
                   {wallets.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -1222,25 +758,16 @@ export const WalletsTab: React.FC = () => {
                 </select>
               </div>
 
-              {/* Ví Nhận */}
               <div>
-                <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                  Đến ví nhận
+                <label className="text-xs text-slate-400 block mb-1">
+                  Chuyển đến ví
                 </label>
                 <select
                   value={transferToId}
                   onChange={(e) => setTransferToId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    backgroundColor: '#1e293b',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    fontSize: 16,
-                    outline: 'none'
-                  }}
+                  className="input-ios"
                 >
+                  <option value="">-- Chọn ví nhận --</option>
                   {wallets
                     .filter((w) => w.id !== transferFromId)
                     .map((w) => (
@@ -1252,10 +779,10 @@ export const WalletsTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Số tiền chuyển */}
+            {/* Số tiền cần chuyển */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                Số tiền chuyển (VNĐ)
+              <label className="text-xs text-slate-400 block mb-1">
+                Số tiền muốn chuyển (VNĐ)
               </label>
               <input
                 type="text"
@@ -1263,103 +790,28 @@ export const WalletsTab: React.FC = () => {
                 onChange={(e) => {
                   const val = e.target.value.replace(/[^0-9]/g, '');
                   setTransferAmountStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
-                  setTransferError('');
                 }}
                 placeholder="0"
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: 14,
-                  backgroundColor: '#1e293b',
-                  color: '#38BDF8',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 22,
-                  fontWeight: 800,
-                  outline: 'none'
-                }}
+                className="input-ios text-sky-400 font-extrabold text-xl"
               />
-
-              {/* Các nút bấm số tiền gợi ý nhanh */}
-              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                {[50000, 100000, 200000, 500000, 1000000].map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => {
-                      setTransferAmountStr(new Intl.NumberFormat('vi-VN').format(amt));
-                      setTransferError('');
-                    }}
-                    className="touch-btn"
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      backgroundColor: '#1e293b',
-                      color: '#94a3b8',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    +{new Intl.NumberFormat('vi-VN').format(amt / 1000)}k
-                  </button>
-                ))}
-                {transferFromWallet && transferFromWallet.balance > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferAmountStr(new Intl.NumberFormat('vi-VN').format(transferFromWallet.balance));
-                      setTransferError('');
-                    }}
-                    className="touch-btn"
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 8,
-                      backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38BDF8',
-                      border: '1px solid rgba(56, 189, 248, 0.25)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Tất cả số dư
-                  </button>
-                )}
-              </div>
             </div>
 
-            {/* Xem trước số dư 2 ví sau khi chuyển (Balance Preview) */}
+            {/* Preview biến động số dư 2 ví */}
             {transferFromWallet && transferToWallet && currentTransferAmount > 0 && (
-              <div
-                className="animate-fade-in"
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  backgroundColor: '#161f30',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6
-                }}
-              >
-                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 2 }}>
-                  Dự tính số dư sau khi chuyển:
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: '#e2e8f0' }}>{transferFromWallet.name}:</span>
+              <div className="animate-fade-in p-3 rounded-xl bg-slate-800/80 border border-sky-400/20 flex flex-col gap-1.5">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-slate-300">{transferFromWallet.name}:</span>
                   <span
-                    style={{
-                      fontWeight: 700,
-                      color: transferFromWallet.balance - currentTransferAmount < 0 ? '#F43F5E' : '#38BDF8'
-                    }}
+                    className={`font-bold ${
+                      transferFromWallet.balance - currentTransferAmount < 0 ? 'text-expense' : 'text-sky-400'
+                    }`}
                   >
                     {formatVND(transferFromWallet.balance)} ➔ {formatVND(transferFromWallet.balance - currentTransferAmount)}
                   </span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: '#e2e8f0' }}>{transferToWallet.name}:</span>
-                  <span style={{ fontWeight: 700, color: '#10B981' }}>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-slate-300">{transferToWallet.name}:</span>
+                  <span className="font-bold text-income">
                     {formatVND(transferToWallet.balance)} ➔ {formatVND(transferToWallet.balance + currentTransferAmount)}
                   </span>
                 </div>
@@ -1367,53 +819,35 @@ export const WalletsTab: React.FC = () => {
             )}
 
             {/* Ngày và Giờ chuyển */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                <label className="text-xs text-slate-400 block mb-1">
                   Ngày giao dịch
                 </label>
                 <input
                   type="date"
                   value={transferDate}
                   onChange={(e) => setTransferDate(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    backgroundColor: '#1e293b',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    fontSize: 16,
-                    outline: 'none'
-                  }}
+                  className="input-ios"
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                <label className="text-xs text-slate-400 block mb-1">
                   Giờ giao dịch
                 </label>
                 <input
                   type="time"
                   value={transferTime}
                   onChange={(e) => setTransferTime(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    backgroundColor: '#1e293b',
-                    color: '#ffffff',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    fontSize: 16,
-                    outline: 'none'
-                  }}
+                  className="input-ios"
                 />
               </div>
             </div>
 
             {/* Ghi chú chuyển tiền */}
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              <label className="text-xs text-slate-400 block mb-1">
                 Ghi chú chuyển tiền (Tùy chọn)
               </label>
               <input
@@ -1421,35 +855,15 @@ export const WalletsTab: React.FC = () => {
                 value={transferNote}
                 onChange={(e) => setTransferNote(e.target.value)}
                 placeholder="Ví dụ: Rút tiền ATM, Nạp tiền MoMo..."
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  backgroundColor: '#1e293b',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 16,
-                  outline: 'none'
-                }}
+                className="input-ios"
               />
             </div>
 
             {/* Lỗi cảnh báo nếu có */}
             {transferError && (
-              <div
-                style={{
-                  color: '#F43F5E',
-                  fontSize: 13,
-                  backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                  padding: '8px 12px',
-                  borderRadius: 10,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
+              <div className="text-expense text-[13px] bg-rose-500/10 p-2.5 rounded-xl flex items-center gap-1.5">
                 <AlertTriangle size={16} />
-                {transferError}
+                <span>{transferError}</span>
               </div>
             )}
 
@@ -1457,18 +871,7 @@ export const WalletsTab: React.FC = () => {
             <button
               type="button"
               onClick={handleExecuteTransfer}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#38BDF8',
-                color: '#0f172a',
-                border: 'none',
-                padding: '14px',
-                borderRadius: 14,
-                fontSize: 16,
-                fontWeight: 800,
-                cursor: 'pointer',
-                marginTop: 6
-              }}
+              className="touch-btn bg-sky-400 text-slate-900 border-none p-3.5 rounded-2xl text-base font-extrabold cursor-pointer mt-1.5 shadow-lg shadow-sky-400/30"
             >
               Xác nhận chuyển tiền
             </button>
@@ -1478,3 +881,5 @@ export const WalletsTab: React.FC = () => {
     </div>
   );
 };
+
+export default WalletsTab;

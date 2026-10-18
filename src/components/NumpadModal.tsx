@@ -357,55 +357,12 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.72)',
-        backdropFilter: 'blur(8px)',
-        zIndex: 100,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
-        maxWidth: 480,
-        margin: '0 auto'
-      }}
-    >
-      <div
-        className="glass-panel animate-slide-up"
-        style={{
-          backgroundColor: '#0f172a',
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          border: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: '94vh',
-          paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch'
-        }}
-      >
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end max-w-[480px] mx-auto">
+      <div className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 flex flex-col max-h-[94vh] pb-[max(14px,env(safe-area-inset-bottom,0px))] overflow-y-auto">
         {/* 1. Header: Chọn Loại Giao Dịch & Nút Đóng */}
-        <div
-          style={{
-            padding: '16px 20px 10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.06)'
-          }}
-        >
+        <div className="px-5 pt-4 pb-2.5 flex items-center justify-between border-b border-white/5">
           {/* Segmented Control 3 Loại Giao Dịch */}
-          <div
-            style={{
-              display: 'flex',
-              backgroundColor: '#1e293b',
-              borderRadius: 12,
-              padding: 3,
-              gap: 2
-            }}
-          >
+          <div className="flex bg-slate-800 rounded-xl p-1 gap-1">
             <button
               type="button"
               onClick={() => {
@@ -413,17 +370,11 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                 const cat = categories.find((c) => c.type === 'EXPENSE');
                 if (cat) setSelectedCategoryId(cat.id);
               }}
-              style={{
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                backgroundColor: type === 'EXPENSE' ? '#EF4444' : 'transparent',
-                color: type === 'EXPENSE' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.15s ease'
-              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                type === 'EXPENSE'
+                  ? 'bg-rose-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
               Chi tiền
             </button>
@@ -434,17 +385,11 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                 const cat = categories.find((c) => c.type === 'INCOME');
                 if (cat) setSelectedCategoryId(cat.id);
               }}
-              style={{
-                border: 'none',
-                padding: '6px 14px',
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                backgroundColor: type === 'INCOME' ? '#10B981' : 'transparent',
-                color: type === 'INCOME' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.15s ease'
-              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                type === 'INCOME'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
               Thu tiền
             </button>
@@ -452,23 +397,16 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
               type="button"
               onClick={() => {
                 setType('TRANSFER');
-                // Nếu chưa có ví nhận hoặc ví nhận trùng ví gửi
                 if (!toWalletId || toWalletId === selectedWalletId) {
                   const otherWallet = wallets.find((w) => w.id !== selectedWalletId);
                   if (otherWallet) setToWalletId(otherWallet.id);
                 }
               }}
-              style={{
-                border: 'none',
-                padding: '6px 12px',
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                backgroundColor: type === 'TRANSFER' ? '#3B82F6' : 'transparent',
-                color: type === 'TRANSFER' ? '#ffffff' : '#94a3b8',
-                transition: 'all 0.15s ease'
-              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                type === 'TRANSFER'
+                  ? 'bg-sky-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
               Chuyển ví
             </button>
@@ -478,36 +416,19 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="touch-btn"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: '#1e293b',
-              border: 'none',
-              color: '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
+            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* 2. Khung Hiển Thị Số Tiền & Dòng Biểu Thức Tính Toán Phía Trên */}
-        <div style={{ padding: '14px 20px 10px', textAlign: 'center' }}>
+        <div className="px-5 pt-3.5 pb-2 text-center">
           {/* Dòng nhỏ hiển thị biểu thức đang tính PHÍA TRÊN tổng tiền */}
           <div
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              minHeight: 20,
-              marginBottom: 4,
-              color: hasOperator ? '#38BDF8' : '#64748B',
-              letterSpacing: hasOperator ? 0.5 : 0
-            }}
+            className={`text-xs font-medium min-h-5 mb-1 ${
+              hasOperator ? 'text-sky-400 tracking-wider' : 'text-slate-400'
+            }`}
           >
             {hasOperator
               ? amountStr
@@ -524,44 +445,23 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
 
           {/* Số tiền tổng evaluated lớn và sắc nét */}
           <div
-            className="font-heading"
-            style={{
-              fontSize: 36,
-              fontWeight: 800,
-              color:
-                type === 'EXPENSE'
-                  ? '#F43F5E'
-                  : type === 'INCOME'
-                  ? '#10B981'
-                  : '#38BDF8',
-              letterSpacing: -0.5,
-              lineHeight: 1.1
-            }}
+            className={`font-heading text-4xl font-extrabold tracking-tight leading-none ${
+              type === 'EXPENSE'
+                ? 'text-rose-500'
+                : type === 'INCOME'
+                ? 'text-emerald-400'
+                : 'text-sky-400'
+            }`}
           >
             {formatVND(currentComputedAmount)}
           </div>
         </div>
 
         {/* 3. Lựa Chọn Ví & Ngày Tháng (Inputs font-size >= 16px chống iOS auto-zoom) */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 10,
-            padding: '0 20px 10px',
-            alignItems: 'center'
-          }}
-        >
+        <div className="flex gap-2.5 px-5 pb-2.5 items-center">
           {/* Chọn Ví (Gửi) */}
-          <div style={{ flex: 1 }}>
-            <label
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#64748b',
-                display: 'block',
-                marginBottom: 4
-              }}
-            >
+          <div className="flex-1">
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
               {type === 'TRANSFER' ? 'Từ ví' : 'Ví tiền'}
             </label>
             <select
@@ -574,16 +474,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                   setToWalletId(alt ? alt.id : '');
                 }
               }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: 10,
-                backgroundColor: '#1e293b',
-                color: '#ffffff',
-                border: '1px solid rgba(255,255,255,0.08)',
-                fontSize: 16,
-                outline: 'none'
-              }}
+              className="input-ios"
             >
               {wallets.map((w) => (
                 <option key={w.id} value={w.id}>
@@ -595,31 +486,14 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
 
           {/* Chọn Ví Nhận nếu là Transfer */}
           {type === 'TRANSFER' && (
-            <div style={{ flex: 1 }}>
-              <label
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: '#64748b',
-                  display: 'block',
-                  marginBottom: 4
-                }}
-              >
+            <div className="flex-1">
+              <label className="text-[11px] font-semibold text-slate-400 block mb-1">
                 Đến ví
               </label>
               <select
                 value={toWalletId}
                 onChange={(e) => setToWalletId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  borderRadius: 10,
-                  backgroundColor: '#1e293b',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 16,
-                  outline: 'none'
-                }}
+                className="input-ios"
               >
                 <option value="">-- Chọn ví nhận --</option>
                 {wallets
@@ -634,59 +508,26 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           )}
 
           {/* Chọn Ngày */}
-          <div style={{ width: 135 }}>
-            <label
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#64748b',
-                display: 'block',
-                marginBottom: 4
-              }}
-            >
+          <div className="w-[135px]">
+            <label className="text-[11px] font-semibold text-slate-400 block mb-1">
               Ngày
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '7px 8px',
-                borderRadius: 10,
-                backgroundColor: '#1e293b',
-                color: '#ffffff',
-                border: '1px solid rgba(255,255,255,0.08)',
-                fontSize: 16,
-                outline: 'none'
-              }}
+              className="input-ios"
             />
           </div>
         </div>
 
         {/* 4. Lưới Chọn Danh Mục (Khi không phải Chuyển ví) */}
         {type !== 'TRANSFER' && (
-          <div style={{ padding: '0 20px 8px' }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#64748b',
-                marginBottom: 6
-              }}
-            >
+          <div className="px-5 pb-2">
+            <div className="text-[11px] font-semibold text-slate-400 mb-1.5">
               Hạng mục
             </div>
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                overflowX: 'auto',
-                paddingBottom: 6,
-                scrollbarWidth: 'none',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
+            <div className="flex gap-2.5 overflow-x-auto pb-1.5 scrollbar-none">
               {activeCategories.map((cat) => {
                 const isSelected = cat.id === selectedCategoryId;
                 return (
@@ -694,18 +535,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedCategoryId(cat.id)}
-                    className="touch-btn"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      width: 60
-                    }}
+                    className="touch-btn flex flex-col items-center gap-1 cursor-pointer shrink-0 w-15"
                   >
                     <div
                       className="cat-badge"
@@ -726,16 +556,9 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                       />
                     </div>
                     <span
-                      style={{
-                        fontSize: 11,
-                        color: isSelected ? '#ffffff' : '#94a3b8',
-                        fontWeight: isSelected ? 700 : 400,
-                        textAlign: 'center',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxWidth: 62
-                      }}
+                      className={`text-[11px] text-center truncate max-w-[62px] ${
+                        isSelected ? 'text-white font-bold' : 'text-slate-400 font-normal'
+                      }`}
                     >
                       {cat.name}
                     </span>
@@ -748,36 +571,16 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
 
         {/* 5. THANH QUICK TAGS THÔNG MINH (Cộng dồn & Thêm mới tại chỗ) */}
         {type !== 'TRANSFER' && selectedCategory && (
-          <div style={{ padding: '0 20px 10px' }}>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#64748b',
-                marginBottom: 6,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
+          <div className="px-5 pb-2.5">
+            <div className="flex justify-between items-center text-[11px] font-semibold text-slate-400 mb-1.5">
               <span>Gợi ý ghi chú ({selectedCategory.name}):</span>
               {activeTags.length > 0 && (
-                <span style={{ color: '#38bdf8', fontSize: 11 }}>
+                <span className="text-sky-400 text-[11px]">
                   Đã chọn {activeTags.length} tag
                 </span>
               )}
             </div>
-            <div
-              style={{
-                display: 'flex',
-                gap: 6,
-                overflowX: 'auto',
-                alignItems: 'center',
-                paddingBottom: 4,
-                scrollbarWidth: 'none',
-                WebkitOverflowScrolling: 'touch'
-              }}
-            >
+            <div className="flex gap-1.5 overflow-x-auto items-center pb-1 scrollbar-none">
               {/* Danh sách các tag có sẵn của danh mục */}
               {(selectedCategory.quickTags || []).map((tag) => {
                 const isActive = activeTags.includes(tag);
@@ -786,24 +589,11 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                     key={tag}
                     type="button"
                     onClick={() => handleToggleTag(tag)}
-                    className="touch-btn"
-                    style={{
-                      backgroundColor: isActive ? '#2563EB' : '#1e293b',
-                      color: isActive ? '#ffffff' : '#94a3b8',
-                      border: isActive
-                        ? '1px solid #60A5FA'
-                        : '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 999,
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      fontWeight: isActive ? 600 : 500,
-                      whiteSpace: 'nowrap',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      transition: 'all 0.15s ease'
-                    }}
+                    className={`touch-btn px-3 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
+                      isActive
+                        ? 'bg-blue-600 text-white border border-blue-400 font-semibold'
+                        : 'bg-slate-800 text-slate-400 border border-white/10 hover:text-slate-200 font-medium'
+                    }`}
                   >
                     {isActive && <Check size={12} strokeWidth={3} />}
                     <span>{tag}</span>
@@ -813,17 +603,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
 
               {/* Nút Thêm Tag Mới Tại Chỗ */}
               {isAddingTag ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #38BDF8',
-                    borderRadius: 999,
-                    padding: '2px 6px 2px 10px'
-                  }}
-                >
+                <div className="flex items-center gap-1 bg-slate-800 border border-sky-400 rounded-full py-0.5 pl-2.5 pr-1.5">
                   <input
                     autoFocus
                     type="text"
@@ -839,30 +619,12 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                         setNewTagInput('');
                       }
                     }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#ffffff',
-                      fontSize: 12,
-                      outline: 'none',
-                      width: 75
-                    }}
+                    className="bg-transparent border-none text-white text-xs outline-none w-20"
                   />
                   <button
                     type="button"
                     onClick={handleSaveNewTag}
-                    style={{
-                      background: '#38BDF8',
-                      border: 'none',
-                      borderRadius: 999,
-                      width: 20,
-                      height: 20,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#0f172a',
-                      cursor: 'pointer'
-                    }}
+                    className="bg-sky-400 text-slate-900 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer touch-btn"
                     title="Lưu tag"
                   >
                     <Check size={12} strokeWidth={3} />
@@ -873,16 +635,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                       setIsAddingTag(false);
                       setNewTagInput('');
                     }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#94a3b8',
-                      cursor: 'pointer',
-                      padding: 2,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
+                    className="text-slate-400 hover:text-white cursor-pointer p-0.5"
                     title="Hủy"
                   >
                     <X size={12} />
@@ -892,21 +645,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddingTag(true)}
-                  className="touch-btn"
-                  style={{
-                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-                    color: '#38BDF8',
-                    border: '1px dashed rgba(56, 189, 248, 0.4)',
-                    borderRadius: 999,
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4
-                  }}
+                  className="touch-btn bg-sky-500/10 text-sky-400 border border-dashed border-sky-400/40 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1"
                 >
                   <Plus size={12} strokeWidth={2.5} />
                   <span>Thêm tag</span>
@@ -917,75 +656,51 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
         )}
 
         {/* 6. Ô Nhập Ghi Chú Chi Tiết (Font-size >= 16px chống iPhone zoom) */}
-        <div style={{ padding: '0 20px 10px' }}>
+        <div className="px-5 pb-2.5">
           <input
             type="text"
             placeholder="Ghi chú chi tiết (tùy chọn)..."
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 14px',
-              borderRadius: 12,
-              backgroundColor: '#1e293b',
-              color: '#ffffff',
-              border: '1px solid rgba(255,255,255,0.08)',
-              fontSize: 16,
-              outline: 'none'
-            }}
+            className="input-ios"
           />
         </div>
 
         {/* Báo lỗi nếu có */}
         {errorMsg && (
-          <div
-            style={{
-              color: '#F43F5E',
-              fontSize: 12,
-              padding: '0 20px 8px',
-              textAlign: 'center',
-              fontWeight: 500
-            }}
-          >
+          <div className="text-rose-500 text-xs px-5 pb-2 text-center font-medium">
             {errorMsg}
           </div>
         )}
 
         {/* 7. BÀN PHÍM SỐ NUMPAD CHUYÊN DỤNG VỚI PHÍM '000', CÁC PHÉP TÍNH & AUTO-EVALUATE */}
-        <div
-          style={{
-            padding: '4px 16px',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 8
-          }}
-        >
+        <div className="px-4 pt-1 pb-1 grid grid-cols-4 gap-2">
           {/* Hàng 1: 1, 2, 3, ÷ */}
           <button
             type="button"
             onClick={() => handleKeyPress('1')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             1
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('2')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             2
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('3')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             3
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('÷')}
-            className="numpad-op-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-700/80 hover:bg-slate-600 border border-white/10 text-sky-400 text-2xl font-bold"
             title="Chia"
           >
             ÷
@@ -995,28 +710,28 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('4')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             4
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('5')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             5
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('6')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             6
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('×')}
-            className="numpad-op-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-700/80 hover:bg-slate-600 border border-white/10 text-sky-400 text-2xl font-bold"
             title="Nhân"
           >
             ×
@@ -1026,28 +741,28 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('7')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             7
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('8')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             8
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('9')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             9
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('-')}
-            className="numpad-op-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-700/80 hover:bg-slate-600 border border-white/10 text-sky-400 text-2xl font-bold"
             title="Trừ"
           >
             -
@@ -1057,8 +772,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('000')}
-            className="numpad-btn touch-btn"
-            style={{ fontWeight: 800, color: '#38BDF8', letterSpacing: -0.5 }}
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-sky-400 text-2xl font-extrabold tracking-tighter"
             title="Thêm ba số không"
           >
             000
@@ -1066,14 +780,14 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('0')}
-            className="numpad-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-800 hover:bg-slate-700/80 border border-white/5 text-slate-100 text-2xl font-semibold"
           >
             0
           </button>
           <button
             type="button"
             onClick={() => handleKeyPress('BACKSPACE')}
-            className="numpad-del-btn touch-btn"
+            className="numpad-key touch-btn bg-zinc-800 hover:bg-zinc-700 border border-white/5 text-rose-400"
             title="Xóa 1 ký tự"
           >
             <Delete size={20} />
@@ -1081,7 +795,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('+')}
-            className="numpad-op-btn touch-btn"
+            className="numpad-key touch-btn bg-slate-700/80 hover:bg-slate-600 border border-white/10 text-sky-400 text-2xl font-bold"
             title="Cộng"
           >
             +
@@ -1091,7 +805,7 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={() => handleKeyPress('C')}
-            className="numpad-clear-btn touch-btn"
+            className="numpad-key touch-btn bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/20 text-rose-300 text-lg font-bold"
             title="Xóa toàn bộ"
           >
             C
@@ -1099,105 +813,13 @@ export const NumpadModal: React.FC<NumpadModalProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            className="touch-btn touch-bounce"
-            style={{
-              gridColumn: 'span 3',
-              height: 52,
-              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: 14,
-              fontWeight: 700,
-              fontSize: 16,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)'
-            }}
+            className="col-span-3 h-13 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 cursor-pointer touch-btn touch-bounce"
           >
             <Check size={20} strokeWidth={3} />
             <span>{editingTransaction ? 'CẬP NHẬT' : 'LƯU GIAO DỊCH'}</span>
           </button>
         </div>
       </div>
-
-      <style>{`
-        .numpad-btn {
-          height: 52px;
-          background-color: #1e293b;
-          border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 14px;
-          color: #f8fafc;
-          font-size: 22px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: manipulation;
-          transition: transform 0.08s ease, background-color 0.1s ease;
-        }
-        .numpad-op-btn {
-          height: 52px;
-          background-color: #334155;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 14px;
-          color: #38bdf8;
-          font-size: 22px;
-          font-weight: 700;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: manipulation;
-          transition: transform 0.08s ease, background-color 0.1s ease;
-        }
-        .numpad-del-btn {
-          height: 52px;
-          background-color: #27272a;
-          border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 14px;
-          color: #f43f5e;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: manipulation;
-          transition: transform 0.08s ease, background-color 0.1s ease;
-        }
-        .numpad-clear-btn {
-          height: 52px;
-          background-color: #2a1c22;
-          border: 1px solid rgba(244, 63, 94, 0.2);
-          border-radius: 14px;
-          color: #fb7185;
-          font-size: 19px;
-          font-weight: 700;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: manipulation;
-          transition: transform 0.08s ease, background-color 0.1s ease;
-        }
-        .numpad-btn:active,
-        .numpad-op-btn:active,
-        .numpad-del-btn:active,
-        .numpad-clear-btn:active {
-          transform: scale(0.95);
-          filter: brightness(1.2);
-        }
-      `}</style>
     </div>
   );
 };

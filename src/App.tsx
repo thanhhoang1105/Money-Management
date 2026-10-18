@@ -87,85 +87,28 @@ export function App() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#090d16'
-      }}
-    >
+    <div className="min-h-[100dvh] flex flex-col bg-app-bg text-text-main font-body">
       {/* 1. Header Bar chuẩn phong cách iOS */}
-      <header
-        className="glass-panel"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          paddingTop: 'max(14px, env(safe-area-inset-top, 0px))',
-          paddingBottom: 12,
-          paddingLeft: 20,
-          paddingRight: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 900,
-              fontSize: 16,
-              color: '#ffffff',
-              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
-            }}
-          >
+      <header className="glass-panel sticky top-0 z-40 safe-padding-top pb-3 px-5 flex items-center justify-between border-b border-white/6">
+        <div className="flex items-center gap-2.5">
+          <div className="w-[34px] h-[34px] rounded-[10px] bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center font-black text-base text-white shadow-md shadow-emerald-500/30">
             ₫
           </div>
           <div>
-            <h1
-              className="font-heading"
-              style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc', margin: 0, lineHeight: 1.2 }}
-            >
+            <h1 className="font-heading text-[17px] font-extrabold text-slate-100 leading-tight m-0">
               Sổ Thu Chi
             </h1>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <span className="text-[11px] text-slate-400">
               Local-First • 0đ Vận Hành
             </span>
           </div>
         </div>
 
         {/* Nút Cài đặt & Badge trạng thái dữ liệu */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '4px 10px',
-              borderRadius: 999,
-              backgroundColor: 'rgba(16, 185, 129, 0.12)',
-              border: '1px solid rgba(16, 185, 129, 0.25)'
-            }}
-          >
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: '#10B981',
-                boxShadow: '0 0 8px #10B981'
-              }}
-            />
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981' }}>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-emerald-500/12 border border-emerald-500/25">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10B981]" />
+            <span className="text-[11px] font-bold text-emerald-400">
               Offline 100%
             </span>
           </div>
@@ -173,19 +116,7 @@ export function App() {
           <button
             type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="touch-btn"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 10,
-              backgroundColor: '#1e293b',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
+            className="touch-btn w-8 h-8 rounded-[10px] bg-slate-800 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
             title="Cài đặt & Sao lưu"
           >
             <SettingsIcon size={18} />
@@ -195,30 +126,15 @@ export function App() {
 
       {/* Thông báo sao lưu tự động thành công */}
       {autoBackupNotice && (
-        <div
-          style={{
-            margin: '10px 16px 0',
-            padding: '10px 14px',
-            borderRadius: 14,
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.35)',
-            color: '#10B981',
-            fontSize: 13,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[13px] font-semibold flex items-center justify-between gap-2 animate-fade-in">
+          <div className="flex items-center gap-2">
             <Check size={16} strokeWidth={3} />
             <span>{autoBackupNotice}</span>
           </div>
           <button
             type="button"
             onClick={() => setAutoBackupNotice(null)}
-            style={{ background: 'none', border: 'none', color: '#10B981', cursor: 'pointer', padding: 2 }}
+            className="bg-transparent border-none text-emerald-400 cursor-pointer p-0.5"
           >
             <X size={14} />
           </button>
@@ -227,36 +143,17 @@ export function App() {
 
       {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" (Tự động ẩn hoàn toàn khi đang chạy Standalone) */}
       {!isStandalone && showIosTip && (
-        <div
-          style={{
-            margin: '10px 16px 0',
-            padding: '10px 14px',
-            borderRadius: 16,
-            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Smartphone size={20} color="#38BDF8" style={{ flexShrink: 0 }} />
-            <div style={{ fontSize: 12, color: '#e2e8f0', lineHeight: 1.4 }}>
-              <b>Dùng trên iPhone:</b> Mở Safari ➔ Bấm nút <Share size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> ➔ Chọn <b>"Thêm vào MH chính"</b> để mở full màn hình như app thật!
+        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-500/15 to-indigo-500/15 border border-sky-400/30 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <Smartphone size={20} className="text-sky-400 shrink-0" />
+            <div className="text-xs text-slate-200 leading-snug">
+              <b>Dùng trên iPhone:</b> Mở Safari ➔ Bấm nút <Share size={12} className="inline align-middle mx-0.5" /> ➔ Chọn <b>"Thêm vào MH chính"</b> để mở full màn hình như app thật!
             </div>
           </div>
           <button
             type="button"
             onClick={handleDismissIosTip}
-            className="touch-btn"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: 4
-            }}
+            className="touch-btn bg-transparent border-none text-slate-400 cursor-pointer p-1"
           >
             <X size={16} />
           </button>
@@ -264,16 +161,7 @@ export function App() {
       )}
 
       {/* 3. Nội dung Tab hiện tại */}
-      <main
-        className="app-scroll-container"
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehaviorY: 'contain'
-        }}
-      >
+      <main className="app-scroll-container flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         {currentTab === 'transactions' && (
           <TransactionListTab
             onEditTransaction={handleEditTransaction}

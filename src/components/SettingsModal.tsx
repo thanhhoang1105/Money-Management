@@ -205,65 +205,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const lastBackupVal = lastBackupDateSetting?.value as string | undefined;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.72)',
-        backdropFilter: 'blur(8px)',
-        zIndex: 110,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-end',
-        maxWidth: 480,
-        margin: '0 auto'
-      }}
-    >
-      <div
-        className="glass-panel animate-slide-up"
-        style={{
-          backgroundColor: '#0f172a',
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          border: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: '92vh',
-          paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))',
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch'
-        }}
-      >
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end max-w-[480px] mx-auto">
+      <div className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 flex flex-col max-h-[92vh] pb-[max(18px,env(safe-area-inset-bottom,0px))] overflow-y-auto">
         {/* Header Modal */}
-        <div
-          style={{
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.06)'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#38BDF8'
-              }}
-            >
+        <div className="px-5 py-4 flex items-center justify-between border-b border-white/5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400">
               <Database size={18} />
             </div>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc', margin: 0 }}>
+              <h2 className="text-base font-bold text-slate-100 m-0">
                 Cài đặt & Sao lưu
               </h2>
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              <span className="text-[11px] text-slate-400">
                 Bảo vệ dữ liệu Local-First 100%
               </span>
             </div>
@@ -272,19 +226,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           <button
             type="button"
             onClick={onClose}
-            className="touch-btn"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: '#1e293b',
-              border: 'none',
-              color: '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
+            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -293,35 +235,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {/* Thông báo trạng thái nếu có */}
         {statusMsg && (
           <div
-            style={{
-              margin: '12px 16px 0',
-              padding: '10px 14px',
-              borderRadius: 12,
-              fontSize: 13,
-              fontWeight: 500,
-              backgroundColor:
-                statusMsg.type === 'success'
-                  ? 'rgba(16, 185, 129, 0.15)'
-                  : statusMsg.type === 'error'
-                  ? 'rgba(244, 63, 94, 0.15)'
-                  : 'rgba(56, 189, 248, 0.15)',
-              color:
-                statusMsg.type === 'success'
-                  ? '#10B981'
-                  : statusMsg.type === 'error'
-                  ? '#F43F5E'
-                  : '#38BDF8',
-              border: `1px solid ${
-                statusMsg.type === 'success'
-                  ? 'rgba(16, 185, 129, 0.3)'
-                  : statusMsg.type === 'error'
-                  ? 'rgba(244, 63, 94, 0.3)'
-                  : 'rgba(56, 189, 248, 0.3)'
-              }`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}
+            className={`mx-4 mt-3 px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 border ${
+              statusMsg.type === 'success'
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                : statusMsg.type === 'error'
+                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+            }`}
           >
             {statusMsg.type === 'success' ? (
               <Check size={16} />
@@ -334,32 +254,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
         )}
 
-        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="p-4 flex flex-col gap-4">
           {/* PHẦN 1: TỰ ĐỘNG SAO LƯU HÀNG NGÀY (AUTO-BACKUP) */}
-          <div
-            className="glass-card"
-            style={{
-              backgroundColor: '#1e293b',
-              borderRadius: 18,
-              padding: '16px',
-              border: '1px solid rgba(255,255,255,0.06)'
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 12
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Clock size={20} color="#38BDF8" />
+          <div className="glass-card bg-slate-800/90 rounded-2xl p-4 border border-white/5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <Clock size={20} className="text-sky-400" />
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>
+                  <div className="text-sm font-bold text-slate-100">
                     Tự động sao lưu hàng ngày
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                  <div className="text-xs text-slate-400 mt-0.5">
                     Tự động xuất file JSON khi mở app
                   </div>
                 </div>
@@ -369,75 +274,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <button
                 type="button"
                 onClick={handleToggleAutoBackup}
-                style={{
-                  width: 48,
-                  height: 28,
-                  borderRadius: 14,
-                  backgroundColor: isEnabled ? '#10B981' : '#334155',
-                  border: 'none',
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s ease',
-                  padding: 2
-                }}
+                className={`w-12 h-7 rounded-full transition-colors relative cursor-pointer p-0.5 border-none ${
+                  isEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                }`}
               >
                 <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
-                    backgroundColor: '#ffffff',
-                    transform: isEnabled ? 'translateX(20px)' : 'translateX(0)',
-                    transition: 'transform 0.2s ease',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                  }}
+                  className={`w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
+                    isEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
                 />
               </button>
             </div>
 
             {isEnabled && (
-              <div
-                style={{
-                  marginTop: 14,
-                  paddingTop: 12,
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12
-                }}
-              >
+              <div className="mt-3.5 pt-3 border-t border-white/5 flex flex-col gap-3">
                 {/* Chọn Khung giờ */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <label style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 500 }}>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-slate-300 font-medium">
                     Khung giờ sao lưu:
                   </label>
                   <input
                     type="time"
                     value={backupTime}
                     onChange={(e) => handleTimeChange(e.target.value)}
-                    style={{
-                      backgroundColor: '#0f172a',
-                      color: '#38BDF8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      borderRadius: 10,
-                      padding: '6px 12px',
-                      fontSize: 16,
-                      fontWeight: 700,
-                      outline: 'none'
-                    }}
+                    className="bg-slate-900 text-sky-400 border border-sky-400/30 rounded-xl px-3 py-1 text-base font-bold outline-none"
                   />
                 </div>
 
                 {/* Ngày sao lưu gần nhất */}
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                <div className="text-xs text-slate-400">
                   Lần sao lưu gần nhất:{' '}
-                  <span style={{ color: lastBackupVal ? '#10B981' : '#64748B', fontWeight: 600 }}>
+                  <span className={`font-semibold ${lastBackupVal ? 'text-emerald-400' : 'text-slate-500'}`}>
                     {lastBackupVal ? formatFriendlyDate(lastBackupVal) : 'Chưa có'}
                   </span>
                 </div>
@@ -447,22 +314,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   type="button"
                   onClick={handleBackupNow}
                   disabled={isProcessing}
-                  className="touch-btn"
-                  style={{
-                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                    color: '#38BDF8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    padding: '9px 14px',
-                    borderRadius: 12,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    marginTop: 4
-                  }}
+                  className="touch-btn bg-sky-500/15 text-sky-400 border border-sky-400/30 px-3.5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer flex items-center justify-center gap-2 mt-1 hover:bg-sky-500/20"
                 >
                   {isProcessing ? (
                     <RotateCw size={16} className="animate-spin" />
@@ -476,19 +328,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
 
           {/* PHẦN 2: QUẢN LÝ DỮ LIỆU & XUẤT BÁO CÁO THỦ CÔNG */}
-          <div
-            className="glass-card"
-            style={{
-              backgroundColor: '#1e293b',
-              borderRadius: 18,
-              padding: '16px',
-              border: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', marginBottom: 2 }}>
+          <div className="glass-card bg-slate-800/90 rounded-2xl p-4 border border-white/5 flex flex-col gap-2.5">
+            <div className="text-xs font-bold text-slate-400 mb-0.5 tracking-wider uppercase">
               SAO LƯU & KHÔI PHỤC THỦ CÔNG
             </div>
 
@@ -497,27 +338,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="button"
               onClick={handleExportManualJSON}
               disabled={isProcessing}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#0f172a',
-                color: '#f8fafc',
-                border: '1px solid rgba(255,255,255,0.08)',
-                padding: '12px 14px',
-                borderRadius: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer'
-              }}
+              className="touch-btn bg-slate-900 text-slate-100 border border-white/10 px-3.5 py-3 rounded-xl flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Download size={18} color="#10B981" />
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>Xuất toàn bộ dữ liệu (JSON)</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Bao gồm ví, danh mục, giao dịch, hạn mức</div>
+              <div className="flex items-center gap-2.5 text-left">
+                <Download size={18} className="text-emerald-400 shrink-0" />
+                <div>
+                  <div className="text-xs font-semibold">Xuất toàn bộ dữ liệu (JSON)</div>
+                  <div className="text-[11px] text-slate-400">Bao gồm ví, danh mục, giao dịch, hạn mức</div>
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: '#10B981', fontWeight: 600 }}>Tải / Chia sẻ</span>
+              <span className="text-xs text-emerald-400 font-semibold shrink-0">Tải / Chia sẻ</span>
             </button>
 
             {/* Nút Nhập JSON */}
@@ -525,33 +355,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#0f172a',
-                color: '#f8fafc',
-                border: '1px solid rgba(255,255,255,0.08)',
-                padding: '12px 14px',
-                borderRadius: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer'
-              }}
+              className="touch-btn bg-slate-900 text-slate-100 border border-white/10 px-3.5 py-3 rounded-xl flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Upload size={18} color="#38BDF8" />
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>Khôi phục từ file JSON</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Nạp lại dữ liệu từ tệp sao lưu trước đó</div>
+              <div className="flex items-center gap-2.5 text-left">
+                <Upload size={18} className="text-sky-400 shrink-0" />
+                <div>
+                  <div className="text-xs font-semibold">Khôi phục từ file JSON</div>
+                  <div className="text-[11px] text-slate-400">Nạp lại dữ liệu từ tệp sao lưu trước đó</div>
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: '#38BDF8', fontWeight: 600 }}>Chọn file</span>
+              <span className="text-xs text-sky-400 font-semibold shrink-0">Chọn file</span>
             </button>
             <input
               ref={fileInputRef}
               type="file"
               accept=".json,application/json"
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={handleFileChange}
             />
 
@@ -560,75 +379,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="button"
               onClick={handleExportExcel}
               disabled={isProcessing}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#0f172a',
-                color: '#f8fafc',
-                border: '1px solid rgba(255,255,255,0.08)',
-                padding: '12px 14px',
-                borderRadius: 14,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer'
-              }}
+              className="touch-btn bg-slate-900 text-slate-100 border border-white/10 px-3.5 py-3 rounded-xl flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileSpreadsheet size={18} color="#22C55E" />
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>Xuất bảng tính Excel (.xlsx)</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Báo cáo giao dịch chi tiết theo bảng</div>
+              <div className="flex items-center gap-2.5 text-left">
+                <FileSpreadsheet size={18} className="text-emerald-500 shrink-0" />
+                <div>
+                  <div className="text-xs font-semibold">Xuất bảng tính Excel (.xlsx)</div>
+                  <div className="text-[11px] text-slate-400">Báo cáo giao dịch chi tiết theo bảng</div>
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: '#22C55E', fontWeight: 600 }}>Xuất Excel</span>
+              <span className="text-xs text-emerald-500 font-semibold shrink-0">Xuất Excel</span>
             </button>
           </div>
 
           {/* PHẦN 3: THÔNG TIN HỆ THỐNG & BẢO VỆ BỘ NHỚ */}
-          <div
-            className="glass-card"
-            style={{
-              backgroundColor: '#1e293b',
-              borderRadius: 18,
-              padding: '14px 16px',
-              border: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ShieldCheck size={18} color={isPersistent ? '#10B981' : '#F59E0B'} />
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+          <div className="glass-card bg-slate-800/90 rounded-2xl p-3.5 border border-white/5 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={18} className={isPersistent ? 'text-emerald-400' : 'text-amber-400'} />
+              <div className="text-xs font-bold text-slate-100">
                 Bộ nhớ thiết bị (IndexedDB)
               </div>
             </div>
 
-            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>
+            <div className="text-xs text-slate-400 leading-relaxed">
               {isPersistent
                 ? 'Bộ nhớ bền vững (Persistent Storage) đã được kích hoạt. Trình duyệt sẽ không tự ý xóa dữ liệu thu chi của bạn.'
                 : 'Đang lưu trữ dữ liệu an toàn trên bộ nhớ trình duyệt Safari/Chrome.'}
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                gap: 16,
-                paddingTop: 8,
-                marginTop: 4,
-                borderTop: '1px solid rgba(255,255,255,0.06)',
-                fontSize: 12,
-                color: '#cbd5e1'
-              }}
-            >
+            <div className="flex gap-4 pt-2 mt-1 border-t border-white/5 text-xs text-slate-300">
               <div>
-                Giao dịch: <b>{txCount}</b>
+                Giao dịch: <b className="text-white">{txCount}</b>
               </div>
               <div>
-                Ví: <b>{walletCount}</b>
+                Ví: <b className="text-white">{walletCount}</b>
               </div>
               <div>
-                Hạng mục: <b>{categoryCount}</b>
+                Hạng mục: <b className="text-white">{categoryCount}</b>
               </div>
             </div>
           </div>

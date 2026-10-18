@@ -162,41 +162,22 @@ export const BudgetsTab: React.FC = () => {
   };
 
   return (
-    <div style={{ paddingBottom: 90 }}>
+    <div className="pb-24">
       {/* 1. Header Chọn Tháng */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px 10px'
-        }}
-      >
+      <div className="px-5 pt-4 pb-2.5 flex items-center justify-between">
         <button
           type="button"
           onClick={handlePrevMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
         >
           <ChevronLeft size={20} />
         </button>
 
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+        <div className="text-center">
+          <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
             Hạn mức chi tiêu
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+          <div className="text-base font-bold text-slate-100">
             {formatMonthDisplay(selectedMonth)}
           </div>
         </div>
@@ -204,19 +185,7 @@ export const BudgetsTab: React.FC = () => {
         <button
           type="button"
           onClick={handleNextMonth}
-          className="touch-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: '#1e293b',
-            border: 'none',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
         >
           <ChevronRight size={20} />
         </button>
@@ -224,26 +193,11 @@ export const BudgetsTab: React.FC = () => {
 
       {/* 2. NÚT SAO CHÉP HẠN MỨC TỪ THÁNG TRƯỚC (Nổi bật) */}
       {prevMonthBudgets.length > 0 && (
-        <div style={{ padding: '0 16px 12px' }}>
+        <div className="px-4 pb-3">
           <button
             type="button"
             onClick={handleCopyFromPrevMonth}
-            className="touch-btn"
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '12px 16px',
-              borderRadius: 16,
-              backgroundColor: 'rgba(56, 189, 248, 0.12)',
-              border: '1px dashed rgba(56, 189, 248, 0.4)',
-              color: '#38BDF8',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-sky-500/10 border border-dashed border-sky-400/40 text-sky-400 text-xs font-semibold cursor-pointer touch-btn hover:bg-sky-500/15 transition-colors"
           >
             <Copy size={16} />
             <span>Sao chép {prevMonthBudgets.length} hạn mức từ {formatMonthDisplay(prevMonth)}</span>
@@ -252,14 +206,14 @@ export const BudgetsTab: React.FC = () => {
       )}
 
       {/* 3. Danh sách Hạn mức */}
-      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="px-4 flex flex-col gap-3.5">
         {currentBudgets.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
-            <div style={{ fontSize: 44, marginBottom: 12 }}>🎯</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+          <div className="text-center py-12 px-5 text-slate-400">
+            <div className="text-5xl mb-3">🎯</div>
+            <div className="text-base font-bold text-slate-100">
               Chưa có hạn mức nào cho {formatMonthDisplay(selectedMonth)}
             </div>
-            <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 4, marginBottom: 18 }}>
+            <p className="text-xs text-slate-400 mt-1 mb-4.5">
               Đặt hạn mức chi tiêu để kiểm soát ngân sách và tránh tiêu hoang!
             </p>
             <button
@@ -268,26 +222,16 @@ export const BudgetsTab: React.FC = () => {
                 setSelectedCategoryId(expenseCategories[0]?.id || '');
                 setIsModalOpen(true);
               }}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#10B981',
-                color: '#ffffff',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: 14,
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: 'pointer'
-              }}
+              className="touch-btn bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 px-5 rounded-xl font-semibold text-sm cursor-pointer shadow-lg shadow-emerald-500/20"
             >
               + Thiết lập hạn mức mới
             </button>
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>
-                Đang theo dõi ({currentBudgets.length} mục)
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-slate-400 tracking-wider">
+                ĐANG THEO DÕI ({currentBudgets.length} MỤC)
               </span>
               <button
                 type="button"
@@ -295,18 +239,7 @@ export const BudgetsTab: React.FC = () => {
                   setSelectedCategoryId(expenseCategories[0]?.id || '');
                   setIsModalOpen(true);
                 }}
-                className="touch-btn"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#38BDF8',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer'
-                }}
+                className="touch-btn text-sky-400 text-xs font-semibold flex items-center gap-1 cursor-pointer hover:underline"
               >
                 <Plus size={16} /> Thêm hạn mức
               </button>
@@ -322,21 +255,27 @@ export const BudgetsTab: React.FC = () => {
 
               const dailySafe = Math.max(0, Math.round(remaining / remainingDays));
 
-              // Màu sắc theo trạng thái
-              const statusColor = isOver ? '#F43F5E' : isWarning ? '#F59E0B' : '#10B981';
+              const statusColorClass = isOver
+                ? 'bg-rose-500'
+                : isWarning
+                ? 'bg-amber-500'
+                : 'bg-emerald-500';
+
+              const statusBadgeClass = isOver
+                ? 'bg-rose-500/20 text-rose-400'
+                : isWarning
+                ? 'bg-amber-500/20 text-amber-400'
+                : 'bg-emerald-500/20 text-emerald-400';
 
               return (
                 <div
                   key={b.id}
-                  className="glass-panel"
-                  style={{
-                    borderRadius: 20,
-                    padding: '16px 18px',
-                    border: `1px solid ${isOver ? 'rgba(244,63,94,0.3)' : 'rgba(255,255,255,0.06)'}`
-                  }}
+                  className={`glass-panel rounded-2xl p-4 border transition-colors ${
+                    isOver ? 'border-rose-500/30' : 'border-white/5'
+                  }`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
                       <div
                         className="cat-badge"
                         style={{ backgroundColor: cat?.color || '#3b82f6' }}
@@ -344,39 +283,23 @@ export const BudgetsTab: React.FC = () => {
                         <CategoryIcon name={cat?.icon || 'Target'} size={20} color="#ffffff" />
                       </div>
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
+                        <div className="text-sm font-bold text-slate-100">
                           {cat?.name || 'Tổng chi tiêu tháng'}
                         </div>
-                        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-                          Đã chi: <b>{formatVND(spent)}</b> / {formatVND(b.amount)}
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          Đã chi: <b className="text-slate-200">{formatVND(spent)}</b> / {formatVND(b.amount)}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: 999,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          backgroundColor: `${statusColor}22`,
-                          color: statusColor
-                        }}
-                      >
+                    <div className="flex items-center gap-2">
+                      <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusBadgeClass}`}>
                         {percent}%
                       </div>
                       <button
                         type="button"
                         onClick={() => handleDeleteBudget(b.id)}
-                        className="touch-btn"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#64748b',
-                          cursor: 'pointer',
-                          padding: 4
-                        }}
+                        className="touch-btn text-slate-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -384,50 +307,28 @@ export const BudgetsTab: React.FC = () => {
                   </div>
 
                   {/* Thanh Progress Bar */}
-                  <div
-                    style={{
-                      width: '100%',
-                      height: 8,
-                      borderRadius: 999,
-                      backgroundColor: '#1e293b',
-                      marginTop: 14,
-                      overflow: 'hidden'
-                    }}
-                  >
+                  <div className="w-full h-2 rounded-full bg-slate-800 mt-3.5 overflow-hidden">
                     <div
-                      style={{
-                        width: `${percent}%`,
-                        height: '100%',
-                        backgroundColor: statusColor,
-                        borderRadius: 999,
-                        transition: 'width 0.4s ease'
-                      }}
+                      className={`h-full rounded-full transition-all duration-300 ${statusColorClass}`}
+                      style={{ width: `${percent}%` }}
                     />
                   </div>
 
                   {/* Footer thông số */}
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontSize: 12
-                    }}
-                  >
+                  <div className="mt-2.5 flex justify-between items-center text-xs">
                     {isOver ? (
-                      <span style={{ color: '#F43F5E', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="text-rose-400 font-semibold flex items-center gap-1">
                         <AlertTriangle size={14} /> Vượt hạn mức {formatVND(Math.abs(remaining))}!
                       </span>
                     ) : (
-                      <span style={{ color: '#94a3b8' }}>
-                        Còn lại: <b style={{ color: '#f8fafc' }}>{formatVND(remaining)}</b>
+                      <span className="text-slate-400">
+                        Còn lại: <b className="text-slate-100">{formatVND(remaining)}</b>
                       </span>
                     )}
 
                     {!isOver && isCurrentActiveMonth && (
-                      <span style={{ color: '#64748b' }}>
-                        Chi tiêu an toàn: <b style={{ color: '#38bdf8' }}>{formatVND(dailySafe)}/ngày</b>
+                      <span className="text-slate-500">
+                        Chi tiêu an toàn: <b className="text-sky-400">{formatVND(dailySafe)}/ngày</b>
                       </span>
                     )}
                   </div>
@@ -441,75 +342,34 @@ export const BudgetsTab: React.FC = () => {
       {/* 4. MODAL THÊM HẠN MỨC */}
       {isModalOpen && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(8px)',
-            zIndex: 130,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            maxWidth: 480,
-            margin: '0 auto'
-          }}
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end max-w-[480px] mx-auto"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="glass-panel animate-slide-up"
-            style={{
-              backgroundColor: '#0f172a',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: '20px 20px max(24px, env(safe-area-inset-bottom, 0px))',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16
-            }}
+            className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>
+            <div className="flex justify-between items-center">
+              <div className="text-base font-bold text-slate-100">
                 Thiết lập hạn mức {formatMonthDisplay(selectedMonth)}
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="touch-btn"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  backgroundColor: '#1e293b',
-                  border: 'none',
-                  color: '#94a3b8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center touch-btn cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+              <label className="text-xs text-slate-400 block mb-1.5 font-medium">
                 Chọn danh mục áp dụng
               </label>
               <select
                 value={selectedCategoryId}
                 onChange={(e) => setSelectedCategoryId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 14,
-                  backgroundColor: '#1e293b',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 16,
-                  outline: 'none'
-                }}
+                className="input-ios"
               >
                 <option value="">🎯 Hạn mức chung cho toàn bộ chi tiêu</option>
                 {expenseCategories.map((c) => (
@@ -521,7 +381,7 @@ export const BudgetsTab: React.FC = () => {
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+              <label className="text-xs text-slate-400 block mb-1.5 font-medium">
                 Số tiền hạn mức (VNĐ)
               </label>
               <input
@@ -532,37 +392,16 @@ export const BudgetsTab: React.FC = () => {
                   const val = e.target.value.replace(/[^0-9]/g, '');
                   setAmountStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
                 }}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: 14,
-                  backgroundColor: '#1e293b',
-                  color: '#10B981',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 20,
-                  fontWeight: 700,
-                  outline: 'none'
-                }}
+                className="input-ios text-emerald-400 font-bold text-xl py-3.5"
               />
             </div>
 
-            {errorMsg && <div style={{ color: '#F43F5E', fontSize: 12 }}>{errorMsg}</div>}
+            {errorMsg && <div className="text-rose-500 text-xs font-medium">{errorMsg}</div>}
 
             <button
               type="button"
               onClick={handleSaveBudget}
-              className="touch-btn"
-              style={{
-                backgroundColor: '#10B981',
-                color: '#ffffff',
-                border: 'none',
-                padding: '14px',
-                borderRadius: 14,
-                fontSize: 16,
-                fontWeight: 700,
-                cursor: 'pointer',
-                marginTop: 6
-              }}
+              className="touch-btn bg-emerald-500 hover:bg-emerald-600 text-white py-3.5 rounded-xl text-base font-bold cursor-pointer mt-1.5 shadow-lg shadow-emerald-500/25"
             >
               Lưu hạn mức
             </button>
