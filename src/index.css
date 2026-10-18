@@ -1,0 +1,149 @@
+/* src/index.css - iOS PWA Design System for Sổ Thu Chi */
+:root {
+  --bg-primary: #090d16;
+  --bg-card: #121826;
+  --bg-card-hover: #182238;
+  --bg-elevated: #1a2236;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(52, 211, 153, 0.5);
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-sub: #64748b;
+
+  --accent-green: #10b981;
+  --accent-green-glow: rgba(16, 185, 129, 0.2);
+  --accent-red: #f43f5e;
+  --accent-red-glow: rgba(244, 63, 94, 0.2);
+  --accent-blue: #3b82f6;
+  --accent-amber: #f59e0b;
+  --accent-purple: #8b5cf6;
+
+  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Chống bounce kéo trang ngẫu nhiên trên Safari iOS */
+  overscroll-behavior-y: none;
+}
+
+#root {
+  width: 100%;
+  max-width: 480px; /* Định dạng hoàn hảo cho màn hình iPhone / Mobile */
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--bg-primary);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(18, 24, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+}
+
+.glass-nav {
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Touch Interactions */
+.touch-btn {
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-btn:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.touch-bounce:active {
+  transform: scale(0.92);
+}
+
+/* Typography styles */
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Category Badge glow */
+.cat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+/* Safe areas */
+.safe-padding-top {
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+.safe-padding-bottom {
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
