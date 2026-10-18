@@ -1,5 +1,5 @@
 // src/db/seed.ts
-import { db } from './index';
+import { db, requestPersistentStorage } from './index';
 import type { Wallet, Category } from '../types';
 
 export const DEFAULT_CATEGORIES: Omit<Category, 'id' | 'createdAt'>[] = [
@@ -116,7 +116,7 @@ export const DEFAULT_WALLETS: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>[] =
     isExcludedFromTotal: false
   },
   {
-    name: 'Tài khoản Ngân hàng',
+    name: 'Ngân hàng',
     type: 'BANK',
     balance: 0,
     initialBalance: 0,
@@ -124,22 +124,49 @@ export const DEFAULT_WALLETS: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>[] =
     icon: 'Landmark',
     color: '#3B82F6',
     isExcludedFromTotal: false
-  },
-  {
-    name: 'Ví MoMo',
-    type: 'E_WALLET',
-    balance: 0,
-    initialBalance: 0,
-    currency: 'VND',
-    icon: 'Smartphone',
-    color: '#D946EF',
-    isExcludedFromTotal: false
   }
 ];
 
+/**
+ * Đảm bảo luôn có ít nhất 2 ví mặc định (Tiền mặt và Ngân hàng) khi chưa có ví nào trong DB
+ */
+export async function ensureDefaultWallets(): Promise<void> {
+  const walletCount = await db.wallets.count();
+  if (walletCount === 0) {
+    const now = new Date().toISOString();
+    for (const wallet of DEFAULT_WALLETS) {
+      await db.wallets.add({
+        id: crypto.randomUUID(),
+        ...wallet,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+  }
+}
+
+export async function ensureDefaultSettings(): Promise<void> {
+  const enabled = await db.settings.get('auto_backup_enabled');
+  if (enabled === undefined) {
+    await db.settings.put({ key: 'auto_backup_enabled', value: true });
+  }
+  const time = await db.settings.get('auto_backup_time');
+  if (time === undefined) {
+    await db.settings.put({ key: 'auto_backup_time', value: '21:00' });
+  }
+}
+
 export async function initializeSeedData(): Promise<void> {
+  // Yêu cầu quyền lưu trữ bền vững (Persistent Storage) ngay khi khởi tạo
+  await requestPersistentStorage();
+
+  // Đảm bảo các cài đặt mặc định cho Tự động sao lưu luôn tồn tại
+  await ensureDefaultSettings();
+
   const isInitialized = await db.settings.get('has_seeded');
   if (isInitialized?.value) {
+    // Đảm bảo vẫn có ví nếu danh sách ví trống
+    await ensureDefaultWallets();
     return;
   }
 
@@ -155,7 +182,7 @@ export async function initializeSeedData(): Promise<void> {
       });
     }
 
-    // 2. Thêm ví mặc định
+    // 2. Thêm 2 ví mặc định ban đầu
     for (const wallet of DEFAULT_WALLETS) {
       await db.wallets.add({
         id: crypto.randomUUID(),
@@ -165,7 +192,19 @@ export async function initializeSeedData(): Promise<void> {
       });
     }
 
-    // 3. Đánh dấu đã seed
+    // 3. Thêm danh mục hệ thống 'Điều chỉnh số dư'
+    await db.categories.add({
+      id: 'system_adjustment',
+      name: 'Điều chỉnh số dư',
+      type: 'EXPENSE',
+      icon: 'SlidersHorizontal',
+      color: '#64748B',
+      quickTags: ['Khớp tiền thực tế', 'Tiền chênh lệch', 'Kiểm kê'],
+      isDefault: true,
+      createdAt: now
+    });
+
+    // 4. Đánh dấu đã seed
     await db.settings.put({
       key: 'has_seeded',
       value: true

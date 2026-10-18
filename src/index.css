@@ -1,4 +1,4 @@
-/* src/index.css - iOS PWA Design System for Sổ Thu Chi */
+/* src/index.css - iOS PWA Design System for Sổ Thu Chi Cá Nhân */
 :root {
   --bg-primary: #090d16;
   --bg-card: #121826;
@@ -33,30 +33,81 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+/* ==========================================================================
+   CẤU HÌNH VIEWPORT & NỀN TỐI CHUẨN IOS PWA
+   Khử hoàn toàn khoảng hở đáy (dưới Bottom Nav) bằng min-height: 100dvh
+   và màu nền tối #090d16 đồng nhất trên cả html, body, #root.
+   ========================================================================== */
+html {
   width: 100%;
-  height: 100%;
-  background-color: var(--bg-primary);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #090d16;
+}
+
+body {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  background-color: #090d16;
   color: var(--text-main);
   font-family: var(--font-body);
-  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Chống bounce kéo trang ngẫu nhiên trên Safari iOS */
   overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 #root {
   width: 100%;
-  max-width: 480px; /* Định dạng hoàn hảo cho màn hình iPhone / Mobile */
+  max-width: 480px; /* Khung chuẩn cho màn hình iPhone / Mobile */
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   position: relative;
-  background-color: var(--bg-primary);
+  background-color: #090d16;
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollable Container (Main app views) */
+main, .app-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain; /* Cô lập sự kiện cuộn bên trong danh sách */
+}
+
+/* ==========================================================================
+   CHỐNG AUTO-ZOOM TRÊN IPHONE / IOS SAFARI
+   Quy tắc cốt lõi: Tất cả input, select, textarea PHẢI có font-size >= 16px.
+   Nếu font-size < 16px, Safari iOS sẽ tự động phóng to giao diện khi focus.
+   ========================================================================== */
+input,
+select,
+textarea {
+  font-size: 16px !important;
+  font-family: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Date/Time input chuẩn iOS */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"] {
+  font-size: 16px !important;
+  min-height: 42px;
+}
+
+/* Cho phép chọn văn bản trong các vùng hiển thị số tiền / ghi chú */
+.selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Glassmorphism Classes */
@@ -74,11 +125,12 @@ html, body {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Touch Interactions */
+/* Touch Feedback */
 .touch-btn {
   transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .touch-btn:active {

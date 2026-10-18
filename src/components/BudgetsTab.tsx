@@ -507,7 +507,7 @@ export const BudgetsTab: React.FC = () => {
                   backgroundColor: '#1e293b',
                   color: '#ffffff',
                   border: '1px solid rgba(255,255,255,0.08)',
-                  fontSize: 14,
+                  fontSize: 16,
                   outline: 'none'
                 }}
               >

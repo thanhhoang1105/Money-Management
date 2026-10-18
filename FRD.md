@@ -191,6 +191,15 @@ export interface Setting {
   * Không phụ thuộc bất kỳ file ảnh nào, đảm bảo sao lưu và phục hồi thành công 100%.
 * **FR-E-03: Khôi phục dữ liệu (Restore Data):**
   * Tải lên file JSON backup, xác thực cấu trúc trước khi ghi đè vào IndexedDB.
+* **FR-E-04: Tự động sao lưu hàng ngày (Auto-Backup & Background Trigger):**
+  * **Cấu hình trong Cài đặt (Settings):**
+    * Tùy chọn Bật/Tắt `auto_backup_enabled` (lưu trong bảng `settings` của Dexie).
+    * Chọn khung giờ sao lưu hàng ngày `auto_backup_time` (mặc định: `21:00`).
+    * Ghi nhớ ngày sao lưu tự động thành công gần nhất `last_auto_backup_date` (`YYYY-MM-DD`).
+  * **Cơ chế kiểm tra ngầm khi khởi động ứng dụng (App Initialization Check):**
+    * Mỗi khi ứng dụng khởi chạy hoặc hoạt động: nếu `auto_backup_enabled === true` và hôm nay chưa sao lưu lần nào (`last_auto_backup_date !== today`), hệ thống sẽ tự động gọi logic xuất file JSON đầy đủ toàn bộ dữ liệu.
+    * Kích hoạt `navigator.share()` (trên iOS/Safari để lưu vào app Tệp hoặc gửi qua AirDrop/Zalo) hoặc tự động tải file `.json` về máy.
+    * Sau khi xuất thành công, cập nhật ngay `last_auto_backup_date` thành ngày hiện tại để không lặp lại trong ngày.
 
 ---
 

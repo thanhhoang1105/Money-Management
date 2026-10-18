@@ -1,26 +1,70 @@
-// src/App.tsx
 import { useState, useEffect } from 'react';
 import { initializeSeedData } from './db/seed';
+import { requestPersistentStorage } from './db';
 import { BottomNav, type TabType } from './components/BottomNav';
 import { TransactionListTab } from './components/TransactionListTab';
 import { AnalyticsTab } from './components/AnalyticsTab';
 import { BudgetsTab } from './components/BudgetsTab';
 import { WalletsTab } from './components/WalletsTab';
 import { NumpadModal } from './components/NumpadModal';
+import { SettingsModal } from './components/SettingsModal';
+import { checkAndRunAutoBackup } from './services/backupService';
 import type { Transaction } from './types';
-import { Share, X, Smartphone } from 'lucide-react';
+import { Share, X, Smartphone, Settings as SettingsIcon, Check } from 'lucide-react';
+
+// Kiểm tra nếu app đang chạy ở chế độ Standalone (Đã thêm vào Màn hình chính)
+function checkIsStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true
+  );
+}
 
 export function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('transactions');
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [showIosTip, setShowIosTip] = useState(true);
+  const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
+  
+  // Tự động ẩn hoàn toàn banner nếu đang chạy Standalone trên Home Screen iPhone
+  const isStandalone = checkIsStandalone();
+  const [showIosTip, setShowIosTip] = useState(() => {
+    if (checkIsStandalone()) return false;
+    try {
+      return localStorage.getItem('hide_ios_tip') !== 'true';
+    } catch {
+      return true;
+    }
+  });
 
-  // Khởi tạo Seed Data khi mở app lần đầu
+  // Khởi tạo Seed Data, Yêu cầu Persistent Storage & Kiểm tra Tự động sao lưu hàng ngày khi mở app
   useEffect(() => {
-    initializeSeedData().catch((err) => {
-      console.error('Lỗi khởi tạo dữ liệu seed:', err);
-    });
+    requestPersistentStorage();
+    initializeSeedData()
+      .then(async () => {
+        // Kiểm tra ngầm Tự động sao lưu hàng ngày khi App khởi động
+        const res = await checkAndRunAutoBackup();
+        if (res.ran) {
+          setAutoBackupNotice(res.message);
+          setTimeout(() => setAutoBackupNotice(null), 6000);
+        }
+      })
+      .catch((err) => {
+        console.error('Lỗi khởi tạo dữ liệu seed:', err);
+      });
+
+    // Định kỳ kiểm tra mỗi phút nếu người dùng đang dùng app khi đến khung giờ sao lưu
+    const timer = setInterval(async () => {
+      const res = await checkAndRunAutoBackup();
+      if (res.ran) {
+        setAutoBackupNotice(res.message);
+        setTimeout(() => setAutoBackupNotice(null), 6000);
+      }
+    }, 60000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const handleOpenQuickAdd = () => {
@@ -33,8 +77,24 @@ export function App() {
     setIsNumpadOpen(true);
   };
 
+  const handleDismissIosTip = () => {
+    setShowIosTip(false);
+    try {
+      localStorage.setItem('hide_ios_tip', 'true');
+    } catch {
+      // ignore
+    }
+  };
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{
+        minHeight: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#090d16'
+      }}
+    >
       {/* 1. Header Bar chuẩn phong cách iOS */}
       <header
         className="glass-panel"
@@ -83,35 +143,90 @@ export function App() {
           </div>
         </div>
 
-        {/* Badge trạng thái dữ liệu an toàn */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '4px 10px',
-            borderRadius: 999,
-            backgroundColor: 'rgba(16, 185, 129, 0.12)',
-            border: '1px solid rgba(16, 185, 129, 0.25)'
-          }}
-        >
+        {/* Nút Cài đặt & Badge trạng thái dữ liệu */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div
             style={{
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: '#10B981',
-              boxShadow: '0 0 8px #10B981'
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '4px 10px',
+              borderRadius: 999,
+              backgroundColor: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.25)'
             }}
-          />
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981' }}>
-            Offline 100%
-          </span>
+          >
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: '#10B981',
+                boxShadow: '0 0 8px #10B981'
+              }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#10B981' }}>
+              Offline 100%
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="touch-btn"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              backgroundColor: '#1e293b',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              color: '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Cài đặt & Sao lưu"
+          >
+            <SettingsIcon size={18} />
+          </button>
         </div>
       </header>
 
-      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" (Add to Home Screen) trên Safari iOS */}
-      {showIosTip && (
+      {/* Thông báo sao lưu tự động thành công */}
+      {autoBackupNotice && (
+        <div
+          style={{
+            margin: '10px 16px 0',
+            padding: '10px 14px',
+            borderRadius: 14,
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            color: '#10B981',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Check size={16} strokeWidth={3} />
+            <span>{autoBackupNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoBackupNotice(null)}
+            style={{ background: 'none', border: 'none', color: '#10B981', cursor: 'pointer', padding: 2 }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" (Tự động ẩn hoàn toàn khi đang chạy Standalone) */}
+      {!isStandalone && showIosTip && (
         <div
           style={{
             margin: '10px 16px 0',
@@ -133,7 +248,7 @@ export function App() {
           </div>
           <button
             type="button"
-            onClick={() => setShowIosTip(false)}
+            onClick={handleDismissIosTip}
             className="touch-btn"
             style={{
               background: 'none',
@@ -149,7 +264,16 @@ export function App() {
       )}
 
       {/* 3. Nội dung Tab hiện tại */}
-      <main style={{ flex: 1 }}>
+      <main
+        className="app-scroll-container"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehaviorY: 'contain'
+        }}
+      >
         {currentTab === 'transactions' && (
           <TransactionListTab
             onEditTransaction={handleEditTransaction}
@@ -181,6 +305,12 @@ export function App() {
           setEditingTransaction(null);
         }}
         editingTransaction={editingTransaction}
+      />
+
+      {/* 6. Settings Modal (Cài đặt & Tự động sao lưu hàng ngày) */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );

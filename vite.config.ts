@@ -8,16 +8,17 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Sổ Thu Chi Cá Nhân',
         short_name: 'Thu Chi',
         description: 'Ứng dụng quản lý thu chi cá nhân cực nhanh, chuẩn iOS, offline 100%',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#090d16',
+        background_color: '#090d16',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        scope: '/',
         icons: [
           {
             src: '/icon-192.png',

@@ -25,12 +25,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         right: 0,
         maxWidth: 480,
         margin: '0 auto',
-        height: 'calc(64px + env(safe-area-inset-bottom, 0px))',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingTop: 8,
+        paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-around',
-        zIndex: 50
+        zIndex: 50,
+        backgroundColor: '#0f172a',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)'
       }}
     >
       {/* Tab 1: Sổ Giao Dịch */}

@@ -2,8 +2,11 @@
 import { db } from '../db';
 import type { Transaction } from '../types';
 
+export const SYSTEM_ADJUSTMENT_CATEGORY_ID = 'system_adjustment';
+
 /**
  * Thêm giao dịch mới và tự động cập nhật số dư ví trong 1 ACID Transaction.
+ * Đồng thời ghi nhớ ví sử dụng gần nhất (Smart Defaults) vào db.settings.
  */
 export async function createTransaction(
   data: Omit<Transaction, 'id' | 'createdAt'>
@@ -12,7 +15,7 @@ export async function createTransaction(
   const createdAt = new Date().toISOString();
   const newTx: Transaction = { ...data, id, createdAt };
 
-  await db.transaction('rw', [db.wallets, db.transactions], async () => {
+  await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
     // 1. Cập nhật số dư ví
     if (newTx.type === 'EXPENSE') {
       const wallet = await db.wallets.get(newTx.walletId);
@@ -47,6 +50,12 @@ export async function createTransaction(
 
     // 2. Thêm bản ghi giao dịch
     await db.transactions.add(newTx);
+
+    // 3. Ghi nhớ ví sử dụng gần nhất vào settings (Smart Defaults)
+    await db.settings.put({
+      key: 'last_used_wallet_id',
+      value: newTx.walletId
+    });
   });
 
   return id;
@@ -62,7 +71,7 @@ export async function updateTransaction(
 ): Promise<void> {
   const now = new Date().toISOString();
 
-  await db.transaction('rw', [db.wallets, db.transactions], async () => {
+  await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
     const oldTx = await db.transactions.get(id);
     if (!oldTx) throw new Error(`Giao dịch ${id} không tồn tại`);
 
@@ -71,7 +80,7 @@ export async function updateTransaction(
       const oldWallet = await db.wallets.get(oldTx.walletId);
       if (oldWallet) {
         await db.wallets.update(oldTx.walletId, {
-          balance: oldWallet.balance + oldTx.amount, // Hoàn trả tiền vào ví
+          balance: oldWallet.balance + oldTx.amount, // Hoàn trả tiền vào ví cũ
           updatedAt: now
         });
       }
@@ -139,6 +148,12 @@ export async function updateTransaction(
 
     // --- BƯỚC 3: LƯU RECORD CẬP NHẬT ---
     await db.transactions.put(newTx);
+
+    // Ghi nhớ ví sử dụng gần nhất
+    await db.settings.put({
+      key: 'last_used_wallet_id',
+      value: newTx.walletId
+    });
   });
 }
 
@@ -188,5 +203,139 @@ export async function deleteTransaction(id: string): Promise<void> {
 
     // Xóa record
     await db.transactions.delete(id);
+  });
+}
+
+/**
+ * Chuyển tiền nội bộ giữa 2 ví chuẩn ACID Atomic
+ * - Giảm số dư ví gửi (fromWallet)
+ * - Tăng số dư ví nhận (toWallet)
+ * - Ghi nhận 1 bản ghi giao dịch loại TRANSFER
+ * - Giao dịch TRANSFER tuyệt đối không ảnh hưởng đến tổng thu/chi của tháng
+ */
+export async function transferFunds(params: {
+  fromWalletId: string;
+  toWalletId: string;
+  amount: number;
+  date: string;
+  time: string;
+  note?: string;
+}): Promise<string> {
+  const { fromWalletId, toWalletId, amount, date, time, note } = params;
+  if (!fromWalletId || !toWalletId) {
+    throw new Error('Vui lòng chọn đầy đủ ví gửi và ví nhận');
+  }
+  if (fromWalletId === toWalletId) {
+    throw new Error('Ví gửi và ví nhận không được trùng nhau');
+  }
+  if (amount <= 0) {
+    throw new Error('Số tiền chuyển phải lớn hơn 0');
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
+    const fromWallet = await db.wallets.get(fromWalletId);
+    const toWallet = await db.wallets.get(toWalletId);
+    if (!fromWallet) throw new Error('Ví gửi không tồn tại');
+    if (!toWallet) throw new Error('Ví nhận không tồn tại');
+
+    // Cập nhật số dư 2 ví
+    await db.wallets.update(fromWalletId, {
+      balance: fromWallet.balance - amount,
+      updatedAt: now
+    });
+    await db.wallets.update(toWalletId, {
+      balance: toWallet.balance + amount,
+      updatedAt: now
+    });
+
+    // Thêm bản ghi giao dịch TRANSFER
+    await db.transactions.add({
+      id,
+      walletId: fromWalletId,
+      toWalletId,
+      type: 'TRANSFER',
+      amount,
+      date,
+      time,
+      note: note?.trim() || `Chuyển tiền từ ${fromWallet.name} sang ${toWallet.name}`,
+      createdAt: now
+    });
+
+    // Lưu ví gửi gần nhất vào settings
+    await db.settings.put({
+      key: 'last_used_wallet_id',
+      value: fromWalletId
+    });
+  });
+
+  return id;
+}
+
+/**
+ * Điều chỉnh số dư thực tế của một ví:
+ * - Cập nhật số dư ví thành số tiền thực tế
+ * - Nếu autoCreateAdjustmentTx = true và có chênh lệch, tự động tạo 1 giao dịch
+ *   với categoryId: 'system_adjustment' (Danh mục hệ thống "Điều chỉnh số dư")
+ */
+export async function adjustWalletBalance(params: {
+  walletId: string;
+  newBalance: number;
+  autoCreateAdjustmentTx: boolean;
+  date?: string;
+  time?: string;
+}): Promise<void> {
+  const { walletId, newBalance, autoCreateAdjustmentTx, date, time } = params;
+  const now = new Date().toISOString();
+
+  await db.transaction('rw', [db.wallets, db.transactions, db.categories], async () => {
+    const wallet = await db.wallets.get(walletId);
+    if (!wallet) throw new Error('Ví không tồn tại');
+
+    const oldBalance = wallet.balance;
+    const diff = newBalance - oldBalance;
+
+    // 1. Cập nhật số dư ví
+    await db.wallets.update(walletId, {
+      balance: newBalance,
+      updatedAt: now
+    });
+
+    // 2. Tạo giao dịch thu/chi chênh lệch nếu có tùy chọn
+    if (autoCreateAdjustmentTx && diff !== 0) {
+      const type = diff > 0 ? 'INCOME' : 'EXPENSE';
+      const absAmount = Math.abs(diff);
+
+      // Đảm bảo danh mục hệ thống 'system_adjustment' tồn tại trong DB
+      const sysCat = await db.categories.get(SYSTEM_ADJUSTMENT_CATEGORY_ID);
+      if (!sysCat) {
+        await db.categories.put({
+          id: SYSTEM_ADJUSTMENT_CATEGORY_ID,
+          name: 'Điều chỉnh số dư',
+          type,
+          icon: 'SlidersHorizontal',
+          color: '#64748B',
+          isDefault: true,
+          createdAt: now
+        });
+      }
+
+      const d = date || now.split('T')[0];
+      const t = time || now.split('T')[1].substring(0, 5);
+
+      await db.transactions.add({
+        id: crypto.randomUUID(),
+        walletId,
+        categoryId: SYSTEM_ADJUSTMENT_CATEGORY_ID,
+        type,
+        amount: absAmount,
+        date: d,
+        time: t,
+        note: `Điều chỉnh số dư ví "${wallet.name}" (${diff > 0 ? '+' : '-'}${new Intl.NumberFormat('vi-VN').format(absAmount)} ₫)`,
+        createdAt: now
+      });
+    }
   });
 }
