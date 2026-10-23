@@ -143,7 +143,7 @@ export async function signInOrSignUpSupabase(
   const client = await getSupabaseClient();
   if (!client) {
     throw new Error(
-      'Chưa có thông tin Supabase URL & Anon Key. Vui lòng nhập cấu hình Supabase trước.'
+      'Chưa nhận được biến môi trường VITE_SUPABASE_URL và VITE_SUPABASE_ANON_KEY. Vui lòng kiểm tra Environment Variables trên Vercel và Redeploy.'
     );
   }
 
@@ -267,7 +267,12 @@ export async function performSupabaseSmartSync(): Promise<{
   const client = await getSupabaseClient();
   const { syncKey, email } = await getSupabaseConfig();
 
-  if (!client || !syncKey) {
+  if (!client) {
+    throw new Error(
+      'Chưa nhận được biến môi trường VITE_SUPABASE_URL và VITE_SUPABASE_ANON_KEY. Vui lòng kiểm tra Environment Variables trên Vercel và Redeploy.'
+    );
+  }
+  if (!syncKey) {
     throw new Error('Chưa kết nối tài khoản hoặc Mã đồng bộ Supabase.');
   }
 

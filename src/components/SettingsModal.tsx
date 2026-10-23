@@ -16,8 +16,7 @@ import {
   signInOrSignUpSupabase,
   backupToSupabase,
   getBackupFromSupabase,
-  performSupabaseSmartSync,
-  SUPABASE_SETUP_SQL
+  performSupabaseSmartSync
 } from '../services/supabaseService';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
 import {
@@ -35,10 +34,6 @@ import {
   CloudDownload,
   LogOut,
   Smartphone,
-  Copy,
-  ChevronDown,
-  ChevronUp,
-  Key,
   Sparkles,
   UserCheck
 } from 'lucide-react';
@@ -65,8 +60,6 @@ interface RestorePreviewData {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   // Supabase Live Queries
-  const supabaseUrlSetting = useLiveQuery(() => db.settings.get('supabase_url'));
-  const supabaseKeySetting = useLiveQuery(() => db.settings.get('supabase_anon_key'));
   const supabaseSyncKeySetting = useLiveQuery(() => db.settings.get('supabase_sync_key'));
   const supabaseEmailSetting = useLiveQuery(() => db.settings.get('supabase_user_email'));
   const lastSupabaseBackupSetting = useLiveQuery(() =>
@@ -91,15 +84,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [isPersistent, setIsPersistent] = useState<boolean>(false);
 
   // Supabase States
-  const [sbUrlInput, setSbUrlInput] = useState<string>('');
-  const [sbAnonKeyInput, setSbAnonKeyInput] = useState<string>('');
   const [sbSyncKeyInput, setSbSyncKeyInput] = useState<string>('');
   const [sbEmailInput, setSbEmailInput] = useState<string>('');
   const [sbPasswordInput, setSbPasswordInput] = useState<string>('');
   const [authMode, setAuthMode] = useState<'SYNC_KEY' | 'EMAIL_AUTH'>('SYNC_KEY');
-  const [showSbConfig, setShowSbConfig] = useState<boolean>(false);
-  const [showSqlGuide, setShowSqlGuide] = useState<boolean>(false);
-  const [isCopiedSql, setIsCopiedSql] = useState<boolean>(false);
   const [isAutoSync, setIsAutoSync] = useState<boolean>(true);
 
   // Xem trước khôi phục JSON (hiển thị phẳng không dùng Popup)
@@ -121,21 +109,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   useEffect(() => {
     getSupabaseConfig().then((cfg) => {
-      setSbUrlInput(cfg.url);
-      setSbAnonKeyInput(cfg.anonKey);
       setSbSyncKeyInput(cfg.syncKey);
       if (cfg.email) setSbEmailInput(cfg.email);
-      // Nếu chưa có URL hoặc AnonKey thì mở sẵn bảng cấu hình
-      if (!cfg.url || !cfg.anonKey) {
-        setShowSbConfig(true);
-      }
     });
-  }, [
-    supabaseUrlSetting?.value,
-    supabaseKeySetting?.value,
-    supabaseSyncKeySetting?.value,
-    supabaseEmailSetting?.value
-  ]);
+  }, [supabaseSyncKeySetting?.value, supabaseEmailSetting?.value]);
 
   useEffect(() => {
     if (supabaseAutoSyncSetting !== undefined) {
@@ -166,8 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     (typeof supabaseEmailSetting?.value === 'string' &&
       supabaseEmailSetting.value.trim()) ||
     '';
-  const isSupabaseConfigured = Boolean(sbUrlInput.trim() && sbAnonKeyInput.trim());
-  const isSupabaseConnected = Boolean(isSupabaseConfigured && activeSyncKey);
+  const isSupabaseConnected = Boolean(activeSyncKey);
 
   const handleSelectDefaultStartTab = (tabKey: string) => {
     setDefaultStartTab(tabKey);
@@ -183,36 +159,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
-  // Lưu cấu hình Supabase URL & Anon Key
-  const handleSaveSupabaseCredentials = async () => {
-    if (!sbUrlInput.trim() || !sbAnonKeyInput.trim()) {
-      setStatusMsg({
-        text: 'Vui lòng nhập đầy đủ Supabase Project URL và Anon Key.',
-        type: 'error'
-      });
-      return;
-    }
-    await saveSupabaseConfig({
-      url: sbUrlInput.trim(),
-      anonKey: sbAnonKeyInput.trim()
-    });
-    setShowSbConfig(false);
-    setStatusMsg({
-      text: 'Đã lưu cấu hình Supabase Project thành công!',
-      type: 'success'
-    });
-  };
-
   // Kết nối bằng Mã Đồng Bộ cá nhân (Sync Key)
   const handleConnectWithSyncKey = async () => {
-    if (!sbUrlInput.trim() || !sbAnonKeyInput.trim()) {
-      setShowSbConfig(true);
-      setStatusMsg({
-        text: 'Vui lòng nhập Supabase URL & Anon Key ở phần cấu hình bên dưới trước.',
-        type: 'error'
-      });
-      return;
-    }
     if (!sbSyncKeyInput.trim()) {
       setStatusMsg({
         text: 'Vui lòng nhập Mã Đồng Bộ cá nhân (VD: email hoặc mật mã riêng của bạn).',
@@ -225,8 +173,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setStatusMsg(null);
     try {
       await saveSupabaseConfig({
-        url: sbUrlInput.trim(),
-        anonKey: sbAnonKeyInput.trim(),
         syncKey: sbSyncKeyInput.trim(),
         email: sbSyncKeyInput.trim()
       });
@@ -248,21 +194,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // Đăng nhập hoặc Đăng ký bằng Email & Mật khẩu Supabase Auth
   const handleEmailAuth = async (mode: 'SIGN_IN' | 'SIGN_UP') => {
-    if (!sbUrlInput.trim() || !sbAnonKeyInput.trim()) {
-      setShowSbConfig(true);
-      setStatusMsg({
-        text: 'Vui lòng lưu Supabase URL & Anon Key trước khi đăng nhập.',
-        type: 'error'
-      });
-      return;
-    }
     setIsProcessing(true);
     setStatusMsg(null);
     try {
-      await saveSupabaseConfig({
-        url: sbUrlInput.trim(),
-        anonKey: sbAnonKeyInput.trim()
-      });
       const res = await signInOrSignUpSupabase(sbEmailInput, sbPasswordInput, mode);
       setSbSyncKeyInput(res.syncKey);
       const syncRes = await performSupabaseSmartSync();
@@ -378,16 +312,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         : 'Đã tắt Tự động đồng bộ Supabase',
       type: 'info'
     });
-  };
-
-  const handleCopySql = async () => {
-    try {
-      await navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
-      setIsCopiedSql(true);
-      setTimeout(() => setIsCopiedSql(false), 2500);
-    } catch {
-      // ignore
-    }
   };
 
   const handleExportManualJSON = async () => {
@@ -846,94 +770,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
             </div>
           )}
-
-          {/* Cấu hình Supabase Project URL & Anon Key */}
-          <div className="pt-2 border-t border-white/8">
-            <button
-              type="button"
-              onClick={() => setShowSbConfig(!showSbConfig)}
-              className="text-xs text-sky-400 hover:text-sky-300 flex items-center justify-between w-full py-1 cursor-pointer bg-transparent border-none"
-            >
-              <span className="flex items-center gap-1.5 font-semibold">
-                <Key size={13} />
-                <span>
-                  {isSupabaseConfigured
-                    ? 'Đã cấu hình Supabase URL & Key (Bấm để sửa)'
-                    : 'Thiết lập Supabase Project URL & Anon Key (Miễn phí 100%)'}
-                </span>
-              </span>
-              {showSbConfig ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-
-            {showSbConfig && (
-              <div className="mt-2.5 p-3.5 rounded-2xl bg-slate-950/90 border border-white/10 flex flex-col gap-3 text-xs">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                    1. Supabase Project URL:
-                  </label>
-                  <input
-                    type="text"
-                    value={sbUrlInput}
-                    onChange={(e) => setSbUrlInput(e.target.value)}
-                    placeholder="https://xxxx.supabase.co"
-                    className="input-ios w-full bg-slate-900 px-3 py-2 rounded-xl text-slate-100 text-xs border border-white/10"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                    2. Supabase Anon / Public Key:
-                  </label>
-                  <input
-                    type="password"
-                    value={sbAnonKeyInput}
-                    onChange={(e) => setSbAnonKeyInput(e.target.value)}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="input-ios w-full bg-slate-900 px-3 py-2 rounded-xl text-slate-100 text-xs border border-white/10"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowSqlGuide(!showSqlGuide)}
-                    className="text-[11px] text-amber-400 hover:underline bg-transparent border-none cursor-pointer font-semibold"
-                  >
-                    {showSqlGuide ? 'Ẩn lệnh SQL tạo bảng' : 'Xem lệnh SQL tạo bảng (1 lần)'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveSupabaseCredentials}
-                    className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-xl text-xs cursor-pointer border-none"
-                  >
-                    Lưu cấu hình Supabase
-                  </button>
-                </div>
-
-                {showSqlGuide && (
-                  <div className="p-3 rounded-xl bg-slate-900 border border-white/10 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-emerald-400">
-                        Dán vào SQL Editor trên Supabase rồi bấm Run:
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleCopySql}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer border border-white/10"
-                      >
-                        {isCopiedSql ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                        <span>{isCopiedSql ? 'Đã chép SQL' : 'Sao chép SQL'}</span>
-                      </button>
-                    </div>
-                    <pre className="text-[10px] text-slate-300 bg-slate-950 p-2.5 rounded-lg overflow-x-auto leading-relaxed m-0">
-                      {SUPABASE_SETUP_SQL}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* PHẦN 2: MÀN HÌNH MỞ APP MẶC ĐỊNH */}
