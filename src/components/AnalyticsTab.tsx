@@ -18,7 +18,6 @@ import {
   ChevronRight,
   TrendingDown,
   TrendingUp,
-  X,
   PieChart,
   BarChart3,
   ArrowUpRight,
@@ -319,6 +318,105 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     }
   };
 
+  if (drillDownCategory) {
+    return (
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
+        <div className="flex items-center justify-between border-b border-white/8 pb-3">
+          <button
+            type="button"
+            onClick={() => setDrillDownCategory(null)}
+            className="touch-btn text-sky-400 font-bold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
+          >
+            ← Quay lại Báo cáo
+          </button>
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+            Chi tiết: {drillDownCategory.name}
+          </span>
+          <div className="w-12" />
+        </div>
+
+        <div className="p-4 rounded-2xl bg-slate-900/90 border border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="cat-badge"
+              style={{ backgroundColor: drillDownCategory.color }}
+            >
+              <CategoryIcon name={drillDownCategory.icon} size={22} color="#ffffff" />
+            </div>
+            <div>
+              <div className="text-base font-bold text-slate-100">{drillDownCategory.name}</div>
+              <div className="text-xs text-slate-400">
+                {formatMonthDisplay(selectedMonth)} • {drillDownTxs.length} giao dịch
+              </div>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div
+              className={`text-lg font-extrabold ${
+                reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+              }`}
+            >
+              {reportType === 'EXPENSE'
+                ? `-${formatVND(drillDownTotal)}`
+                : `+${formatVND(drillDownTotal)}`}
+            </div>
+            <div className="text-xs text-slate-400">
+              {activeTotal > 0 ? ((drillDownTotal / activeTotal) * 100).toFixed(1) : 0}% tháng
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2.5">
+          {drillDownTxs.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-xs">
+              Không có giao dịch nào trong danh mục này
+            </div>
+          ) : (
+            drillDownTxs.map((tx) => {
+              const wallet = walletMap.get(tx.walletId);
+              const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+              return (
+                <div
+                  key={tx.id}
+                  onClick={() => {
+                    if (onEditTransaction) {
+                      setDrillDownCategory(null);
+                      onEditTransaction(tx);
+                    }
+                  }}
+                  className="touch-btn flex items-center justify-between p-3.5 bg-slate-900/80 rounded-2xl border border-white/8 cursor-pointer hover:bg-slate-800 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-100 truncate">
+                      {tx.note || txCat?.name || drillDownCategory.name}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                      <span>
+                        {formatFriendlyDate(tx.date)} lúc {tx.time}
+                      </span>
+                      <span>•</span>
+                      <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`text-sm font-bold shrink-0 ml-3 ${
+                      reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                    }`}
+                  >
+                    {reportType === 'EXPENSE'
+                      ? `-${formatVND(tx.amount)}`
+                      : `+${formatVND(tx.amount)}`}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pb-28">
       {/* 1. Header Chọn Tháng & Nút Xuất Excel Tháng */}
@@ -508,61 +606,61 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       </div>
 
       {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ PHÂN TÍCH: CHI TIÊU VS THU NHẬP */}
-      <div className="mx-4 mt-4 mb-2 flex items-center p-1 rounded-2xl bg-slate-900 border border-white/8">
+      <div className="mx-4 mt-4 mb-2 grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-900 border border-white/8">
         <button
           type="button"
           onClick={() => setReportType('EXPENSE')}
-          className={`touch-btn flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`touch-btn h-10 px-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             reportType === 'EXPENSE'
               ? 'bg-rose-500 text-white shadow-md shadow-rose-500/25'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <PieChart size={14} />
-          <span>Cơ cấu Chi tiêu ({sortedCategories.length})</span>
+          <PieChart size={14} className="shrink-0" />
+          <span className="truncate">Chi tiêu ({sortedCategories.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setReportType('INCOME')}
-          className={`touch-btn flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`touch-btn h-10 px-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             reportType === 'INCOME'
               ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <PieChart size={14} />
-          <span>Cơ cấu Thu nhập</span>
+          <PieChart size={14} className="shrink-0" />
+          <span className="truncate">Thu nhập</span>
         </button>
       </div>
 
       {/* NÚT CHUYỂN CHẾ ĐỘ GOM NHÓM CHI TIÊU: HẠNG MỤC CHI TIẾT VS NHÓM CHA (50/30/20) */}
       {reportType === 'EXPENSE' && (
-        <div className="mx-4 mb-2.5 flex items-center gap-2">
+        <div className="mx-4 mb-2.5 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setGroupingMode('DETAIL')}
-            className={`touch-btn flex-1 py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`touch-btn h-10 px-3 rounded-xl border text-xs font-bold whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               groupingMode === 'DETAIL'
                 ? 'bg-sky-500/20 border-sky-400 text-sky-300'
                 : 'bg-slate-900/70 border-white/6 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <ListTree size={14} />
-            <span>Theo Hạng mục con</span>
+            <ListTree size={14} className="shrink-0" />
+            <span className="truncate">Theo Hạng mục con</span>
           </button>
 
           <button
             type="button"
             onClick={() => setGroupingMode('PARENT')}
-            className={`touch-btn flex-1 py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+            className={`touch-btn h-10 px-3 rounded-xl border text-xs font-bold whitespace-nowrap flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
               groupingMode === 'PARENT'
                 ? 'bg-sky-500/20 border-sky-400 text-sky-300'
                 : 'bg-slate-900/70 border-white/6 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Layers size={14} />
-            <span>Theo Nhóm Cha (50/30/20)</span>
+            <Layers size={14} className="shrink-0" />
+            <span className="truncate">Theo Nhóm Cha</span>
           </button>
         </div>
       )}
@@ -707,113 +805,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           ))}
         </div>
       </div>
-
-      {/* 7. MODAL: DRILL-DOWN CHI TIẾT TỪNG GIAO DỊCH CỦA DANH MỤC */}
-      {drillDownCategory && (
-        <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
-          onClick={() => setDrillDownCategory(null)}
-        >
-          <div
-            className="w-full max-w-[480px] md:max-w-xl bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 max-h-[85vh] flex flex-col pb-[max(24px,env(safe-area-inset-bottom,0px))] animate-slide-up shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 pt-4 pb-3.5 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className="cat-badge"
-                  style={{ backgroundColor: drillDownCategory.color }}
-                >
-                  <CategoryIcon name={drillDownCategory.icon} size={22} color="#ffffff" />
-                </div>
-                <div>
-                  <div className="text-base font-bold text-slate-100">
-                    {drillDownCategory.name}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {formatMonthDisplay(selectedMonth)} • {drillDownTxs.length} giao dịch
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setDrillDownCategory(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border-none cursor-pointer touch-btn"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-slate-800/60 border border-white/6 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] text-slate-400">Tổng phát sinh danh mục</span>
-                <div
-                  className={`text-xl font-extrabold mt-0.5 ${
-                    reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
-                  }`}
-                >
-                  {reportType === 'EXPENSE'
-                    ? `-${formatVND(drillDownTotal)}`
-                    : `+${formatVND(drillDownTotal)}`}
-                </div>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[11px] text-slate-400">Tỷ trọng tháng</span>
-                <div className="text-base font-bold text-slate-200 mt-0.5">
-                  {activeTotal > 0 ? ((drillDownTotal / activeTotal) * 100).toFixed(1) : 0}%
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 overflow-y-auto flex flex-col gap-2.5">
-              {drillDownTxs.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-xs">
-                  Không có giao dịch nào trong danh mục này
-                </div>
-              ) : (
-                drillDownTxs.map((tx) => {
-                  const wallet = walletMap.get(tx.walletId);
-                  const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
-                  return (
-                    <div
-                      key={tx.id}
-                      onClick={() => {
-                        if (onEditTransaction) {
-                          setDrillDownCategory(null);
-                          onEditTransaction(tx);
-                        }
-                      }}
-                      className="touch-btn flex items-center justify-between p-3.5 bg-slate-800/70 rounded-2xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-100 truncate">
-                          {tx.note || txCat?.name || drillDownCategory.name}
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
-                          <span>{formatFriendlyDate(tx.date)} lúc {tx.time}</span>
-                          <span>•</span>
-                          <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
-                        </div>
-                      </div>
-                      <div
-                        className={`text-sm font-bold shrink-0 ml-3 ${
-                          tx.type === 'EXPENSE' ? 'text-expense' : 'text-income'
-                        }`}
-                      >
-                        {tx.type === 'EXPENSE'
-                          ? `-${formatVND(tx.amount)}`
-                          : `+${formatVND(tx.amount)}`}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

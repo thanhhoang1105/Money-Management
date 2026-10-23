@@ -21,7 +21,6 @@ import {
   Edit3,
   X,
   Calendar,
-  Target,
   ShieldCheck,
   Check
 } from 'lucide-react';
@@ -264,6 +263,115 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     const newVal = current + addValue;
     setAmountStr(new Intl.NumberFormat('vi-VN').format(newVal));
   };
+
+  if (isModalOpen) {
+    return (
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
+        <div className="flex items-center justify-between border-b border-white/8 pb-3">
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(false)}
+            className="touch-btn text-sky-400 font-bold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
+          >
+            ← Quay lại danh sách hạn mức
+          </button>
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+            {editingBudget ? 'Chỉnh sửa hạn mức' : 'Thiết lập hạn mức mới'}
+          </span>
+          <div className="w-12" />
+        </div>
+
+        <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+              Chọn danh mục hoặc nhóm áp dụng
+            </label>
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              className="input-ios"
+            >
+              <option value="">🎯 Hạn mức chung cho toàn bộ chi tiêu tháng</option>
+              {parentExpenseCategories.length > 0 && (
+                <optgroup label="Nhóm Cha 50/30/20 (Tự động cộng gộp các mục con)">
+                  {parentExpenseCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      📁 {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Hạng mục chi tiết">
+                {childExpenseCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    • {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+              Số tiền hạn mức (VNĐ)
+            </label>
+            <input
+              type="text"
+              placeholder="Ví dụ: 3.500.000"
+              value={amountStr}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                setAmountStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
+              }}
+              className="input-ios text-emerald-400 font-extrabold text-2xl py-3 tracking-tight"
+              autoFocus
+            />
+
+            <div className="grid grid-cols-4 gap-2 mt-2">
+              {[
+                { label: '+500K', val: 500000 },
+                { label: '+1 Tr', val: 1000000 },
+                { label: '+2 Tr', val: 2000000 },
+                { label: '+5 Tr', val: 5000000 }
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => handleQuickAddAmount(item.val)}
+                  className="touch-btn py-1.5 rounded-xl bg-slate-800/80 border border-white/6 text-slate-300 text-xs font-semibold hover:bg-slate-700 cursor-pointer"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/25 text-rose-400 text-xs font-medium">
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="touch-btn py-3.5 px-5 rounded-2xl bg-slate-800 text-slate-300 font-bold text-sm border-none cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveBudget}
+              className="touch-btn flex-1 bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3.5 rounded-2xl text-sm font-black cursor-pointer shadow-lg shadow-emerald-500/25 border-none"
+            >
+              {editingBudget ? 'Cập nhật hạn mức' : 'Lưu hạn mức chi tiêu'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-28">
@@ -554,113 +662,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
           </>
         )}
       </div>
-
-      {/* 5. MODAL THÊM / CHỈNH SỬA HẠN MỨC */}
-      {isModalOpen && (
-        <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
-          onClick={() => setIsModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4 animate-slide-up shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center border-b border-white/8 pb-3">
-              <div className="flex items-center gap-2">
-                <Target size={18} className="text-sky-400" />
-                <span className="text-base font-bold text-slate-100">
-                  {editingBudget ? 'Chỉnh sửa hạn mức' : 'Thiết lập hạn mức mới'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border-none cursor-pointer touch-btn"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                Chọn danh mục hoặc nhóm áp dụng
-              </label>
-              <select
-                value={selectedCategoryId}
-                onChange={(e) => setSelectedCategoryId(e.target.value)}
-                className="input-ios"
-              >
-                <option value="">🎯 Hạn mức chung cho toàn bộ chi tiêu tháng</option>
-                {parentExpenseCategories.length > 0 && (
-                  <optgroup label="Nhóm Cha 50/30/20 (Tự động cộng gộp các mục con)">
-                    {parentExpenseCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        📁 {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="Hạng mục chi tiết">
-                  {childExpenseCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      • {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                Số tiền hạn mức (VNĐ)
-              </label>
-              <input
-                type="text"
-                placeholder="Ví dụ: 3.500.000"
-                value={amountStr}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, '');
-                  setAmountStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
-                }}
-                className="input-ios text-emerald-400 font-extrabold text-2xl py-3 tracking-tight"
-                autoFocus
-              />
-
-              <div className="grid grid-cols-4 gap-2 mt-2">
-                {[
-                  { label: '+500K', val: 500000 },
-                  { label: '+1 Tr', val: 1000000 },
-                  { label: '+2 Tr', val: 2000000 },
-                  { label: '+5 Tr', val: 5000000 }
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => handleQuickAddAmount(item.val)}
-                    className="touch-btn py-1.5 rounded-xl bg-slate-800/80 border border-white/6 text-slate-300 text-xs font-semibold hover:bg-slate-700 cursor-pointer"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {errorMsg && (
-              <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/25 text-rose-400 text-xs font-medium">
-                {errorMsg}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleSaveBudget}
-              className="touch-btn bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3.5 rounded-2xl text-base font-black cursor-pointer shadow-lg shadow-emerald-500/25 mt-1"
-            >
-              {editingBudget ? 'Cập nhật hạn mức' : 'Lưu hạn mức chi tiêu'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

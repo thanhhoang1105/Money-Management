@@ -18,20 +18,10 @@
 2. **Cơ chế Hoàn tác số dư (Atomic Revert Balance):**
    - Đảm bảo tính nhất quán tuyệt đối của số dư ví khi Sửa hoặc Xóa bất kỳ giao dịch nào trong 1 ACID Transaction.
 
-3. **Báo cáo tháng thông minh (MoM & Drill-down):**
-   - Biểu đồ tròn Donut phân tích cơ cấu chi tiêu.
-   - So sánh biến động chi tiêu **MoM (% tăng/giảm)** so với tháng liền kề.
-   - **Drill-down:** Bấm vào danh mục trên biểu đồ để xem toàn bộ danh sách giao dịch chi tiết trong tháng.
-
-4. **Quản lý Hạn mức (Budget):**
-   - Thanh tiến độ trực quan với 3 mức cảnh báo (Xanh, Vàng, Đỏ).
-   - Nút **"Sao chép hạn mức từ tháng trước"** sang tháng mới chỉ với 1 chạm.
-   - Gợi ý mức chi tiêu an toàn trung bình mỗi ngày còn lại trong tháng.
-
-5. **Ví & Sao lưu dữ liệu độc lập:**
-   - Quản lý Tiền mặt, Tài khoản ngân hàng, Ví điện tử MoMo...
-   - **Xuất báo cáo Excel (.xlsx)** chuẩn 2 sheet (Lịch sử giao dịch & Tổng hợp ví).
-   - **Sao lưu & Phục hồi JSON:** Sao lưu 100% dữ liệu an toàn lên iCloud Drive / Google Drive.
+3. **Đồng bộ Đám mây Supabase & Sao lưu JSON:**
+   - **Đồng bộ tức thì 2 chiều (Cloud Sync):** Sử dụng Supabase hoàn toàn miễn phí trọn đời, tự động hợp nhất dữ liệu (Smart Merge) giữa điện thoại và máy tính mà không bao giờ bị ghi đè hay mất giao dịch.
+   - **Sao lưu & Phục hồi JSON:** Xuất file backup JSON thủ công lưu trên máy hoặc iCloud Drive.
+   - **Xuất báo cáo Excel (.xlsx):** Xuất bảng tính đầy đủ phân tích thu chi.
 
 ---
 

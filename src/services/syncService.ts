@@ -97,7 +97,7 @@ export async function getLocalSyncPayload(): Promise<SyncDataPayload> {
       categories,
       transactions,
       budgets,
-      settings: settings.filter((s) => s.key !== 'google_access_token' && s.key !== DELETED_ENTITIES_SETTING_KEY),
+      settings: settings.filter((s) => s.key !== DELETED_ENTITIES_SETTING_KEY),
       recurringTransactions,
       events
     },
@@ -145,7 +145,7 @@ export function recalculateWalletBalances(
 
 /**
  * THUẬT TOÁN HỢP NHẤT DỮ LIỆU 2 CHIỀU (Two-Way Smart Merge)
- * Hợp nhất thông minh giữa dữ liệu máy hiện tại (local) và dữ liệu tải về từ Google Drive (remote)
+ * Hợp nhất thông minh giữa dữ liệu máy hiện tại (local) và dữ liệu tải về từ Cloud (remote)
  */
 export function mergeTwoWayData(
   localPayload: SyncDataPayload,
@@ -326,14 +326,17 @@ export function mergeTwoWayData(
   });
 
   // 7. HỢP NHẤT CÀI ĐẶT (Settings)
+  const obsoleteSettingKeys = new Set(['google_client_id', 'google_drive_user', 'google_access_token']);
   const mergedSettingsMap = new Map<string, Setting>();
   (remotePayload.data.settings || []).forEach((s) => {
-    if (s.key !== 'google_client_id' && s.key !== 'google_drive_user') {
+    if (!obsoleteSettingKeys.has(s.key)) {
       mergedSettingsMap.set(s.key, s);
     }
   });
   (localPayload.data.settings || []).forEach((s) => {
-    mergedSettingsMap.set(s.key, s);
+    if (!obsoleteSettingKeys.has(s.key)) {
+      mergedSettingsMap.set(s.key, s);
+    }
   });
 
   const mergedSettings = Array.from(mergedSettingsMap.values());

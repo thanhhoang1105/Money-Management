@@ -2,10 +2,8 @@
 
 /* ==========================================================================
    GLOBAL DESIGN TOKENS (TAILWIND CSS V4 THEME CONFIG)
-   Dùng trực tiếp bằng các utility class của Tailwind:
-   - Màu sắc: bg-app-bg, bg-app-card, text-income, text-expense, text-transfer, text-main, text-muted...
-   - Phông chữ: font-heading, font-body
-   - Bo góc & Độ bóng chuẩn iOS
+   Toàn bộ ứng dụng chỉ dùng DUY NHẤT 1 họ phông chữ chuẩn tiếng Việt:
+   'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
    ========================================================================== */
 @theme {
   /* Màu nền & Lớp giao diện (Layering) */
@@ -28,9 +26,11 @@
   --color-text-muted: #94a3b8;
   --color-text-sub: #64748b;
 
-  /* Họ phông chữ (Typography) */
-  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Họ phông chữ duy nhất đồng bộ toàn hệ thống (Unified Single Font) */
+  --font-sans: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Cỡ chữ số tiền chuyên dụng */
   --text-money-hero: 2.25rem;
@@ -38,12 +38,12 @@
   --text-money-item: 0.9375rem;
 
   /* Animation */
-  --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-fade-in: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-up: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ==========================================================================
-   CSS CUSTOM PROPERTIES CHO TƯƠNG THÍCH NGƯỢC
+   CSS CUSTOM PROPERTIES
    ========================================================================== */
 :root {
   --bg-primary: #090d16;
@@ -65,19 +65,21 @@
   --accent-amber: #f59e0b;
   --accent-purple: #8b5cf6;
 
-  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-app: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: var(--font-app);
+  --font-body: var(--font-app);
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ==========================================================================
-   BASE LAYER - Cấu hình Viewport, Nền & Reset không đè bẹp Tailwind classes
+   BASE LAYER - Đồng bộ 1 Font duy nhất trên mọi thẻ HTML
    ========================================================================== */
 @layer base {
   * {
     -webkit-tap-highlight-color: transparent;
+    font-family: var(--font-app);
   }
 
   html {
@@ -85,6 +87,7 @@
     min-height: 100vh;
     min-height: 100dvh;
     background-color: #090d16;
+    font-family: var(--font-app);
   }
 
   body {
@@ -93,7 +96,7 @@
     min-height: 100dvh;
     background-color: #090d16;
     color: #f8fafc;
-    font-family: var(--font-body);
+    font-family: var(--font-app);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-y: none;
@@ -108,6 +111,7 @@
     flex-direction: column;
     position: relative;
     background-color: #090d16;
+    font-family: var(--font-app);
   }
 
   /* Scrollable Container (Main app views) */
@@ -117,6 +121,17 @@
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  optgroup,
+  option,
+  pre,
+  code {
+    font-family: var(--font-app);
   }
 
   button {
@@ -133,7 +148,7 @@
   select,
   textarea {
     font-size: 16px !important;
-    font-family: inherit;
+    font-family: var(--font-app);
     user-select: text;
     -webkit-user-select: text;
   }
@@ -209,6 +224,7 @@
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 16px !important;
+    font-family: var(--font-app);
     outline: none;
     transition: border-color 0.15s ease;
   }
@@ -240,12 +256,11 @@
    UTILITIES LAYER
    ========================================================================== */
 @layer utilities {
-  .font-heading {
-    font-family: var(--font-heading);
-  }
-
-  .font-body {
-    font-family: var(--font-body);
+  .font-heading,
+  .font-body,
+  .font-mono,
+  .font-sans {
+    font-family: var(--font-app);
   }
 
   .selectable-text {
@@ -279,21 +294,24 @@
   border-radius: 999px;
 }
 
-/* Keyframe Animations */
+/* Keyframe Animations:
+   QUAN TRỌNG: Không giữ transform trên fadeIn/slideUp sau khi hoàn tất (dùng transform: none)
+   để tránh lỗi iOS Safari biến thẻ cha thành containing block làm nhảy vị trí position: fixed!
+*/
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
   from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  to { transform: none; }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

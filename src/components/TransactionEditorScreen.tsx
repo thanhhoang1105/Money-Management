@@ -28,13 +28,16 @@ import {
   CreditCard,
   FolderTree,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calculator,
   X,
   Star,
   UserCheck,
   Plane,
   EyeOff,
-  PlusCircle
+  PlusCircle,
+  Edit2
 } from 'lucide-react';
 
 const EMPTY_CATEGORIES: Category[] = [];
@@ -90,14 +93,18 @@ const DEFAULT_CONTACT_SUGGESTIONS = [
   'Anh/Chị/Em',
   'Bố mẹ',
   'Đối tác',
-  'Khách hàng',
-  'Ngân hàng'
+  'Khách hàng'
 ];
 
 const QUICK_TRANSFER_FEES = [0, 1100, 3300, 5500, 11000];
 
 function isDebtTransactionType(t: TransactionType): boolean {
   return t === 'LEND' || t === 'BORROW' || t === 'COLLECT_DEBT' || t === 'PAY_DEBT';
+}
+
+function isMobileViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth < 768;
 }
 
 export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = ({
@@ -108,6 +115,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const rawCategories = useLiveQuery(() => db.categories.toArray());
   const rawWallets = useLiveQuery(() => db.wallets.toArray());
   const lastWalletSetting = useLiveQuery(() => db.settings.get('last_used_wallet_id'));
+  const savedContactsSetting = useLiveQuery(() => db.settings.get('saved_debt_contacts'));
+  const hiddenContactsSetting = useLiveQuery(() => db.settings.get('hidden_debt_contacts'));
   const rawTransactions = useLiveQuery(() => db.transactions.toArray());
   const rawEvents = useLiveQuery(() => db.events.toArray());
 
@@ -131,31 +140,147 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [toastMsg, setToastMsg] = useState<string>('');
 
-  // Trạng thái hiển thị Popup Numpad đẩy từ dưới lên
+  // Trạng thái hiển thị Popup Numpad đẩy từ dưới lên (CHỈ DÙNG TRÊN ĐIỆN THOẠI < 768px)
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
 
-  // Mở màn hình Chọn & Quản lý Hạng mục
+  // Mở màn hình Chọn & Quản lý Hạng mục (dạng màn hình phẳng)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+
+  // Mở/đóng Dropdown các nghiệp vụ khác (Chuyển ví, Vay nợ, Điều chỉnh số dư)
+  const [isOtherTypesDropdownOpen, setIsOtherTypesDropdownOpen] = useState(false);
 
   // Quick tag thêm mới tại chỗ
   const [isAddingTag, setIsAddingTag] = useState<boolean>(false);
   const [newTagInput, setNewTagInput] = useState<string>('');
 
-  const prevIsOpenRef = useRef(false);
+  // Quản lý Người vay / Chủ nợ (Thêm, Sửa, Xóa trực tiếp)
+  const [isManagingContacts, setIsManagingContacts] = useState<boolean>(false);
+  const [editingContactOldName, setEditingContactOldName] = useState<string | null>(null);
+  const [editingContactNewName, setEditingContactNewName] = useState<string>('');
+  const [newContactInput, setNewContactInput] = useState<string>('');
 
-  // Danh sách tên người vay / chủ nợ đã từng giao dịch trong lịch sử
+  const prevIsOpenRef = useRef(false);
+  const desktopAmountInputRef = useRef<HTMLInputElement>(null);
+
+  // Danh sách tên người vay / chủ nợ (kết hợp lịch sử giao dịch + danh bạ lưu trữ)
   const existingContacts = useMemo(() => {
+    const hiddenSet = new Set<string>(
+      Array.isArray(hiddenContactsSetting?.value)
+        ? (hiddenContactsSetting.value as string[]).map((s) => s.toLowerCase())
+        : []
+    );
     const names = new Set<string>();
+    const customList = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : DEFAULT_CONTACT_SUGGESTIONS;
+
+    customList.forEach((c) => {
+      if (c.trim() && !hiddenSet.has(c.trim().toLowerCase())) {
+        names.add(c.trim());
+      }
+    });
+
     for (const tx of transactions) {
-      if (tx.contactName?.trim()) {
+      if (tx.contactName?.trim() && !hiddenSet.has(tx.contactName.trim().toLowerCase())) {
         names.add(tx.contactName.trim());
       }
     }
-    DEFAULT_CONTACT_SUGGESTIONS.forEach((c) => names.add(c));
     return Array.from(names);
-  }, [transactions]);
+  }, [transactions, savedContactsSetting?.value, hiddenContactsSetting?.value]);
 
-  // Thống kê số lần sử dụng của mỗi hạng mục trong lịch sử giao dịch
+  // Thêm người nợ mới vào danh sách gợi ý
+  const handleAddContactPerson = async () => {
+    const trimmed = newContactInput.trim();
+    if (!trimmed) return;
+    const currentList = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [...DEFAULT_CONTACT_SUGGESTIONS];
+    if (!currentList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      await db.settings.put({
+        key: 'saved_debt_contacts',
+        value: [trimmed, ...currentList]
+      });
+    }
+    const hiddenList = Array.isArray(hiddenContactsSetting?.value)
+      ? (hiddenContactsSetting.value as string[])
+      : [];
+    if (hiddenList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      await db.settings.put({
+        key: 'hidden_debt_contacts',
+        value: hiddenList.filter((c) => c.toLowerCase() !== trimmed.toLowerCase())
+      });
+    }
+    setContactName(trimmed);
+    setNewContactInput('');
+  };
+
+  // Đổi tên người nợ (cập nhật cả trong danh bạ và các giao dịch nợ đã ghi)
+  const handleSaveRenameContact = async (oldName: string) => {
+    const newName = editingContactNewName.trim();
+    if (!newName || newName === oldName) {
+      setEditingContactOldName(null);
+      return;
+    }
+    const currentList = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [...DEFAULT_CONTACT_SUGGESTIONS];
+    const updatedList = currentList.map((c) =>
+      c.toLowerCase() === oldName.toLowerCase() ? newName : c
+    );
+    if (!updatedList.some((c) => c.toLowerCase() === newName.toLowerCase())) {
+      updatedList.unshift(newName);
+    }
+    await db.settings.put({ key: 'saved_debt_contacts', value: updatedList });
+
+    // Cập nhật tên người nợ trong các giao dịch liên quan
+    const matchingTxs = transactions.filter(
+      (t) => t.contactName?.trim().toLowerCase() === oldName.toLowerCase()
+    );
+    if (matchingTxs.length > 0) {
+      const now = new Date().toISOString();
+      await db.transaction('rw', db.transactions, async () => {
+        for (const tx of matchingTxs) {
+          await db.transactions.update(tx.id, {
+            contactName: newName,
+            updatedAt: now
+          });
+        }
+      });
+    }
+
+    if (contactName.trim().toLowerCase() === oldName.toLowerCase()) {
+      setContactName(newName);
+    }
+    setEditingContactOldName(null);
+    setEditingContactNewName('');
+  };
+
+  // Xóa người nợ khỏi danh sách gợi ý
+  const handleDeleteContactPerson = async (personName: string) => {
+    const currentList = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [...DEFAULT_CONTACT_SUGGESTIONS];
+    await db.settings.put({
+      key: 'saved_debt_contacts',
+      value: currentList.filter((c) => c.toLowerCase() !== personName.toLowerCase())
+    });
+
+    const hiddenList = Array.isArray(hiddenContactsSetting?.value)
+      ? (hiddenContactsSetting.value as string[])
+      : [];
+    if (!hiddenList.some((c) => c.toLowerCase() === personName.toLowerCase())) {
+      await db.settings.put({
+        key: 'hidden_debt_contacts',
+        value: [...hiddenList, personName]
+      });
+    }
+
+    if (contactName.trim().toLowerCase() === personName.toLowerCase()) {
+      setContactName('');
+    }
+  };
+
+  // Thống kê số lần sử dụng của mỗi hạng mục
   const categoryUsageCountMap = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const tx of transactions) {
@@ -169,6 +294,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   // Lọc và sắp xếp các hạng mục hay dùng cho thanh chọn nhanh
   const frequentCategories = useMemo(() => {
     const available = categories.filter((c) => {
+      if (c.id === 'system_adjustment') return false;
       if (type === 'EXPENSE') return c.type === 'EXPENSE' && !!c.parentId;
       if (type === 'INCOME') return c.type === 'INCOME';
       if (isDebtTransactionType(type)) return c.type === 'DEBT';
@@ -225,7 +351,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       setToastMsg('');
       setIsAddingTag(false);
       setNewTagInput('');
-      setIsNumpadOpen(true);
+      // Chỉ bật Numpad Popup trên màn hình điện thoại (< 768px), trên Web PC bỏ luôn
+      setIsNumpadOpen(isMobileViewport());
 
       if (wallets.length > 0) {
         const lastId = lastWalletSetting?.value;
@@ -242,7 +369,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   }, [isOpen, editingTransaction, lastWalletSetting?.value, wallets]);
 
-  // Fallback ví nếu chưa kịp load
   useEffect(() => {
     if (isOpen && !editingTransaction && !selectedWalletId && wallets.length > 0) {
       const lastId = lastWalletSetting?.value;
@@ -255,7 +381,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   }, [isOpen, editingTransaction, selectedWalletId, wallets, lastWalletSetting?.value]);
 
-  // Tự động chọn hạng mục nợ tương ứng khi đổi sang tab Cho vay / Đi vay / Thu nợ / Trả nợ
   useEffect(() => {
     if (!isOpen || !isDebtTransactionType(type)) return;
     const targetNameMap: Record<string, string> = {
@@ -275,7 +400,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   }, [type, isOpen, categories]);
 
-  // Khi chuyển sang tab ADJUST (Điều chỉnh), tự động điền số dư hiện tại của ví
   useEffect(() => {
     if (type === 'ADJUST' && !editingTransaction && selectedWalletId) {
       const currentWallet = wallets.find((w) => w.id === selectedWalletId);
@@ -286,7 +410,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   }, [type, selectedWalletId, wallets, editingTransaction, amountStr]);
 
   const currentWallet = wallets.find((w) => w.id === selectedWalletId);
-
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const parentOfSelected = selectedCategory?.parentId
     ? categories.find((c) => c.id === selectedCategory.parentId)
@@ -295,7 +418,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const currentComputedAmount = evaluateExpression(amountStr);
   const hasOperator = /[+\-*/]/.test(amountStr);
   const activeTags = getNoteTags(note);
-
   const adjustDiff = currentWallet ? currentComputedAmount - currentWallet.balance : 0;
 
   const handleKeyPress = (key: string) => {
@@ -389,7 +511,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   };
 
-  // Lưu giao dịch (hỗ trợ cả "Lưu" và "Lưu & Ghi tiếp")
   const handleSave = async (keepOpenForNext = false) => {
     setErrorMsg('');
     const finalAmount = evaluateExpression(amountStr);
@@ -430,13 +551,17 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       }
     } else if (type === 'EXPENSE' || type === 'INCOME') {
       if (!selectedCategoryId) {
-        setErrorMsg(`Vui lòng chọn hạng mục cho khoản ${type === 'EXPENSE' ? 'chi tiêu' : 'thu nhập'}`);
+        setErrorMsg(
+          `Vui lòng chọn hạng mục cho khoản ${type === 'EXPENSE' ? 'chi tiêu' : 'thu nhập'}`
+        );
         return;
       }
     }
 
     const parsedTransferFee =
-      type === 'TRANSFER' ? Math.max(0, parseInt(transferFeeStr.replace(/\D/g, ''), 10) || 0) : undefined;
+      type === 'TRANSFER'
+        ? Math.max(0, parseInt(transferFeeStr.replace(/\D/g, ''), 10) || 0)
+        : undefined;
     const trimmedContact = isDebtTransactionType(type) ? contactName.trim() || undefined : undefined;
     const chosenEventId =
       type === 'EXPENSE' || type === 'INCOME' ? eventId || undefined : undefined;
@@ -477,12 +602,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         });
 
         if (keepOpenForNext) {
-          // Reset để ghi tiếp khoản tiếp theo cực nhanh
           setAmountStr('0');
           setNote('');
           setTransferFeeStr('0');
           setExcludeFromReport(false);
-          setIsNumpadOpen(true);
+          setIsNumpadOpen(isMobileViewport());
           setToastMsg(`Đã lưu ${formatVND(finalAmount)}! Mời nhập khoản tiếp theo...`);
           setTimeout(() => setToastMsg(''), 2500);
         } else {
@@ -496,7 +620,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   const handleDelete = async () => {
     if (!editingTransaction) return;
-    if (window.confirm('Bạn có chắc chắn muốn xóa giao dịch này? Số dư ví sẽ được tự động hoàn tác.')) {
+    if (
+      window.confirm(
+        'Bạn có chắc chắn muốn xóa giao dịch này? Số dư ví sẽ được tự động hoàn tác.'
+      )
+    ) {
       try {
         await deleteTransaction(editingTransaction.id);
         onClose();
@@ -506,277 +634,393 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   };
 
-  // Hỗ trợ bàn phím máy tính (Physical Keyboard) khi thao tác trên PC Desktop
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
-
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSave(false);
-        return;
-      }
-
-      if (e.key >= '0' && e.key <= '9') {
-        e.preventDefault();
-        handleKeyPress(e.key);
-      } else if (['+', '-', '*', '/'].includes(e.key)) {
-        e.preventDefault();
-        handleKeyPress(e.key);
-      } else if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleKeyPress('BACKSPACE');
-      } else if (e.key === 'c' || e.key === 'C') {
-        handleKeyPress('C');
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    isOpen,
-    amountStr,
-    selectedCategoryId,
-    selectedWalletId,
-    toWalletId,
-    transferFeeStr,
-    contactName,
-    eventId,
-    excludeFromReport,
-    date,
-    note,
-    type
-  ]);
-
   if (!isOpen) return null;
 
+  // Nếu đang mở màn hình Chọn & Quản lý Hạng mục -> hiển thị thẳng trên màn hình phẳng (không bật Popup)
+  if (isCategoryManagerOpen) {
+    return (
+      <CategoryManagerScreen
+        isOpen={true}
+        onClose={() => setIsCategoryManagerOpen(false)}
+        onSelectCategory={(cat) => {
+          setSelectedCategoryId(cat.id);
+          if (cat.type === 'EXPENSE') setType('EXPENSE');
+          if (cat.type === 'INCOME') setType('INCOME');
+          if (cat.type === 'DEBT') {
+            const lower = cat.name.trim().toLowerCase();
+            if (lower === 'đi vay') setType('BORROW');
+            else if (lower === 'thu nợ') setType('COLLECT_DEBT');
+            else if (lower === 'trả nợ') setType('PAY_DEBT');
+            else setType('LEND');
+          }
+        }}
+        initialTab={
+          type === 'INCOME' ? 'INCOME' : isDebtTransactionType(type) ? 'DEBT' : 'EXPENSE'
+        }
+      />
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-md flex flex-col md:items-center md:justify-center p-0 md:p-6 overflow-y-auto">
-      <div className="w-full md:max-w-xl bg-slate-900 border-0 md:border md:border-white/12 md:rounded-3xl shadow-2xl flex flex-col min-h-full md:min-h-0 md:max-h-[92vh] overflow-hidden animate-fade-in font-body text-slate-100">
-        {/* 1. Header Bar */}
-        <header className="sticky top-0 z-40 safe-padding-top px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="touch-btn flex items-center gap-1 text-sky-400 font-semibold text-sm cursor-pointer border-none bg-transparent py-1 px-1 -ml-1 hover:text-sky-300"
-          >
-            <ArrowLeft size={19} />
-            <span>Quay lại</span>
-          </button>
+    <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
+      {/* 1. Header Bar phẳng */}
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onClose}
+          className="touch-btn flex items-center gap-1 text-sky-400 font-semibold text-sm cursor-pointer border-none bg-transparent py-1 px-1 -ml-1 hover:text-sky-300"
+        >
+          <ArrowLeft size={19} />
+          <span>Quay lại</span>
+        </button>
 
-          <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-            {editingTransaction ? 'Chỉnh sửa giao dịch' : 'Ghi giao dịch'}
-          </h2>
+        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
+          {editingTransaction ? 'Chỉnh sửa giao dịch' : 'Ghi giao dịch'}
+        </h2>
 
-          <div className="flex items-center gap-1">
-            {editingTransaction && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="touch-btn text-rose-400 p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer border-none mr-1"
-                title="Xóa giao dịch"
-              >
-                <Trash2 size={17} />
-              </button>
-            )}
+        <div className="flex items-center gap-1">
+          {editingTransaction && (
             <button
               type="button"
-              onClick={onClose}
-              className="hidden md:flex text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
-              title="Đóng (Esc)"
+              onClick={handleDelete}
+              className="touch-btn text-rose-400 p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer border-none"
+              title="Xóa giao dịch"
             >
-              <X size={18} />
+              <Trash2 size={17} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Nội dung phẳng chính */}
+      <div className="flex flex-col">
+        {toastMsg && (
+          <div className="mx-4 mt-3 p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs text-center font-bold animate-fade-in">
+            {toastMsg}
+          </div>
+        )}
+
+        {/* THỨ TỰ 1: CHỌN LOẠI GIAO DỊCH (2 nút chính + Dropdown Nghiệp vụ khác chống tràn trên Mobile) */}
+        <div className="px-4 pt-3.5 pb-2 flex flex-col gap-2">
+          {/* Hàng 1: 2 nút chính Chi tiền & Thu tiền (mỗi nút 50% chiều ngang, cao bằng nhau tuyệt đối) */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setType('EXPENSE');
+                setIsOtherTypesDropdownOpen(false);
+              }}
+              className={`touch-btn h-11 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all ${
+                type === 'EXPENSE'
+                  ? 'bg-rose-500/25 border-rose-500 text-rose-300 shadow-md shadow-rose-500/20 ring-1 ring-rose-400'
+                  : 'bg-slate-800/80 border-white/8 text-slate-300 hover:text-white'
+              }`}
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+              <span>Chi tiền</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setType('INCOME');
+                setIsOtherTypesDropdownOpen(false);
+              }}
+              className={`touch-btn h-11 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all ${
+                type === 'INCOME'
+                  ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-400'
+                  : 'bg-slate-800/80 border-white/8 text-slate-300 hover:text-white'
+              }`}
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>Thu tiền</span>
             </button>
           </div>
-        </header>
 
-        {/* 2. Nội dung cuộn chính */}
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-24">
-          {toastMsg && (
-            <div className="mx-4 mt-3 p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs text-center font-bold animate-fade-in">
-              {toastMsg}
+          {/* Hàng 2: Thanh Dropdown chọn các nghiệp vụ khác (Chuyển ví, Sổ nợ, Điều chỉnh) - bấm để mở bên dưới */}
+          <div className="rounded-2xl border border-white/10 bg-slate-900/90 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setIsOtherTypesDropdownOpen(!isOtherTypesDropdownOpen)}
+              className={`w-full h-11 px-3.5 flex items-center justify-between gap-2 text-left cursor-pointer border-none transition-colors ${
+                type !== 'EXPENSE' && type !== 'INCOME'
+                  ? 'bg-sky-500/15 text-sky-300'
+                  : 'bg-transparent text-slate-300 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <ArrowRightLeft size={14} className="text-sky-400 shrink-0" />
+                <span className="text-xs font-bold truncate">
+                  {type === 'TRANSFER'
+                    ? 'Đang chọn: Chuyển tiền giữa các ví'
+                    : type === 'ADJUST'
+                    ? 'Đang chọn: Điều chỉnh số dư thực tế'
+                    : type === 'LEND'
+                    ? 'Đang chọn: Cho vay (Sổ nợ)'
+                    : type === 'BORROW'
+                    ? 'Đang chọn: Đi vay (Sổ nợ)'
+                    : type === 'COLLECT_DEBT'
+                    ? 'Đang chọn: Thu nợ (Sổ nợ)'
+                    : type === 'PAY_DEBT'
+                    ? 'Đang chọn: Trả nợ (Sổ nợ)'
+                    : 'Nghiệp vụ khác: Chuyển ví • Vay nợ • Điều chỉnh'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0 text-[11px] font-semibold text-sky-400">
+                <span>{isOtherTypesDropdownOpen ? 'Thu gọn' : 'Mở chọn'}</span>
+                {isOtherTypesDropdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </div>
+            </button>
+
+            {/* Danh sách xổ xuống bên dưới khi bấm vào Dropdown */}
+            {isOtherTypesDropdownOpen && (
+              <div className="p-2.5 border-t border-white/8 grid grid-cols-2 gap-2 bg-slate-950/60">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('TRANSFER');
+                    if (!toWalletId || toWalletId === selectedWalletId) {
+                      const alt = wallets.find((w) => w.id !== selectedWalletId);
+                      if (alt) setToWalletId(alt.id);
+                    }
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'TRANSFER'
+                      ? 'bg-sky-500/25 border-sky-400 text-sky-300 ring-1 ring-sky-400'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <ArrowRightLeft size={14} className="text-sky-400 shrink-0" />
+                  <span className="truncate">Chuyển ví</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('ADJUST');
+                    if (currentWallet && amountStr === '0') {
+                      setAmountStr(currentWallet.balance.toString());
+                    }
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'ADJUST'
+                      ? 'bg-slate-700 border-slate-400 text-white ring-1 ring-slate-300'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <SlidersHorizontal size={14} className="text-slate-300 shrink-0" />
+                  <span className="truncate">Điều chỉnh số dư</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('LEND');
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'LEND'
+                      ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-400'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <HandCoins size={14} className="text-amber-400 shrink-0" />
+                  <span className="truncate">Cho vay</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('BORROW');
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'BORROW'
+                      ? 'bg-purple-500/25 border-purple-500 text-purple-300 ring-1 ring-purple-400'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <Receipt size={14} className="text-purple-400 shrink-0" />
+                  <span className="truncate">Đi vay</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('COLLECT_DEBT');
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'COLLECT_DEBT'
+                      ? 'bg-teal-500/25 border-teal-500 text-teal-300 ring-1 ring-teal-400'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <PiggyBank size={14} className="text-teal-400 shrink-0" />
+                  <span className="truncate">Thu nợ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setType('PAY_DEBT');
+                    setIsOtherTypesDropdownOpen(false);
+                  }}
+                  className={`touch-btn h-11 px-3 rounded-xl border flex items-center gap-2 text-xs font-bold whitespace-nowrap cursor-pointer transition-all ${
+                    type === 'PAY_DEBT'
+                      ? 'bg-orange-500/25 border-orange-500 text-orange-300 ring-1 ring-orange-400'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  <CreditCard size={14} className="text-orange-400 shrink-0" />
+                  <span className="truncate">Trả nợ</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* THỨ TỰ 2: KHUNG SỐ TIỀN
+            - Trên Điện thoại (md:hidden): chạm để mở Popup bàn phím số NumpadBottomSheet.
+            - Trên Web PC (hidden md:flex): ô nhập trực tiếp bằng bàn phím máy tính, KHÔNG mở Popup bàn phím số.
+        */}
+        {/* 2A. Giao diện nhập tiền trên Điện thoại (< md) */}
+        <div
+          onClick={() => setIsNumpadOpen(true)}
+          className="md:hidden px-5 py-3 mx-4 rounded-2xl bg-slate-900/90 border border-white/8 text-center shadow-lg cursor-pointer hover:border-sky-400/40 active:scale-98 transition-all relative group"
+        >
+          <div className="absolute top-2.5 right-3 text-slate-500 group-hover:text-sky-400 flex items-center gap-1 text-[11px] font-semibold transition-colors">
+            <Calculator size={14} />
+            <span>Bàn phím số</span>
+          </div>
+
+          <div
+            className={`text-xs font-medium min-h-[20px] mb-1 ${
+              hasOperator ? 'text-sky-400 tracking-wider' : 'text-slate-400'
+            }`}
+          >
+            {hasOperator
+              ? amountStr
+                  .replace(/\*/g, ' × ')
+                  .replace(/\//g, ' ÷ ')
+                  .replace(/\+/g, ' + ')
+                  .replace(/-/g, ' - ')
+              : type === 'EXPENSE'
+              ? 'Số tiền chi'
+              : type === 'INCOME'
+              ? 'Số tiền thu'
+              : type === 'LEND'
+              ? 'Số tiền cho vay'
+              : type === 'BORROW'
+              ? 'Số tiền đi vay'
+              : type === 'COLLECT_DEBT'
+              ? 'Số tiền thu nợ'
+              : type === 'PAY_DEBT'
+              ? 'Số tiền trả nợ'
+              : type === 'TRANSFER'
+              ? 'Số tiền chuyển'
+              : 'Số dư thực tế mới'}
+          </div>
+
+          <div
+            className={`font-heading text-4xl font-black tracking-tight leading-none ${
+              type === 'EXPENSE' || type === 'PAY_DEBT'
+                ? 'text-rose-400'
+                : type === 'INCOME' || type === 'COLLECT_DEBT'
+                ? 'text-emerald-400'
+                : type === 'LEND'
+                ? 'text-amber-400'
+                : type === 'BORROW'
+                ? 'text-purple-400'
+                : type === 'TRANSFER'
+                ? 'text-sky-400'
+                : 'text-slate-200'
+            }`}
+          >
+            {formatVND(currentComputedAmount)}
+          </div>
+
+          {type === 'ADJUST' && currentWallet && (
+            <div className="mt-2 text-xs flex items-center justify-center gap-1.5 font-medium">
+              <span className="text-slate-400">Hiện tại: {formatVND(currentWallet.balance)}</span>
+              <span>•</span>
+              <span
+                className={
+                  adjustDiff > 0
+                    ? 'text-emerald-400 font-bold'
+                    : adjustDiff < 0
+                    ? 'text-rose-400 font-bold'
+                    : 'text-slate-400'
+                }
+              >
+                Chênh lệch: {adjustDiff > 0 ? `+${formatVND(adjustDiff)}` : formatVND(adjustDiff)}
+              </span>
             </div>
           )}
 
-          {/* THỨ TỰ 1: CHỌN LOẠI GIAO DỊCH (HỖ TRỢ ĐẦY ĐỦ CHUẨN MISA: CHI, THU, CHUYỂN VÍ, ĐIỀU CHỈNH & 4 NGHIỆP VỤ SỔ NỢ) */}
-          <div className="px-4 pt-3.5 pb-2 flex flex-col gap-1.5">
-            <div className="grid grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setType('EXPENSE')}
-                className={`touch-btn py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
-                  type === 'EXPENSE'
-                    ? 'bg-rose-500/25 border-rose-500 text-rose-300 shadow-md shadow-rose-500/20 ring-1 ring-rose-400'
-                    : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                <span>Chi tiền</span>
-              </button>
+          <div className="mt-2 text-[11px] text-sky-400/80 font-medium flex items-center justify-center gap-1">
+            <span>Chạm vào đây để mở bàn phím số</span>
+          </div>
+        </div>
 
-              <button
-                type="button"
-                onClick={() => setType('INCOME')}
-                className={`touch-btn py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
-                  type === 'INCOME'
-                    ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-400'
-                    : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                <span>Thu tiền</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setType('TRANSFER');
-                  if (!toWalletId || toWalletId === selectedWalletId) {
-                    const alt = wallets.find((w) => w.id !== selectedWalletId);
-                    if (alt) setToWalletId(alt.id);
-                  }
-                }}
-                className={`touch-btn py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
-                  type === 'TRANSFER'
-                    ? 'bg-sky-500/25 border-sky-500 text-sky-300 shadow-md shadow-sky-500/20 ring-1 ring-sky-400'
-                    : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <ArrowRightLeft size={13} className="text-sky-400 shrink-0" />
-                <span>Chuyển ví</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setType('ADJUST');
-                  if (currentWallet && amountStr === '0') {
-                    setAmountStr(currentWallet.balance.toString());
-                  }
-                }}
-                className={`touch-btn py-2 px-2 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
-                  type === 'ADJUST'
-                    ? 'bg-slate-700/80 border-slate-400 text-slate-200 shadow-md ring-1 ring-slate-300'
-                    : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <SlidersHorizontal size={13} className="text-slate-300 shrink-0" />
-                <span>Điều chỉnh</span>
-              </button>
-            </div>
-
-            {/* Hàng 2: 4 Nghiệp vụ Sổ Nợ (Cho vay, Đi vay, Thu nợ, Trả nợ) */}
-            <div className="grid grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setType('LEND')}
-                className={`touch-btn py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
-                  type === 'LEND'
-                    ? 'bg-amber-500/25 border-amber-500 text-amber-300 shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
-                    : 'bg-slate-800/60 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <HandCoins size={13} className="text-amber-400 shrink-0" />
-                <span>Cho vay</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setType('BORROW')}
-                className={`touch-btn py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
-                  type === 'BORROW'
-                    ? 'bg-purple-500/25 border-purple-500 text-purple-300 shadow-md shadow-purple-500/20 ring-1 ring-purple-400'
-                    : 'bg-slate-800/60 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <Receipt size={13} className="text-purple-400 shrink-0" />
-                <span>Đi vay</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setType('COLLECT_DEBT')}
-                className={`touch-btn py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
-                  type === 'COLLECT_DEBT'
-                    ? 'bg-teal-500/25 border-teal-500 text-teal-300 shadow-md shadow-teal-500/20 ring-1 ring-teal-400'
-                    : 'bg-slate-800/60 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <PiggyBank size={13} className="text-teal-400 shrink-0" />
-                <span>Thu nợ</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setType('PAY_DEBT')}
-                className={`touch-btn py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
-                  type === 'PAY_DEBT'
-                    ? 'bg-orange-500/25 border-orange-500 text-orange-300 shadow-md shadow-orange-500/20 ring-1 ring-orange-400'
-                    : 'bg-slate-800/60 border-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                <CreditCard size={13} className="text-orange-400 shrink-0" />
-                <span>Trả nợ</span>
-              </button>
-            </div>
+        {/* 2B. Giao diện nhập tiền phẳng trực tiếp trên Web PC (hidden md:flex) - BỎ HOÀN TOÀN BÀN PHÍM POPUP */}
+        <div className="hidden md:flex flex-col gap-2 px-5 py-4 mx-4 rounded-2xl bg-slate-900/95 border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              {type === 'EXPENSE'
+                ? 'Nhập số tiền chi (VNĐ hoặc phép tính + - * /)'
+                : type === 'INCOME'
+                ? 'Nhập số tiền thu (VNĐ hoặc phép tính + - * /)'
+                : type === 'LEND'
+                ? 'Nhập số tiền cho vay (VNĐ)'
+                : type === 'BORROW'
+                ? 'Nhập số tiền đi vay (VNĐ)'
+                : type === 'COLLECT_DEBT'
+                ? 'Nhập số tiền thu nợ (VNĐ)'
+                : type === 'PAY_DEBT'
+                ? 'Nhập số tiền trả nợ (VNĐ)'
+                : type === 'TRANSFER'
+                ? 'Nhập số tiền chuyển ví (VNĐ)'
+                : 'Nhập số dư thực tế mới (VNĐ)'}
+            </label>
+            <span className="text-xs font-extrabold text-sky-400">
+              Thành tiền: {formatVND(currentComputedAmount)}
+            </span>
           </div>
 
-          {/* THỨ TỰ 2: SỐ TIỀN & BIỂU THỨC TOÁN HỌC */}
-          <div
-            onClick={() => setIsNumpadOpen(true)}
-            className="px-5 py-3 mx-4 rounded-2xl bg-slate-900/90 border border-white/8 text-center shadow-lg cursor-pointer hover:border-sky-400/40 active:scale-98 transition-all relative group"
-          >
-            <div className="absolute top-2.5 right-3 text-slate-500 group-hover:text-sky-400 flex items-center gap-1 text-[11px] font-semibold transition-colors">
-              <Calculator size={14} />
-              <span>Đổi số tiền</span>
-            </div>
-
-            <div
-              className={`text-xs font-medium min-h-[20px] mb-1 ${
-                hasOperator ? 'text-sky-400 tracking-wider font-mono' : 'text-slate-400'
-              }`}
-            >
-              {hasOperator
-                ? amountStr
-                    .replace(/\*/g, ' × ')
-                    .replace(/\//g, ' ÷ ')
-                    .replace(/\+/g, ' + ')
-                    .replace(/-/g, ' - ')
-                : type === 'EXPENSE'
-                ? 'Số tiền chi'
-                : type === 'INCOME'
-                ? 'Số tiền thu'
-                : type === 'LEND'
-                ? 'Số tiền cho vay'
-                : type === 'BORROW'
-                ? 'Số tiền đi vay'
-                : type === 'COLLECT_DEBT'
-                ? 'Số tiền thu nợ'
-                : type === 'PAY_DEBT'
-                ? 'Số tiền trả nợ'
-                : type === 'TRANSFER'
-                ? 'Số tiền chuyển'
-                : 'Số dư thực tế mới'}
-            </div>
-
-            <div
-              className={`font-heading text-4xl font-black tracking-tight leading-none ${
+          <div className="flex items-center gap-2">
+            <input
+              ref={desktopAmountInputRef}
+              type="text"
+              value={
+                hasOperator
+                  ? amountStr
+                  : amountStr === '0'
+                  ? ''
+                  : new Intl.NumberFormat('vi-VN').format(Number(amountStr) || 0)
+              }
+              onChange={(e) => {
+                setErrorMsg('');
+                const raw = e.target.value;
+                if (/[+\-*/]/.test(raw)) {
+                  const cleaned = raw.replace(/[^0-9+\-*/]/g, '');
+                  setAmountStr(cleaned || '0');
+                } else {
+                  const digits = raw.replace(/\D/g, '');
+                  setAmountStr(digits || '0');
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSave(false);
+                }
+              }}
+              placeholder="Gõ số tiền trực tiếp từ bàn phím PC (VD: 50.000 hoặc 35000+15000)..."
+              className={`input-ios flex-1 bg-slate-800/90 border border-white/15 focus:border-sky-400 rounded-xl px-4 py-3 font-heading text-2xl font-black tracking-tight outline-none ${
                 type === 'EXPENSE' || type === 'PAY_DEBT'
                   ? 'text-rose-400'
                   : type === 'INCOME' || type === 'COLLECT_DEBT'
@@ -785,304 +1029,313 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   ? 'text-amber-400'
                   : type === 'BORROW'
                   ? 'text-purple-400'
-                  : type === 'TRANSFER'
-                  ? 'text-sky-400'
-                  : 'text-slate-200'
+                  : 'text-sky-400'
               }`}
+              autoFocus
+            />
+
+            <button
+              type="button"
+              onClick={() => handleKeyPress('000')}
+              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-sky-400 font-extrabold text-sm cursor-pointer shrink-0"
+              title="Thêm 3 số 0 (.000)"
             >
-              {formatVND(currentComputedAmount)}
+              +000
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAmountStr('0')}
+              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-400 hover:text-rose-400 font-bold text-sm cursor-pointer shrink-0"
+              title="Xóa số tiền"
+            >
+              Xóa
+            </button>
+          </div>
+
+          {type === 'ADJUST' && currentWallet && (
+            <div className="text-xs flex items-center gap-2 font-medium pt-1">
+              <span className="text-slate-400">Hiện tại: {formatVND(currentWallet.balance)}</span>
+              <span>•</span>
+              <span
+                className={
+                  adjustDiff > 0
+                    ? 'text-emerald-400 font-bold'
+                    : adjustDiff < 0
+                    ? 'text-rose-400 font-bold'
+                    : 'text-slate-400'
+                }
+              >
+                Chênh lệch: {adjustDiff > 0 ? `+${formatVND(adjustDiff)}` : formatVND(adjustDiff)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {errorMsg && (
+          <div className="mx-4 mt-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs text-center font-medium">
+            {errorMsg}
+          </div>
+        )}
+
+        {/* THỨ TỰ 3: CHỌN & QUẢN LÝ HẠNG MỤC */}
+        {type !== 'TRANSFER' && type !== 'ADJUST' && (
+          <div className="px-4 pt-3.5 flex flex-col gap-2">
+            <div className="flex items-center justify-between px-1">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Hạng mục
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setIsCategoryManagerOpen(true)}
+                className="touch-btn text-xs font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer bg-sky-500/10 px-2.5 py-1 rounded-xl border border-sky-400/20"
+              >
+                <FolderTree size={14} />
+                <span>Tất cả / Thêm Sửa Xóa</span>
+                <ChevronRight size={14} />
+              </button>
             </div>
 
-            {type === 'ADJUST' && currentWallet && (
-              <div className="mt-2 text-xs flex items-center justify-center gap-1.5 font-medium">
-                <span className="text-slate-400">Hiện tại: {formatVND(currentWallet.balance)}</span>
-                <span>•</span>
-                <span
-                  className={
-                    adjustDiff > 0
-                      ? 'text-emerald-400 font-bold'
-                      : adjustDiff < 0
-                      ? 'text-rose-400 font-bold'
-                      : 'text-slate-400'
-                  }
+            <div
+              onClick={() => setIsCategoryManagerOpen(true)}
+              className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                selectedCategory
+                  ? 'bg-slate-900 border-white/10 shadow-md'
+                  : 'bg-slate-900/60 border-dashed border-white/15 hover:border-sky-400/50'
+              }`}
+            >
+              {selectedCategory ? (
+                <div className="flex items-center gap-3 truncate">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+                    style={{ backgroundColor: selectedCategory.color }}
+                  >
+                    <CategoryIcon name={selectedCategory.icon || 'Tag'} size={18} color="#ffffff" />
+                  </div>
+                  <div className="truncate text-left">
+                    {parentOfSelected && (
+                      <div className="text-[10px] text-slate-400 font-medium truncate">
+                        {parentOfSelected.name}
+                      </div>
+                    )}
+                    <div className="text-sm font-bold text-white truncate">
+                      {selectedCategory.name}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 text-slate-400 text-xs py-0.5">
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/5 flex items-center justify-center text-slate-400">
+                    <Plus size={16} />
+                  </div>
+                  <span>Chạm để chọn hoặc thêm/sửa/xóa hạng mục...</span>
+                </div>
+              )}
+
+              {selectedCategory && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCategoryId('');
+                  }}
+                  className="touch-btn p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 border-none cursor-pointer"
+                  title="Bỏ chọn"
                 >
-                  Chênh lệch: {adjustDiff > 0 ? `+${formatVND(adjustDiff)}` : formatVND(adjustDiff)}
-                </span>
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            {/* Danh mục hay dùng & gắn sao */}
+            {frequentCategories.length > 0 && (
+              <div className="flex flex-col gap-1.5 pt-0.5">
+                <div className="flex items-center justify-between px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <span className="flex items-center gap-1 text-amber-400/90">
+                    <Star size={11} className="text-amber-400 fill-amber-400" />
+                    <span>Chọn nhanh hạng mục</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-rows-2 grid-flow-col auto-cols-max gap-1.5 overflow-x-auto pb-1 scrollbar-none max-h-[76px]">
+                  {frequentCategories.map((cat) => {
+                    const isSelected = cat.id === selectedCategoryId;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setSelectedCategoryId(cat.id)}
+                        className={`touch-btn h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-bold ring-1 ring-sky-400 shadow-sm'
+                            : 'border-white/6 bg-slate-900/90 text-slate-300 hover:text-white hover:border-white/20'
+                        }`}
+                      >
+                        {cat.isStarred ? (
+                          <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />
+                        ) : (
+                          <div
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                        )}
+                        <span>{cat.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            <div className="mt-2 text-[11px] text-sky-400/80 font-medium flex items-center justify-center gap-1">
-              <span>Chạm vào đây để mở bàn phím tính toán</span>
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="mx-4 mt-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs text-center font-medium">
-              {errorMsg}
-            </div>
-          )}
-
-          {/* THỨ TỰ 3: CHỌN HẠNG MỤC */}
-          {type !== 'TRANSFER' && type !== 'ADJUST' && (
-            <div className="px-4 pt-3.5 flex flex-col gap-2">
-              <div className="flex items-center justify-between px-1">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Hạng mục
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryManagerOpen(true)}
-                  className="touch-btn text-xs font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer bg-sky-500/10 px-2.5 py-1 rounded-xl border border-sky-400/20"
-                >
-                  <FolderTree size={14} />
-                  <span>Tất cả</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-
-              <div
-                onClick={() => setIsCategoryManagerOpen(true)}
-                className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                  selectedCategory
-                    ? 'bg-slate-900 border-white/10 shadow-md'
-                    : 'bg-slate-900/60 border-dashed border-white/15 hover:border-sky-400/50'
-                }`}
-              >
-                {selectedCategory ? (
-                  <div className="flex items-center gap-3 truncate">
-                    <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                      style={{ backgroundColor: selectedCategory.color }}
-                    >
-                      <CategoryIcon name={selectedCategory.icon || 'Tag'} size={18} color="#ffffff" />
-                    </div>
-                    <div className="truncate text-left">
-                      {parentOfSelected && (
-                        <div className="text-[10px] text-slate-400 font-medium truncate">
-                          {parentOfSelected.name}
-                        </div>
-                      )}
-                      <div className="text-sm font-bold text-white truncate">
-                        {selectedCategory.name}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5 text-slate-500 text-xs py-0.5">
-                    <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/5 flex items-center justify-center text-slate-400">
-                      <Plus size={16} />
-                    </div>
-                    <span>Chạm để chọn hạng mục (hoặc chọn nhanh bên dưới)...</span>
-                  </div>
-                )}
-
-                {selectedCategory && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCategoryId('');
-                    }}
-                    className="touch-btn p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 border-none cursor-pointer"
-                    title="Bỏ chọn"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </div>
-
-              {/* Danh mục hay dùng & gắn sao */}
-              {frequentCategories.length > 0 && (
-                <div className="flex flex-col gap-1.5 pt-0.5">
-                  <div className="flex items-center justify-between px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    <span className="flex items-center gap-1 text-amber-400/90">
-                      <Star size={11} className="text-amber-400 fill-amber-400" />
-                      <span>Hay dùng & Gắn sao</span>
+            {/* Quick tags của danh mục đã chọn */}
+            {selectedCategory && (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                  <span>Gợi ý ghi chú ({selectedCategory.name})</span>
+                  {activeTags.length > 0 && (
+                    <span className="text-sky-400 lowercase font-normal">
+                      đã chọn {activeTags.length} tag
                     </span>
-                    <span className="text-[10px] text-slate-500 font-normal lowercase">
-                      vuốt ngang xem thêm
-                    </span>
-                  </div>
-
-                  <div className="grid grid-rows-2 grid-flow-col auto-cols-max gap-1.5 overflow-x-auto pb-1 scrollbar-none max-h-[76px]">
-                    {frequentCategories.map((cat) => {
-                      const isSelected = cat.id === selectedCategoryId;
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => setSelectedCategoryId(cat.id)}
-                          className={`touch-btn h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-bold ring-1 ring-sky-400 shadow-sm'
-                              : 'border-white/6 bg-slate-900/90 text-slate-300 hover:text-white hover:border-white/20'
-                          }`}
-                        >
-                          {cat.isStarred ? (
-                            <Star size={12} className="text-amber-400 fill-amber-400 shrink-0" />
-                          ) : (
-                            <div
-                              className="w-2 h-2 rounded-full shrink-0"
-                              style={{ backgroundColor: cat.color }}
-                            />
-                          )}
-                          <span>{cat.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  )}
                 </div>
-              )}
+                <div className="flex gap-1.5 overflow-x-auto items-center pb-1 scrollbar-none">
+                  {(selectedCategory.quickTags || []).map((tag) => {
+                    const isActive = activeTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleToggleTag(tag)}
+                        className={`touch-btn px-3 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
+                          isActive
+                            ? 'bg-sky-500 text-white border border-sky-400 font-bold'
+                            : 'bg-slate-800 text-slate-400 border border-white/8 hover:text-slate-200'
+                        }`}
+                      >
+                        {isActive && <Check size={12} strokeWidth={3} />}
+                        <span>{tag}</span>
+                      </button>
+                    );
+                  })}
 
-              {/* Quick tags của danh mục đã chọn */}
-              {selectedCategory && (
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                    <span>Gợi ý ghi chú ({selectedCategory.name})</span>
-                    {activeTags.length > 0 && (
-                      <span className="text-sky-400 lowercase font-normal">
-                        đã chọn {activeTags.length} tag
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-1.5 overflow-x-auto items-center pb-1 scrollbar-none">
-                    {(selectedCategory.quickTags || []).map((tag) => {
-                      const isActive = activeTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => handleToggleTag(tag)}
-                          className={`touch-btn px-3 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
-                            isActive
-                              ? 'bg-sky-500 text-white border border-sky-400 font-bold'
-                              : 'bg-slate-800 text-slate-400 border border-white/8 hover:text-slate-200'
-                          }`}
-                        >
-                          {isActive && <Check size={12} strokeWidth={3} />}
-                          <span>{tag}</span>
-                        </button>
-                      );
-                    })}
-
-                    {isAddingTag ? (
-                      <div className="flex items-center gap-1 shrink-0 bg-slate-800 rounded-full px-2 py-0.5 border border-sky-400">
-                        <input
-                          type="text"
-                          value={newTagInput}
-                          onChange={(e) => setNewTagInput(e.target.value)}
-                          placeholder="Tag mới..."
-                          className="bg-transparent border-none text-white text-xs outline-none w-20 py-0.5"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveNewTag();
-                            if (e.key === 'Escape') setIsAddingTag(false);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveNewTag}
-                          className="text-sky-400 p-1 hover:text-sky-300"
-                        >
-                          <Check size={13} strokeWidth={3} />
-                        </button>
-                      </div>
-                    ) : (
+                  {isAddingTag ? (
+                    <div className="flex items-center gap-1 shrink-0 bg-slate-800 rounded-full px-2 py-0.5 border border-sky-400">
+                      <input
+                        type="text"
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        placeholder="Tag mới..."
+                        className="bg-transparent border-none text-white text-xs outline-none w-20 py-0.5"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveNewTag();
+                          if (e.key === 'Escape') setIsAddingTag(false);
+                        }}
+                      />
                       <button
                         type="button"
-                        onClick={() => setIsAddingTag(true)}
-                        className="touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-dashed border-white/20 flex items-center gap-1 cursor-pointer"
+                        onClick={handleSaveNewTag}
+                        className="text-sky-400 p-1 hover:text-sky-300"
                       >
-                        <Plus size={12} />
-                        <span>Thêm</span>
+                        <Check size={13} strokeWidth={3} />
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingTag(true)}
+                      className="touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-dashed border-white/20 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      <span>Thêm</span>
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* THỨ TỰ 4: FORMS VÍ TIỀN, PHÍ CHUYỂN KHOẢN, NGƯỜI VAY/CHỦ NỢ, SỰ KIỆN & GHI CHÚ */}
-          <div className="px-4 pt-3 flex flex-col gap-2.5">
-            {type === 'TRANSFER' ? (
-              <div className="flex flex-col gap-2.5">
-                <div className="grid grid-cols-2 gap-2">
-                  <WalletSelect
-                    wallets={wallets}
-                    selectedWalletId={selectedWalletId}
-                    onSelect={setSelectedWalletId}
-                    label="Từ ví (Gửi)"
-                    excludeWalletId={toWalletId}
-                  />
-
-                  <WalletSelect
-                    wallets={wallets}
-                    selectedWalletId={toWalletId}
-                    onSelect={setToWalletId}
-                    label="Đến ví (Nhận)"
-                    excludeWalletId={selectedWalletId}
-                  />
-                </div>
-
-                {/* Phí chuyển khoản (Chuẩn MISA FR-T-09) */}
-                <div className="p-3 rounded-2xl bg-slate-900 border border-white/8 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Phí chuyển khoản (Nếu có)
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={transferFeeStr === '0' ? '' : transferFeeStr}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        setTransferFeeStr(val || '0');
-                      }}
-                      placeholder="0 ₫ (Miễn phí)"
-                      className="input-ios w-36 text-right py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs font-bold text-sky-300"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                    {QUICK_TRANSFER_FEES.map((fee) => {
-                      const active = parseInt(transferFeeStr || '0', 10) === fee;
-                      return (
-                        <button
-                          key={fee}
-                          type="button"
-                          onClick={() => setTransferFeeStr(fee.toString())}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition-all whitespace-nowrap ${
-                            active
-                              ? 'bg-sky-500/20 border-sky-400 text-sky-300'
-                              : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          {fee === 0 ? 'Miễn phí' : formatVND(fee)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <DatePicker value={date} onChange={setDate} label="Ngày chuyển tiền" />
               </div>
-            ) : (
+            )}
+          </div>
+        )}
+
+        {/* THỨ TỰ 4: FORMS VÍ TIỀN, NGƯỜI VAY/CHỦ NỢ (CÓ THÊM/SỬA/XÓA), NGÀY & GHI CHÚ */}
+        <div className="px-4 pt-3 flex flex-col gap-2.5">
+          {type === 'TRANSFER' ? (
+            <div className="flex flex-col gap-2.5">
               <div className="grid grid-cols-2 gap-2">
                 <WalletSelect
                   wallets={wallets}
                   selectedWalletId={selectedWalletId}
                   onSelect={setSelectedWalletId}
-                  label={type === 'ADJUST' ? 'Ví cần chỉnh' : 'Tài khoản / Ví'}
+                  label="Từ ví (Gửi)"
+                  excludeWalletId={toWalletId}
                 />
 
-                <DatePicker value={date} onChange={setDate} label="Ngày ghi chép" />
+                <WalletSelect
+                  wallets={wallets}
+                  selectedWalletId={toWalletId}
+                  onSelect={setToWalletId}
+                  label="Đến ví (Nhận)"
+                  excludeWalletId={selectedWalletId}
+                />
               </div>
-            )}
 
-            {/* Ô Nhập Người Vay / Chủ Nợ khi thuộc nhóm Vay Nợ (Chuẩn MISA Sổ Nợ) */}
-            {isDebtTransactionType(type) && (
-              <div className="p-3 rounded-2xl bg-slate-900 border border-amber-500/25 flex flex-col gap-2">
+              <div className="p-3 rounded-2xl bg-slate-900 border border-white/8 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Phí chuyển khoản (Nếu có)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={transferFeeStr === '0' ? '' : transferFeeStr}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setTransferFeeStr(val || '0');
+                    }}
+                    placeholder="0 ₫ (Miễn phí)"
+                    className="input-ios w-36 text-right py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs font-bold text-sky-300"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                  {QUICK_TRANSFER_FEES.map((fee) => {
+                    const active = parseInt(transferFeeStr || '0', 10) === fee;
+                    return (
+                      <button
+                        key={fee}
+                        type="button"
+                        onClick={() => setTransferFeeStr(fee.toString())}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border transition-all whitespace-nowrap ${
+                          active
+                            ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                            : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {fee === 0 ? 'Miễn phí' : formatVND(fee)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <DatePicker value={date} onChange={setDate} label="Ngày chuyển tiền" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <WalletSelect
+                wallets={wallets}
+                selectedWalletId={selectedWalletId}
+                onSelect={setSelectedWalletId}
+                label={type === 'ADJUST' ? 'Ví cần chỉnh' : 'Tài khoản / Ví'}
+              />
+
+              <DatePicker value={date} onChange={setDate} label="Ngày ghi chép" />
+            </div>
+          )}
+
+          {/* Ô Nhập & Quản lý Người Vay / Chủ Nợ (Thêm / Sửa / Xóa trực tiếp) */}
+          {isDebtTransactionType(type) && (
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-amber-500/25 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                   <UserCheck size={14} />
                   <span>
@@ -1091,201 +1344,285 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                       : 'Người cho vay (Chủ nợ)'}
                   </span>
                 </label>
-                <input
-                  type="text"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  placeholder="Nhập tên người giao dịch (VD: Anh Nam, Chị Lan...)"
-                  className="input-ios w-full bg-slate-800/90 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                />
-                {existingContacts.length > 0 && (
-                  <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+
+                <button
+                  type="button"
+                  onClick={() => setIsManagingContacts(!isManagingContacts)}
+                  className="text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 px-2.5 py-1 rounded-lg border border-sky-400/20 cursor-pointer"
+                >
+                  {isManagingContacts ? 'Đóng quản lý' : 'Thêm / Sửa / Xóa người nợ'}
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Nhập tên người giao dịch (VD: Anh Nam, Chị Lan...)"
+                className="input-ios w-full bg-slate-800/90 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500"
+              />
+
+              {/* Chế độ chọn nhanh người nợ */}
+              {!isManagingContacts && existingContacts.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  {existingContacts.map((person) => {
+                    const isSelected = contactName.trim().toLowerCase() === person.toLowerCase();
+                    return (
+                      <button
+                        key={person}
+                        type="button"
+                        onClick={() => setContactName(person)}
+                        className={`touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 font-bold border border-amber-300'
+                            : 'bg-slate-800 text-slate-300 border border-white/8 hover:text-white'
+                        }`}
+                      >
+                        {isSelected && <Check size={11} strokeWidth={3} />}
+                        <span>{person}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Chế độ Quản lý phẳng: Thêm / Sửa tên / Xóa người nợ */}
+              {isManagingContacts && (
+                <div className="p-3 rounded-xl bg-slate-800/70 border border-white/8 flex flex-col gap-2.5 animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newContactInput}
+                      onChange={(e) => setNewContactInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddContactPerson();
+                        }
+                      }}
+                      placeholder="Thêm người vay / chủ nợ mới..."
+                      className="input-ios flex-1 bg-slate-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddContactPerson}
+                      className="px-3 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs border-none cursor-pointer shrink-0"
+                    >
+                      + Thêm
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
                     {existingContacts.map((person) => {
-                      const isSelected = contactName.trim().toLowerCase() === person.toLowerCase();
+                      const isRenaming = editingContactOldName === person;
                       return (
-                        <button
+                        <div
                           key={person}
-                          type="button"
-                          onClick={() => setContactName(person)}
-                          className={`touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
-                            isSelected
-                              ? 'bg-amber-500 text-slate-950 font-bold border border-amber-300'
-                              : 'bg-slate-800 text-slate-300 border border-white/8 hover:text-white'
-                          }`}
+                          className="flex items-center justify-between p-2 rounded-xl bg-slate-900/90 border border-white/5"
                         >
-                          {isSelected && <Check size={11} strokeWidth={3} />}
-                          <span>{person}</span>
-                        </button>
+                          {isRenaming ? (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <input
+                                type="text"
+                                value={editingContactNewName}
+                                onChange={(e) => setEditingContactNewName(e.target.value)}
+                                className="input-ios flex-1 bg-slate-800 border border-sky-400 rounded-lg px-2.5 py-1 text-xs text-white"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveRenameContact(person)}
+                                className="px-2.5 py-1 rounded-lg bg-sky-500 text-slate-950 font-bold text-xs border-none cursor-pointer"
+                              >
+                                Lưu
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingContactOldName(null)}
+                                className="px-2 py-1 rounded-lg bg-slate-800 text-slate-400 text-xs border-none cursor-pointer"
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setContactName(person)}
+                                className="text-xs font-semibold text-slate-200 hover:text-amber-300 bg-transparent border-none cursor-pointer text-left flex-1 truncate"
+                              >
+                                {person}
+                              </button>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingContactOldName(person);
+                                    setEditingContactNewName(person);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-sky-400 border-none cursor-pointer"
+                                  title="Sửa tên người nợ"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteContactPerson(person)}
+                                  className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400 border-none cursor-pointer"
+                                  title="Xóa khỏi danh sách"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
+          )}
 
-            {/* Ô Ghi chú chi tiết */}
-            {type !== 'ADJUST' && (
-              <div>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={
-                    isDebtTransactionType(type)
-                      ? 'Ghi chú lý do vay/trả, hạn trả...'
-                      : type === 'TRANSFER'
-                      ? 'Ghi chú chuyển tiền...'
-                      : 'Ghi chú chi tiết giao dịch (tùy chọn)...'
-                  }
-                  className="input-ios w-full bg-slate-900 border border-white/8 rounded-2xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500"
-                />
-              </div>
-            )}
+          {/* Ô Ghi chú chi tiết */}
+          {type !== 'ADJUST' && (
+            <div>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={
+                  isDebtTransactionType(type)
+                    ? 'Ghi chú lý do vay/trả, hạn trả...'
+                    : type === 'TRANSFER'
+                    ? 'Ghi chú chuyển tiền...'
+                    : 'Ghi chú chi tiết giao dịch (tùy chọn)...'
+                }
+                className="input-ios w-full bg-slate-900 border border-white/8 rounded-2xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-500"
+              />
+            </div>
+          )}
 
-            {/* Tùy chọn Nâng cao cho Khoản Thu/Chi: Gắn Sự kiện / Chuyến đi & Không tính vào báo cáo */}
-            {(type === 'EXPENSE' || type === 'INCOME') && (
-              <div className="flex flex-col gap-2 pt-0.5">
-                {activeEvents.length > 0 && (
-                  <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900 border border-white/8">
-                    <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                      <Plane size={14} className="text-sky-400" />
-                      <span>Sự kiện / Chuyến đi</span>
-                    </span>
-                    <select
-                      value={eventId}
-                      onChange={(e) => setEventId(e.target.value)}
-                      className="input-ios py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-slate-200 max-w-[200px]"
-                    >
-                      <option value="">-- Không gắn sự kiện --</option>
-                      {activeEvents.map((ev) => (
-                        <option key={ev.id} value={ev.id}>
-                          {ev.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <label className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900/70 border border-white/6 cursor-pointer hover:border-white/15">
-                  <div className="flex items-center gap-2">
-                    <EyeOff size={15} className="text-slate-400" />
-                    <div>
-                      <div className="text-xs font-semibold text-slate-200">
-                        Không tính vào báo cáo Thu/Chi
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        Dùng cho khoản chi hộ, ứng trước hoặc thu hộ người khác
-                      </div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={excludeFromReport}
-                    onChange={(e) => setExcludeFromReport(e.target.checked)}
-                    className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
-                  />
-                </label>
-              </div>
-            )}
-          </div>
-
-          {/* NÚT LƯU GIAO DỊCH, LƯU & GHI TIẾP (CHUẨN MISA) & NÚT MỞ BÀN PHÍM */}
-          <div className="px-4 pt-3 pb-8 flex flex-col gap-2.5">
-            <div className="flex items-center gap-2">
-              {!editingTransaction && type !== 'ADJUST' && (
-                <button
-                  type="button"
-                  onClick={() => handleSave(true)}
-                  className="touch-btn h-13 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-sky-400/30 text-sky-300 font-bold flex items-center justify-center gap-1.5 text-xs cursor-pointer shrink-0 transition-all"
-                  title="Lưu khoản này và giữ màn hình để nhập tiếp khoản khác ngay lập tức"
-                >
-                  <PlusCircle size={17} />
-                  <span>Lưu & Ghi tiếp</span>
-                </button>
+          {/* Tùy chọn nâng cao cho Khoản Thu/Chi */}
+          {(type === 'EXPENSE' || type === 'INCOME') && (
+            <div className="flex flex-col gap-2 pt-0.5">
+              {activeEvents.length > 0 && (
+                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900 border border-white/8">
+                  <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
+                    <Plane size={14} className="text-sky-400" />
+                    <span>Sự kiện / Chuyến đi</span>
+                  </span>
+                  <select
+                    value={eventId}
+                    onChange={(e) => setEventId(e.target.value)}
+                    className="input-ios py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-slate-200 max-w-[200px]"
+                  >
+                    <option value="">-- Không gắn sự kiện --</option>
+                    {activeEvents.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
 
+              <label className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900/70 border border-white/6 cursor-pointer hover:border-white/15">
+                <div className="flex items-center gap-2">
+                  <EyeOff size={15} className="text-slate-400" />
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">
+                      Không tính vào báo cáo Thu/Chi
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      Dùng cho khoản chi hộ, ứng trước hoặc thu hộ người khác
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={excludeFromReport}
+                  onChange={(e) => setExcludeFromReport(e.target.checked)}
+                  className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* NÚT LƯU GIAO DỊCH & LƯU GHI TIẾP */}
+        <div className="px-4 pt-4 pb-8 flex flex-col gap-2.5">
+          <div className="flex items-center gap-2">
+            {!editingTransaction && type !== 'ADJUST' && (
               <button
                 type="button"
-                onClick={() => handleSave(false)}
-                className={`flex-1 touch-btn touch-bounce h-13 rounded-2xl text-white font-bold flex items-center justify-center gap-2 text-sm shadow-xl cursor-pointer border-none transition-transform active:scale-98 ${
-                  type === 'EXPENSE' || type === 'PAY_DEBT'
-                    ? 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-500/30'
-                    : type === 'INCOME' || type === 'COLLECT_DEBT'
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-emerald-500/30'
-                    : type === 'LEND'
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-500/30'
-                    : type === 'BORROW'
-                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 shadow-purple-500/30'
-                    : type === 'TRANSFER'
-                    ? 'bg-gradient-to-r from-sky-500 to-sky-600 shadow-sky-500/30'
-                    : 'bg-gradient-to-r from-slate-600 to-slate-700 shadow-slate-500/30'
-                }`}
+                onClick={() => handleSave(true)}
+                className="touch-btn h-13 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-sky-400/30 text-sky-300 font-bold flex items-center justify-center gap-1.5 text-xs cursor-pointer shrink-0 transition-all"
+                title="Lưu khoản này và giữ màn hình để nhập tiếp khoản khác"
               >
-                <Check size={20} strokeWidth={2.8} />
-                <span>
-                  {editingTransaction
-                    ? 'LƯU THAY ĐỔI'
-                    : type === 'ADJUST'
-                    ? 'XÁC NHẬN ĐIỀU CHỈNH'
-                    : 'LƯU GIAO DỊCH'}
-                </span>
+                <PlusCircle size={17} />
+                <span>Lưu & Ghi tiếp</span>
               </button>
-            </div>
+            )}
 
             <button
               type="button"
-              onClick={() => setIsNumpadOpen(true)}
-              className="w-full touch-btn py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => handleSave(false)}
+              className={`flex-1 touch-btn touch-bounce h-13 rounded-2xl text-white font-bold flex items-center justify-center gap-2 text-sm shadow-xl cursor-pointer border-none transition-transform active:scale-98 ${
+                type === 'EXPENSE' || type === 'PAY_DEBT'
+                  ? 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-500/30'
+                  : type === 'INCOME' || type === 'COLLECT_DEBT'
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-emerald-500/30'
+                  : type === 'LEND'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-500/30'
+                  : type === 'BORROW'
+                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 shadow-purple-500/30'
+                  : type === 'TRANSFER'
+                  ? 'bg-gradient-to-r from-sky-500 to-sky-600 shadow-sky-500/30'
+                  : 'bg-gradient-to-r from-slate-600 to-slate-700 shadow-slate-500/30'
+              }`}
             >
-              <Calculator size={15} className="text-sky-400" />
-              <span>Mở bàn phím tính toán số tiền</span>
+              <Check size={20} strokeWidth={2.8} />
+              <span>
+                {editingTransaction
+                  ? 'LƯU THAY ĐỔI'
+                  : type === 'ADJUST'
+                  ? 'XÁC NHẬN ĐIỀU CHỈNH'
+                  : 'LƯU GIAO DỊCH'}
+              </span>
             </button>
           </div>
+
+          {/* Nút mở bàn phím số CHỈ HIỂN THỊ TRÊN ĐIỆN THOẠI (< md) */}
+          <button
+            type="button"
+            onClick={() => setIsNumpadOpen(true)}
+            className="md:hidden w-full touch-btn py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Calculator size={15} className="text-sky-400" />
+            <span>Mở bàn phím tính toán số tiền</span>
+          </button>
         </div>
-
-        {/* 5. POPUP BÀN PHÍM NUMPAD ĐẨY TỪ DƯỚI LÊN */}
-        <NumpadBottomSheet
-          isOpen={isNumpadOpen}
-          onClose={() => setIsNumpadOpen(false)}
-          type={type}
-          amountStr={amountStr}
-          computedAmount={currentComputedAmount}
-          hasOperator={hasOperator}
-          onKeyPress={handleKeyPress}
-          onConfirmAndSave={
-            selectedCategoryId || type === 'TRANSFER' || type === 'ADJUST'
-              ? () => handleSave(false)
-              : undefined
-          }
-          currentWalletBalance={currentWallet?.balance}
-          adjustDiff={adjustDiff}
-        />
-
-        {/* 6. MÀN HÌNH CHỌN & QUẢN LÝ HẠNG MỤC PHÂN CẤP */}
-        <CategoryManagerScreen
-          isOpen={isCategoryManagerOpen}
-          onClose={() => setIsCategoryManagerOpen(false)}
-          onSelectCategory={(cat) => {
-            setSelectedCategoryId(cat.id);
-            if (cat.type === 'EXPENSE') setType('EXPENSE');
-            if (cat.type === 'INCOME') setType('INCOME');
-            if (cat.type === 'DEBT') {
-              const lower = cat.name.trim().toLowerCase();
-              if (lower === 'đi vay') setType('BORROW');
-              else if (lower === 'thu nợ') setType('COLLECT_DEBT');
-              else if (lower === 'trả nợ') setType('PAY_DEBT');
-              else setType('LEND');
-            }
-          }}
-          initialTab={
-            type === 'INCOME'
-              ? 'INCOME'
-              : isDebtTransactionType(type)
-              ? 'DEBT'
-              : 'EXPENSE'
-          }
-        />
       </div>
+
+      {/* 5. POPUP BÀN PHÍM NUMPAD CHỈ HIỂN THỊ TRÊN ĐIỆN THOẠI (Render qua Portal gắn vào document.body) */}
+      <NumpadBottomSheet
+        isOpen={isNumpadOpen}
+        onClose={() => setIsNumpadOpen(false)}
+        type={type}
+        amountStr={amountStr}
+        computedAmount={currentComputedAmount}
+        hasOperator={hasOperator}
+        onKeyPress={handleKeyPress}
+        onConfirmAndSave={
+          selectedCategoryId || type === 'TRANSFER' || type === 'ADJUST'
+            ? () => handleSave(false)
+            : undefined
+        }
+        currentWalletBalance={currentWallet?.balance}
+        adjustDiff={adjustDiff}
+      />
     </div>
   );
 };

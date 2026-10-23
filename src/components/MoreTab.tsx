@@ -11,23 +11,20 @@ import {
 } from '../services/backupService';
 import {
   createTransaction,
+  deleteTransaction,
   computeNextRunDate,
   processDueRecurringTransactions
 } from '../services/transactionService';
 import { formatVND, getCurrentDate, getCurrentTime, formatFriendlyDate } from '../utils/formatters';
 import { generateUUID } from '../utils/uuid';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
-import type {
-  AppStartupTab,
-  RecurringFrequency
-} from '../types';
+import type { AppStartupTab, RecurringFrequency, Transaction } from '../types';
 import {
   Target,
   Tags,
   Repeat,
   Plane,
   HandCoins,
-  Moon,
   Smartphone,
   Cloud,
   Download,
@@ -43,11 +40,13 @@ import {
   UserCheck,
   Calendar,
   Play,
-  CheckCircle2
+  CheckCircle2,
+  Edit2
 } from 'lucide-react';
 
 interface MoreTabProps {
   onOpenSettings: () => void;
+  onEditTransaction?: (tx: Transaction) => void;
   defaultInitialTab: AppStartupTab;
   onChangeDefaultTab: (tab: AppStartupTab) => void;
 }
@@ -63,6 +62,7 @@ const FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
 
 export const MoreTab: React.FC<MoreTabProps> = ({
   onOpenSettings,
+  onEditTransaction,
   defaultInitialTab,
   onChangeDefaultTab
 }) => {
@@ -75,9 +75,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const budgetsCount = useLiveQuery(() => db.budgets.count()) || 0;
   const recurringList = useLiveQuery(() => db.recurringTransactions.toArray()) || [];
   const eventsList = useLiveQuery(() => db.events.toArray()) || [];
+  const savedContactsSetting = useLiveQuery(() => db.settings.get('saved_debt_contacts'));
 
-  // States cho Modal tạo Ghi chép định kỳ
-  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
+  // States cho Form phẳng tạo Ghi chép định kỳ (không dùng Popup)
+  const [isAddingRecurring, setIsAddingRecurring] = useState(false);
   const [recType, setRecType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
   const [recAmountStr, setRecAmountStr] = useState('');
   const [recCategoryId, setRecCategoryId] = useState('');
@@ -86,20 +87,32 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const [recStartDate, setRecStartDate] = useState(getCurrentDate());
   const [recNote, setRecNote] = useState('');
 
-  // States cho Modal tạo Sự kiện / Chuyến đi
-  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  // States cho Form phẳng tạo Sự kiện / Chuyến đi (không dùng Popup)
+  const [isAddingEvent, setIsAddingEvent] = useState(false);
   const [evName, setEvName] = useState('');
   const [evBudgetStr, setEvBudgetStr] = useState('');
   const [evStartDate, setEvStartDate] = useState(getCurrentDate());
 
-  // States cho Modal Thu nợ / Trả nợ 1 chạm trong Sổ Nợ
-  const [settleContactModal, setSettleContactModal] = useState<{
+  // States cho Sổ Nợ phẳng: Thêm / Sửa tên / Xóa người nợ & Ghi vay/trả nợ trực tiếp
+  const [isAddingDebtTx, setIsAddingDebtTx] = useState(false);
+  const [newDebtContact, setNewDebtContact] = useState('');
+  const [newDebtType, setNewDebtType] = useState<
+    'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT'
+  >('LEND');
+  const [newDebtAmountStr, setNewDebtAmountStr] = useState('');
+  const [newDebtWalletId, setNewDebtWalletId] = useState('');
+  const [newDebtNote, setNewDebtNote] = useState('');
+
+  const [settleInline, setSettleInline] = useState<{
     contactName: string;
     mode: 'COLLECT_DEBT' | 'PAY_DEBT';
-    remainingAmount: number;
   } | null>(null);
   const [settleAmountStr, setSettleAmountStr] = useState('');
   const [settleWalletId, setSettleWalletId] = useState('');
+
+  const [renamingContact, setRenamingContact] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [expandedContactHistory, setExpandedContactHistory] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setNotice(msg);
@@ -116,9 +129,27 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         collected: number;
         borrowed: number;
         paid: number;
-        txCount: number;
+        txs: Transaction[];
       }
     >();
+
+    // Nạp cả những người đã lưu trong danh bạ nợ
+    const savedNames = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    savedNames.forEach((n) => {
+      const clean = n.trim();
+      if (clean) {
+        map.set(clean.toLowerCase(), {
+          contactName: clean,
+          lent: 0,
+          collected: 0,
+          borrowed: 0,
+          paid: 0,
+          txs: []
+        });
+      }
+    });
 
     transactions.forEach((tx) => {
       if (
@@ -129,7 +160,8 @@ export const MoreTab: React.FC<MoreTabProps> = ({
       ) {
         return;
       }
-      const name = tx.contactName?.trim() || (tx.note?.trim() ? tx.note.trim() : 'Chưa ghi tên');
+      const name =
+        tx.contactName?.trim() || (tx.note?.trim() ? tx.note.trim() : 'Chưa ghi tên');
       const key = name.toLowerCase();
       const entry = map.get(key) || {
         contactName: name,
@@ -137,9 +169,9 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         collected: 0,
         borrowed: 0,
         paid: 0,
-        txCount: 0
+        txs: []
       };
-      entry.txCount += 1;
+      entry.txs.push(tx);
       if (tx.type === 'LEND') entry.lent += tx.amount;
       if (tx.type === 'COLLECT_DEBT') entry.collected += tx.amount;
       if (tx.type === 'BORROW') entry.borrowed += tx.amount;
@@ -150,26 +182,27 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     let totalReceivable = 0;
     let totalPayable = 0;
 
-    const contacts = Array.from(map.values()).map((c) => {
-      const receivable = Math.max(0, c.lent - c.collected);
-      const payable = Math.max(0, c.borrowed - c.paid);
-      totalReceivable += receivable;
-      totalPayable += payable;
-      return {
-        ...c,
-        receivable,
-        payable
-      };
-    });
+    const contacts = Array.from(map.values())
+      .filter((c) => c.txs.length > 0 || savedNames.some((s) => s.toLowerCase() === c.contactName.toLowerCase()))
+      .map((c) => {
+        const receivable = Math.max(0, c.lent - c.collected);
+        const payable = Math.max(0, c.borrowed - c.paid);
+        totalReceivable += receivable;
+        totalPayable += payable;
+        return {
+          ...c,
+          receivable,
+          payable
+        };
+      });
 
     return {
       contacts,
       totalReceivable,
       totalPayable
     };
-  }, [transactions]);
+  }, [transactions, savedContactsSetting?.value]);
 
-  // Sao lưu JSON
   const handleBackupJSON = async () => {
     try {
       const jsonStr = await exportFullBackupJSON();
@@ -181,7 +214,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     }
   };
 
-  // Khôi phục JSON
   const handleRestoreJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,7 +244,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     reader.readAsText(file);
   };
 
-  // Xuất Excel
   const handleExportExcel = async () => {
     try {
       const res = await exportTransactionsToExcel();
@@ -231,27 +262,79 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     );
   }
 
-  // SUBVIEW 2: HẠNG MỤC THU/CHI
+  // SUBVIEW 2: HẠNG MỤC THU/CHI (THÊM / SỬA / XÓA PHẲNG)
   if (subView === 'CATEGORIES') {
     return <CategoryManagerScreen isOpen={true} onClose={() => setSubView('MAIN')} />;
   }
 
-  // SUBVIEW 3: SỔ NỢ (QUẢN LÝ VAY & CHO VAY CHUẨN MISA)
+  // SUBVIEW 3: SỔ NỢ PHẲNG (THÊM / SỬA / XÓA NGƯỜI NỢ & KHOẢN VAY NỢ)
   if (subView === 'DEBTS') {
-    const handleConfirmSettle = async () => {
-      if (!settleContactModal) return;
+    const handleCreateDebtRecord = async () => {
+      const person = newDebtContact.trim();
+      if (!person) {
+        alert('Vui lòng nhập tên người vay / chủ nợ');
+        return;
+      }
+      const amount = Number(newDebtAmountStr.replace(/\D/g, ''));
+      if (!amount || amount <= 0) {
+        alert('Vui lòng nhập số tiền lớn hơn 0');
+        return;
+      }
+      const walletId = newDebtWalletId || wallets[0]?.id;
+      if (!walletId) {
+        alert('Chưa có ví tiền để ghi nhận');
+        return;
+      }
+
+      const targetNameMap: Record<string, string> = {
+        LEND: 'cho vay',
+        BORROW: 'đi vay',
+        COLLECT_DEBT: 'thu nợ',
+        PAY_DEBT: 'trả nợ'
+      };
+      const debtCat = categories.find(
+        (c) => c.type === 'DEBT' && c.name.trim().toLowerCase() === targetNameMap[newDebtType]
+      );
+
+      await createTransaction({
+        walletId,
+        categoryId: debtCat?.id,
+        type: newDebtType,
+        amount,
+        contactName: person,
+        date: getCurrentDate(),
+        time: getCurrentTime(),
+        note: newDebtNote.trim() || `${debtCat?.name || 'Vay nợ'} - ${person}`
+      });
+
+      const currentSaved = Array.isArray(savedContactsSetting?.value)
+        ? (savedContactsSetting.value as string[])
+        : [];
+      if (!currentSaved.some((s) => s.toLowerCase() === person.toLowerCase())) {
+        await db.settings.put({
+          key: 'saved_debt_contacts',
+          value: [person, ...currentSaved]
+        });
+      }
+
+      setIsAddingDebtTx(false);
+      setNewDebtContact('');
+      setNewDebtAmountStr('');
+      setNewDebtNote('');
+      showToast(`Đã lưu khoản vay/nợ của "${person}" thành công!`);
+    };
+
+    const handleConfirmSettleInline = async () => {
+      if (!settleInline) return;
       const amount = Number(settleAmountStr.replace(/\D/g, ''));
       if (!amount || amount <= 0) {
         alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0');
         return;
       }
       const walletId = settleWalletId || wallets[0]?.id;
-      if (!walletId) {
-        alert('Chưa có ví tiền để ghi nhận');
-        return;
-      }
+      if (!walletId) return;
 
-      const targetCatName = settleContactModal.mode === 'COLLECT_DEBT' ? 'thu nợ' : 'trả nợ';
+      const targetCatName = settleInline.mode === 'COLLECT_DEBT' ? 'thu nợ' : 'trả nợ';
       const debtCat = categories.find(
         (c) => c.type === 'DEBT' && c.name.trim().toLowerCase() === targetCatName
       );
@@ -259,23 +342,82 @@ export const MoreTab: React.FC<MoreTabProps> = ({
       await createTransaction({
         walletId,
         categoryId: debtCat?.id,
-        type: settleContactModal.mode,
+        type: settleInline.mode,
         amount,
-        contactName: settleContactModal.contactName,
+        contactName: settleInline.contactName,
         date: getCurrentDate(),
         time: getCurrentTime(),
         note:
-          settleContactModal.mode === 'COLLECT_DEBT'
-            ? `Thu nợ từ ${settleContactModal.contactName}`
-            : `Trả nợ cho ${settleContactModal.contactName}`
+          settleInline.mode === 'COLLECT_DEBT'
+            ? `Thu nợ từ ${settleInline.contactName}`
+            : `Trả nợ cho ${settleInline.contactName}`
       });
 
-      setSettleContactModal(null);
-      showToast('Đã ghi nhận giao dịch thu/trả nợ và cập nhật số dư ví!');
+      setSettleInline(null);
+      showToast('Đã ghi nhận thu/trả nợ và cập nhật số dư ví!');
+    };
+
+    const handleRenameContact = async (oldName: string) => {
+      const nextName = renameValue.trim();
+      if (!nextName || nextName === oldName) {
+        setRenamingContact(null);
+        return;
+      }
+      const matching = transactions.filter(
+        (t) =>
+          (t.contactName?.trim() || (t.note?.trim() ? t.note.trim() : 'Chưa ghi tên')).toLowerCase() ===
+          oldName.toLowerCase()
+      );
+      const now = new Date().toISOString();
+      await db.transaction('rw', db.transactions, async () => {
+        for (const tx of matching) {
+          await db.transactions.update(tx.id, {
+            contactName: nextName,
+            updatedAt: now
+          });
+        }
+      });
+
+      const currentSaved = Array.isArray(savedContactsSetting?.value)
+        ? (savedContactsSetting.value as string[])
+        : [];
+      const nextSaved = currentSaved.map((s) =>
+        s.toLowerCase() === oldName.toLowerCase() ? nextName : s
+      );
+      await db.settings.put({ key: 'saved_debt_contacts', value: nextSaved });
+
+      setRenamingContact(null);
+      showToast(`Đã đổi tên "${oldName}" thành "${nextName}"!`);
+    };
+
+    const handleDeleteContactAndRecords = async (
+      contactName: string,
+      txsOfContact: Transaction[]
+    ) => {
+      const msg =
+        txsOfContact.length > 0
+          ? `Xóa người nợ "${contactName}" và hoàn tác toàn bộ ${txsOfContact.length} giao dịch vay/nợ của người này?`
+          : `Xóa "${contactName}" khỏi danh sách sổ nợ?`;
+
+      if (!window.confirm(msg)) return;
+
+      for (const tx of txsOfContact) {
+        await deleteTransaction(tx.id);
+      }
+
+      const currentSaved = Array.isArray(savedContactsSetting?.value)
+        ? (savedContactsSetting.value as string[])
+        : [];
+      await db.settings.put({
+        key: 'saved_debt_contacts',
+        value: currentSaved.filter((s) => s.toLowerCase() !== contactName.toLowerCase())
+      });
+
+      showToast(`Đã xóa "${contactName}" khỏi Sổ Nợ!`);
     };
 
     return (
-      <div className="pb-28 px-4 pt-3 flex flex-col gap-4">
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
         <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
           <button
             type="button"
@@ -285,9 +427,19 @@ export const MoreTab: React.FC<MoreTabProps> = ({
             ← Quay lại mục Khác
           </button>
           <span className="text-xs font-bold text-slate-100 uppercase">
-            Sổ Nợ (Theo dõi Vay & Cho vay)
+            Sổ Nợ (Thêm / Sửa / Xóa Người Nợ)
           </span>
-          <div className="w-12" />
+          <button
+            type="button"
+            onClick={() => {
+              setNewDebtWalletId(wallets[0]?.id || '');
+              setIsAddingDebtTx(!isAddingDebtTx);
+            }}
+            className="text-xs font-extrabold text-slate-950 flex items-center gap-1 cursor-pointer bg-amber-400 px-3 py-1.5 rounded-xl border-none"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            <span>Ghi nợ mới</span>
+          </button>
         </div>
 
         {notice && (
@@ -297,171 +449,85 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           </div>
         )}
 
-        {/* Tổng quan Cần Thu & Phải Trả */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25">
-            <div className="text-[11px] font-bold text-amber-300 uppercase">Cần thu về (Cho vay)</div>
-            <div className="font-heading text-xl font-black text-amber-400 mt-1">
-              {formatVND(debtSummaryByContact.totalReceivable)}
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/25">
-            <div className="text-[11px] font-bold text-purple-300 uppercase">Phải trả (Đi vay)</div>
-            <div className="font-heading text-xl font-black text-purple-400 mt-1">
-              {formatVND(debtSummaryByContact.totalPayable)}
-            </div>
-          </div>
-        </div>
-
-        {/* Danh sách từng người */}
-        {debtSummaryByContact.contacts.length === 0 ? (
-          <div className="py-12 px-5 text-center text-slate-400 bg-slate-900/50 rounded-3xl border border-white/6">
-            <HandCoins size={36} className="mx-auto mb-2 text-amber-400/70" />
-            <div className="text-sm font-bold text-slate-200">Chưa có khoản vay nợ nào</div>
-            <p className="text-xs text-slate-400 mt-1">
-              Khi ghi giao dịch <b>Cho vay / Đi vay / Thu nợ / Trả nợ</b> và nhập tên người giao dịch, hệ thống sẽ tự động tổng hợp công nợ tại đây.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {debtSummaryByContact.contacts.map((item) => (
-              <div
-                key={item.contactName}
-                className="p-4 rounded-2xl bg-slate-900/80 border border-white/8 flex flex-col gap-3"
+        {/* Khung phẳng: Thêm nhanh người nợ / khoản vay nợ mới (không dùng Popup) */}
+        {isAddingDebtTx && (
+          <div className="p-4 rounded-3xl bg-slate-900 border border-amber-500/40 flex flex-col gap-3 shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-white/8 pb-2">
+              <span className="text-xs font-extrabold text-amber-400 uppercase">
+                + Ghi khoản Vay / Cho vay / Thu / Trả nợ
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAddingDebtTx(false)}
+                className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold">
-                      <UserCheck size={18} />
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold text-slate-100">{item.contactName}</div>
-                      <div className="text-[11px] text-slate-400">{item.txCount} giao dịch</div>
-                    </div>
-                  </div>
+                <X size={15} />
+              </button>
+            </div>
 
-                  {item.receivable === 0 && item.payable === 0 && (
-                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-[11px] font-bold flex items-center gap-1">
-                      <CheckCircle2 size={13} /> Đã tất toán
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-800/50 p-3 rounded-xl border border-white/5">
-                  <div>
-                    <div className="text-slate-400">Đã cho vay: {formatVND(item.lent)}</div>
-                    <div className="text-slate-400">Đã thu nợ: {formatVND(item.collected)}</div>
-                    <div className="font-bold text-amber-400 mt-1">
-                      Còn phải thu: {formatVND(item.receivable)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400">Đã đi vay: {formatVND(item.borrowed)}</div>
-                    <div className="text-slate-400">Đã trả nợ: {formatVND(item.paid)}</div>
-                    <div className="font-bold text-purple-400 mt-1">
-                      Còn phải trả: {formatVND(item.payable)}
-                    </div>
-                  </div>
-                </div>
-
-                {(item.receivable > 0 || item.payable > 0) && (
-                  <div className="flex items-center gap-2">
-                    {item.receivable > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSettleContactModal({
-                            contactName: item.contactName,
-                            mode: 'COLLECT_DEBT',
-                            remainingAmount: item.receivable
-                          });
-                          setSettleAmountStr(
-                            new Intl.NumberFormat('vi-VN').format(item.receivable)
-                          );
-                          setSettleWalletId(wallets[0]?.id || '');
-                        }}
-                        className="touch-btn flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold cursor-pointer hover:bg-emerald-500/25"
-                      >
-                        + Thu nợ ngay ({formatVND(item.receivable)})
-                      </button>
-                    )}
-
-                    {item.payable > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSettleContactModal({
-                            contactName: item.contactName,
-                            mode: 'PAY_DEBT',
-                            remainingAmount: item.payable
-                          });
-                          setSettleAmountStr(
-                            new Intl.NumberFormat('vi-VN').format(item.payable)
-                          );
-                          setSettleWalletId(wallets[0]?.id || '');
-                        }}
-                        className="touch-btn flex-1 py-2 px-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold cursor-pointer hover:bg-rose-500/25"
-                      >
-                        - Trả nợ ngay ({formatVND(item.payable)})
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Modal Thu nợ / Trả nợ nhanh */}
-        {settleContactModal && (
-          <div
-            className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex items-center justify-center p-4"
-            onClick={() => setSettleContactModal(null)}
-          >
-            <div
-              className="w-full max-w-md bg-slate-900 rounded-3xl border border-white/12 p-5 flex flex-col gap-4 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-white/8 pb-3">
-                <span className="text-sm font-bold text-slate-100">
-                  {settleContactModal.mode === 'COLLECT_DEBT'
-                    ? `Thu nợ từ ${settleContactModal.contactName}`
-                    : `Trả nợ cho ${settleContactModal.contactName}`}
-                </span>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'LEND', label: '🤝 Cho vay (Đưa tiền đi)' },
+                { id: 'BORROW', label: '🧾 Đi vay (Nhận tiền về)' },
+                { id: 'COLLECT_DEBT', label: '🐷 Thu nợ (Đòi lại tiền)' },
+                { id: 'PAY_DEBT', label: '💳 Trả nợ (Hoàn trả tiền)' }
+              ].map((t) => (
                 <button
+                  key={t.id}
                   type="button"
-                  onClick={() => setSettleContactModal(null)}
-                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
+                  onClick={() => setNewDebtType(t.id as any)}
+                  className={`h-10 px-3 rounded-xl text-xs font-bold border cursor-pointer whitespace-nowrap truncate ${
+                    newDebtType === t.id
+                      ? 'bg-amber-500 text-slate-950 border-amber-300'
+                      : 'bg-slate-800 border-white/5 text-slate-300'
+                  }`}
                 >
-                  <X size={16} />
+                  {t.label}
                 </button>
-              </div>
+              ))}
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1.5">
-                  Số tiền {settleContactModal.mode === 'COLLECT_DEBT' ? 'thu về' : 'trả nợ'} (VNĐ)
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Tên người vay / chủ nợ *
                 </label>
                 <input
                   type="text"
-                  value={settleAmountStr}
+                  value={newDebtContact}
+                  onChange={(e) => setNewDebtContact(e.target.value)}
+                  placeholder="VD: Anh Nam, Chị Lan..."
+                  className="input-ios"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Số tiền (VNĐ) *
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={newDebtAmountStr}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, '');
-                    setSettleAmountStr(
+                    setNewDebtAmountStr(
                       val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
                     );
                   }}
-                  className="input-ios text-xl font-extrabold text-emerald-400"
+                  placeholder="0"
+                  className="input-ios font-extrabold text-amber-400"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1.5">
-                  Tài khoản / Ví nhận hoặc chi
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Tài khoản / Ví
                 </label>
                 <select
-                  value={settleWalletId}
-                  onChange={(e) => setSettleWalletId(e.target.value)}
+                  value={newDebtWalletId}
+                  onChange={(e) => setNewDebtWalletId(e.target.value)}
                   className="input-ios"
                 >
                   {wallets.map((w) => (
@@ -471,22 +537,341 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Ghi chú (tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={newDebtNote}
+                  onChange={(e) => setNewDebtNote(e.target.value)}
+                  placeholder="Lý do vay, hẹn ngày trả..."
+                  className="input-ios"
+                />
+              </div>
+            </div>
 
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={handleConfirmSettle}
-                className="touch-btn py-3 rounded-2xl bg-emerald-500 text-slate-950 font-black text-sm cursor-pointer border-none"
+                onClick={() => setIsAddingDebtTx(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold border-none cursor-pointer"
               >
-                Xác nhận ghi giao dịch
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateDebtRecord}
+                className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black border-none cursor-pointer"
+              >
+                Lưu vào Sổ Nợ
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Tổng quan Cần Thu & Phải Trả */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25">
+            <div className="text-[11px] font-bold text-amber-300 uppercase">
+              Cần thu về (Cho vay)
+            </div>
+            <div className="font-heading text-xl font-black text-amber-400 mt-1">
+              {formatVND(debtSummaryByContact.totalReceivable)}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/25">
+            <div className="text-[11px] font-bold text-purple-300 uppercase">
+              Phải trả (Đi vay)
+            </div>
+            <div className="font-heading text-xl font-black text-purple-400 mt-1">
+              {formatVND(debtSummaryByContact.totalPayable)}
+            </div>
+          </div>
+        </div>
+
+        {/* Danh sách từng người nợ kèm nút Sửa tên, Xóa, Xem lịch sử & Tất toán phẳng */}
+        {debtSummaryByContact.contacts.length === 0 ? (
+          <div className="py-12 px-5 text-center text-slate-400 bg-slate-900/50 rounded-3xl border border-white/6">
+            <HandCoins size={36} className="mx-auto mb-2 text-amber-400/70" />
+            <div className="text-sm font-bold text-slate-200">Chưa có khoản vay nợ nào</div>
+            <p className="text-xs text-slate-400 mt-1">
+              Bấm nút <b>"+ Ghi nợ mới"</b> ở góc trên để thêm người vay hoặc chủ nợ.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {debtSummaryByContact.contacts.map((item) => {
+              const isRenaming = renamingContact === item.contactName;
+              const isSettlingThis = settleInline?.contactName === item.contactName;
+              const isHistoryOpen = expandedContactHistory === item.contactName;
+
+              return (
+                <div
+                  key={item.contactName}
+                  className="p-4 rounded-2xl bg-slate-900/80 border border-white/8 flex flex-col gap-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold shrink-0">
+                        <UserCheck size={18} />
+                      </div>
+
+                      {isRenaming ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <input
+                            type="text"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            className="input-ios flex-1 py-1 px-2.5 text-xs bg-slate-800 border border-sky-400 rounded-xl"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRenameContact(item.contactName)}
+                            className="px-2.5 py-1.5 rounded-lg bg-sky-500 text-slate-950 font-bold text-xs border-none cursor-pointer"
+                          >
+                            Lưu
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRenamingContact(null)}
+                            className="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs border-none cursor-pointer"
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-100 truncate">
+                            {item.contactName}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedContactHistory(
+                                isHistoryOpen ? null : item.contactName
+                              )
+                            }
+                            className="text-[11px] text-sky-400 hover:underline bg-transparent border-none p-0 cursor-pointer"
+                          >
+                            {item.txs.length} giao dịch (Bấm để xem / sửa / xóa từng khoản)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {item.receivable === 0 && item.payable === 0 && item.txs.length > 0 && (
+                        <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold flex items-center gap-1">
+                          <CheckCircle2 size={12} /> Đã tất toán
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingContact(item.contactName);
+                          setRenameValue(item.contactName);
+                        }}
+                        className="touch-btn p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-sky-400 border-none cursor-pointer"
+                        title="Đổi tên người nợ"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeleteContactAndRecords(item.contactName, item.txs)
+                        }
+                        className="touch-btn p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border-none cursor-pointer"
+                        title="Xóa người nợ"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-800/50 p-3 rounded-xl border border-white/5">
+                    <div>
+                      <div className="text-slate-400">Đã cho vay: {formatVND(item.lent)}</div>
+                      <div className="text-slate-400">Đã thu nợ: {formatVND(item.collected)}</div>
+                      <div className="font-bold text-amber-400 mt-1">
+                        Còn phải thu: {formatVND(item.receivable)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">Đã đi vay: {formatVND(item.borrowed)}</div>
+                      <div className="text-slate-400">Đã trả nợ: {formatVND(item.paid)}</div>
+                      <div className="font-bold text-purple-400 mt-1">
+                        Còn phải trả: {formatVND(item.payable)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nút Thu nợ / Trả nợ mở rộng phẳng ngay bên trong thẻ */}
+                  {(item.receivable > 0 || item.payable > 0) && (
+                    <div className="flex items-center gap-2">
+                      {item.receivable > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettleInline({
+                              contactName: item.contactName,
+                              mode: 'COLLECT_DEBT'
+                            });
+                            setSettleAmountStr(
+                              new Intl.NumberFormat('vi-VN').format(item.receivable)
+                            );
+                            setSettleWalletId(wallets[0]?.id || '');
+                          }}
+                          className="touch-btn flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold cursor-pointer hover:bg-emerald-500/25"
+                        >
+                          + Thu nợ ngay ({formatVND(item.receivable)})
+                        </button>
+                      )}
+
+                      {item.payable > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettleInline({
+                              contactName: item.contactName,
+                              mode: 'PAY_DEBT'
+                            });
+                            setSettleAmountStr(
+                              new Intl.NumberFormat('vi-VN').format(item.payable)
+                            );
+                            setSettleWalletId(wallets[0]?.id || '');
+                          }}
+                          className="touch-btn flex-1 py-2 px-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold cursor-pointer hover:bg-rose-500/25"
+                        >
+                          - Trả nợ ngay ({formatVND(item.payable)})
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Khung Thu nợ / Trả nợ phẳng (Inline) */}
+                  {isSettlingThis && settleInline && (
+                    <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-emerald-500/30 flex flex-col gap-2.5 animate-fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-400">
+                          {settleInline.mode === 'COLLECT_DEBT'
+                            ? `Thu nợ từ ${item.contactName}`
+                            : `Trả nợ cho ${item.contactName}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSettleInline(null)}
+                          className="text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={settleAmountStr}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setSettleAmountStr(
+                              val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
+                            );
+                          }}
+                          placeholder="Số tiền..."
+                          className="input-ios text-sm font-extrabold text-emerald-400"
+                        />
+
+                        <select
+                          value={settleWalletId}
+                          onChange={(e) => setSettleWalletId(e.target.value)}
+                          className="input-ios text-xs"
+                        >
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name} ({formatVND(w.balance)})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleConfirmSettleInline}
+                        className="touch-btn py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs cursor-pointer border-none"
+                      >
+                        Xác nhận ghi giao dịch
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Danh sách chi tiết từng giao dịch vay/nợ của người này để Sửa / Xóa */}
+                  {isHistoryOpen && item.txs.length > 0 && (
+                    <div className="pt-2 border-t border-white/8 flex flex-col gap-1.5 animate-fade-in">
+                      {item.txs.map((tx) => (
+                        <div
+                          key={tx.id}
+                          className="p-2.5 rounded-xl bg-slate-950/70 border border-white/5 flex items-center justify-between text-xs"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-200">
+                              {tx.type === 'LEND'
+                                ? 'Cho vay'
+                                : tx.type === 'BORROW'
+                                ? 'Đi vay'
+                                : tx.type === 'COLLECT_DEBT'
+                                ? 'Thu nợ'
+                                : 'Trả nợ'}{' '}
+                              • {formatVND(tx.amount)}
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {tx.date} {tx.note ? `• ${tx.note}` : ''}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            {onEditTransaction && (
+                              <button
+                                type="button"
+                                onClick={() => onEditTransaction(tx)}
+                                className="p-1.5 rounded-lg bg-slate-800 text-sky-400 border-none cursor-pointer"
+                                title="Sửa khoản nợ này"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (window.confirm('Xóa giao dịch nợ này và hoàn tác số dư ví?')) {
+                                  await deleteTransaction(tx.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-500/15 text-rose-400 border-none cursor-pointer"
+                              title="Xóa khoản nợ này"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
     );
   }
 
-  // SUBVIEW 4: GHI CHÉP ĐỊNH KỲ (RECURRING TRANSACTIONS)
+  // SUBVIEW 4: GHI CHÉP ĐỊNH KỲ PHẲNG
   if (subView === 'RECURRING') {
     const handleCreateRecurring = async () => {
       const amount = Number(recAmountStr.replace(/\D/g, ''));
@@ -514,7 +899,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         createdAt: now,
         updatedAt: now
       });
-      setIsRecurringModalOpen(false);
+      setIsAddingRecurring(false);
       setRecAmountStr('');
       setRecNote('');
       const count = await processDueRecurringTransactions();
@@ -549,7 +934,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     };
 
     return (
-      <div className="pb-28 px-4 pt-3 flex flex-col gap-4">
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
         <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
           <button
             type="button"
@@ -566,7 +951,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               setRecCategoryId(
                 categories.find((c) => c.type === 'EXPENSE' && !!c.parentId)?.id || ''
               );
-              setIsRecurringModalOpen(true);
+              setIsAddingRecurring(!isAddingRecurring);
             }}
             className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30"
           >
@@ -581,12 +966,173 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           </div>
         )}
 
-        {recurringList.length === 0 ? (
+        {/* Form phẳng thêm ghi chép định kỳ */}
+        {isAddingRecurring && (
+          <div className="w-full bg-slate-900 rounded-3xl border border-sky-500/30 p-5 flex flex-col gap-3.5 shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
+              <span className="text-sm font-bold text-slate-100">Thêm ghi chép định kỳ</span>
+              <button
+                type="button"
+                onClick={() => setIsAddingRecurring(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecType('EXPENSE');
+                  setRecCategoryId(
+                    categories.find((c) => c.type === 'EXPENSE' && !!c.parentId)?.id || ''
+                  );
+                }}
+                className={`py-2 rounded-xl text-xs font-bold border cursor-pointer ${
+                  recType === 'EXPENSE'
+                    ? 'bg-rose-500/20 border-rose-500 text-rose-300'
+                    : 'bg-slate-800 border-white/5 text-slate-400'
+                }`}
+              >
+                Khoản Chi định kỳ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecType('INCOME');
+                  setRecCategoryId(categories.find((c) => c.type === 'INCOME')?.id || '');
+                }}
+                className={`py-2 rounded-xl text-xs font-bold border cursor-pointer ${
+                  recType === 'INCOME'
+                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                    : 'bg-slate-800 border-white/5 text-slate-400'
+                }`}
+              >
+                Khoản Thu định kỳ
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-1">
+                Tên / Ghi chú khoản định kỳ
+              </label>
+              <input
+                type="text"
+                value={recNote}
+                onChange={(e) => setRecNote(e.target.value)}
+                placeholder="VD: Tiền thuê nhà, Lương tháng, Cước Internet..."
+                className="input-ios"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-1">
+                Số tiền (VNĐ)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={recAmountStr}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setRecAmountStr(
+                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
+                  );
+                }}
+                placeholder="Ví dụ: 4.500.000"
+                className="input-ios font-extrabold text-lg text-sky-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Chu kỳ lặp lại
+                </label>
+                <select
+                  value={recFrequency}
+                  onChange={(e) => setRecFrequency(e.target.value as RecurringFrequency)}
+                  className="input-ios"
+                >
+                  <option value="DAILY">Hàng ngày</option>
+                  <option value="WEEKLY">Hàng tuần</option>
+                  <option value="MONTHLY">Hàng tháng</option>
+                  <option value="YEARLY">Hàng năm</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Ngày chạy tiếp theo
+                </label>
+                <input
+                  type="date"
+                  value={recStartDate}
+                  onChange={(e) => setRecStartDate(e.target.value)}
+                  className="input-ios"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Hạng mục
+                </label>
+                <select
+                  value={recCategoryId}
+                  onChange={(e) => setRecCategoryId(e.target.value)}
+                  className="input-ios"
+                >
+                  {categories
+                    .filter((c) =>
+                      recType === 'EXPENSE'
+                        ? c.type === 'EXPENSE' && !!c.parentId
+                        : c.type === 'INCOME'
+                    )
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Tài khoản / Ví
+                </label>
+                <select
+                  value={recWalletId}
+                  onChange={(e) => setRecWalletId(e.target.value)}
+                  className="input-ios"
+                >
+                  {wallets.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreateRecurring}
+              className="touch-btn py-3 rounded-2xl bg-sky-500 text-slate-950 font-black text-sm cursor-pointer border-none mt-1"
+            >
+              Lưu mẫu định kỳ
+            </button>
+          </div>
+        )}
+
+        {recurringList.length === 0 && !isAddingRecurring ? (
           <div className="py-12 px-5 text-center text-slate-400 bg-slate-900/50 rounded-3xl border border-white/6">
             <Repeat size={36} className="mx-auto mb-2 text-sky-400/70" />
             <div className="text-sm font-bold text-slate-200">Chưa có mẫu ghi chép định kỳ</div>
             <p className="text-xs text-slate-400 mt-1 mb-4">
-              Tự động ghi tiền thuê nhà, tiền điện, Internet, Netflix hoặc lương hàng tháng đúng hạn mỗi khi mở ứng dụng.
+              Tự động ghi tiền thuê nhà, tiền điện, Internet hoặc lương hàng tháng đúng hạn.
             </p>
             <button
               type="button"
@@ -595,7 +1141,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 setRecCategoryId(
                   categories.find((c) => c.type === 'EXPENSE' && !!c.parentId)?.id || ''
                 );
-                setIsRecurringModalOpen(true);
+                setIsAddingRecurring(true);
               }}
               className="touch-btn py-2.5 px-5 rounded-2xl bg-sky-500 text-slate-950 font-bold text-xs cursor-pointer border-none"
             >
@@ -642,7 +1188,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                         type="button"
                         onClick={() => handleRunNow(item.id)}
                         className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30 font-semibold flex items-center gap-1 cursor-pointer"
-                        title="Ghi ngay 1 giao dịch vào hôm nay"
                       >
                         <Play size={12} /> Ghi ngay
                       </button>
@@ -664,176 +1209,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
             })}
           </div>
         )}
-
-        {isRecurringModalOpen && (
-          <div
-            className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex items-center justify-center p-4"
-            onClick={() => setIsRecurringModalOpen(false)}
-          >
-            <div
-              className="w-full max-w-md bg-slate-900 rounded-3xl border border-white/12 p-5 flex flex-col gap-3.5 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-                <span className="text-sm font-bold text-slate-100">Thêm ghi chép định kỳ</span>
-                <button
-                  type="button"
-                  onClick={() => setIsRecurringModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecType('EXPENSE');
-                    setRecCategoryId(
-                      categories.find((c) => c.type === 'EXPENSE' && !!c.parentId)?.id || ''
-                    );
-                  }}
-                  className={`py-2 rounded-xl text-xs font-bold border cursor-pointer ${
-                    recType === 'EXPENSE'
-                      ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                      : 'bg-slate-800 border-white/5 text-slate-400'
-                  }`}
-                >
-                  Khoản Chi định kỳ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecType('INCOME');
-                    setRecCategoryId(categories.find((c) => c.type === 'INCOME')?.id || '');
-                  }}
-                  className={`py-2 rounded-xl text-xs font-bold border cursor-pointer ${
-                    recType === 'INCOME'
-                      ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                      : 'bg-slate-800 border-white/5 text-slate-400'
-                  }`}
-                >
-                  Khoản Thu định kỳ
-                </button>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Tên / Ghi chú khoản định kỳ
-                </label>
-                <input
-                  type="text"
-                  value={recNote}
-                  onChange={(e) => setRecNote(e.target.value)}
-                  placeholder="VD: Tiền thuê nhà, Lương tháng, Cước Internet..."
-                  className="input-ios"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Số tiền (VNĐ)
-                </label>
-                <input
-                  type="text"
-                  value={recAmountStr}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setRecAmountStr(
-                      val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                    );
-                  }}
-                  placeholder="Ví dụ: 4.500.000"
-                  className="input-ios font-extrabold text-lg text-sky-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">
-                    Chu kỳ lặp lại
-                  </label>
-                  <select
-                    value={recFrequency}
-                    onChange={(e) => setRecFrequency(e.target.value as RecurringFrequency)}
-                    className="input-ios"
-                  >
-                    <option value="DAILY">Hàng ngày</option>
-                    <option value="WEEKLY">Hàng tuần</option>
-                    <option value="MONTHLY">Hàng tháng</option>
-                    <option value="YEARLY">Hàng năm</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">
-                    Ngày chạy tiếp theo
-                  </label>
-                  <input
-                    type="date"
-                    value={recStartDate}
-                    onChange={(e) => setRecStartDate(e.target.value)}
-                    className="input-ios"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">
-                    Hạng mục
-                  </label>
-                  <select
-                    value={recCategoryId}
-                    onChange={(e) => setRecCategoryId(e.target.value)}
-                    className="input-ios"
-                  >
-                    {categories
-                      .filter((c) =>
-                        recType === 'EXPENSE' ? c.type === 'EXPENSE' && !!c.parentId : c.type === 'INCOME'
-                      )
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">
-                    Tài khoản / Ví
-                  </label>
-                  <select
-                    value={recWalletId}
-                    onChange={(e) => setRecWalletId(e.target.value)}
-                    className="input-ios"
-                  >
-                    {wallets.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCreateRecurring}
-                className="touch-btn py-3 rounded-2xl bg-sky-500 text-slate-950 font-black text-sm cursor-pointer border-none mt-1"
-              >
-                Lưu mẫu định kỳ
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
-  // SUBVIEW 5: SỰ KIỆN & CHUYẾN ĐI (EVENTS & TRIPS CHUẨN MISA)
+  // SUBVIEW 5: SỰ KIỆN & CHUYẾN ĐI PHẲNG
   if (subView === 'EVENTS') {
     const handleCreateEvent = async () => {
       if (!evName.trim()) {
@@ -853,14 +1233,14 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         createdAt: now,
         updatedAt: now
       });
-      setIsEventModalOpen(false);
+      setIsAddingEvent(false);
       setEvName('');
       setEvBudgetStr('');
       showToast('Đã tạo sự kiện / chuyến đi mới!');
     };
 
     return (
-      <div className="pb-28 px-4 pt-3 flex flex-col gap-4">
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
         <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
           <button
             type="button"
@@ -874,7 +1254,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           </span>
           <button
             type="button"
-            onClick={() => setIsEventModalOpen(true)}
+            onClick={() => setIsAddingEvent(!isAddingEvent)}
             className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30"
           >
             <Plus size={14} /> Tạo mới
@@ -888,18 +1268,88 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           </div>
         )}
 
-        {eventsList.length === 0 ? (
+        {isAddingEvent && (
+          <div className="w-full bg-slate-900 rounded-3xl border border-emerald-500/30 p-5 flex flex-col gap-3.5 shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
+              <span className="text-sm font-bold text-slate-100">Tạo Sự kiện / Chuyến đi</span>
+              <button
+                type="button"
+                onClick={() => setIsAddingEvent(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-1">
+                Tên Sự kiện / Chuyến đi
+              </label>
+              <input
+                type="text"
+                value={evName}
+                onChange={(e) => setEvName(e.target.value)}
+                placeholder="VD: Du lịch Đà Lạt, Tết Nguyên Đán..."
+                className="input-ios"
+                autoFocus
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Ngân sách dự kiến (Tùy chọn - VNĐ)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={evBudgetStr}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setEvBudgetStr(
+                      val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
+                    );
+                  }}
+                  placeholder="Ví dụ: 10.000.000"
+                  className="input-ios"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-1">
+                  Ngày bắt đầu
+                </label>
+                <input
+                  type="date"
+                  value={evStartDate}
+                  onChange={(e) => setEvStartDate(e.target.value)}
+                  className="input-ios"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCreateEvent}
+              className="touch-btn py-3 rounded-2xl bg-emerald-500 text-slate-950 font-black text-sm cursor-pointer border-none mt-1"
+            >
+              Tạo sự kiện
+            </button>
+          </div>
+        )}
+
+        {eventsList.length === 0 && !isAddingEvent ? (
           <div className="py-12 px-5 text-center text-slate-400 bg-slate-900/50 rounded-3xl border border-white/6">
             <Plane size={36} className="mx-auto mb-2 text-emerald-400/70" />
             <div className="text-sm font-bold text-slate-200">
               Chưa có Sự kiện / Chuyến đi nào
             </div>
             <p className="text-xs text-slate-400 mt-1 mb-4">
-              Tạo sự kiện (VD: Du lịch Đà Lạt, Tết Nguyên Đán, Đám cưới) để gom nhóm và tổng hợp toàn bộ chi phí của chuyến đi xuyên qua nhiều hạng mục khác nhau.
+              Tạo sự kiện để gom nhóm toàn bộ chi phí của chuyến đi.
             </p>
             <button
               type="button"
-              onClick={() => setIsEventModalOpen(true)}
+              onClick={() => setIsAddingEvent(true)}
               className="touch-btn py-2.5 px-5 rounded-2xl bg-emerald-500 text-slate-950 font-bold text-xs cursor-pointer border-none"
             >
               + Tạo Sự kiện / Chuyến đi
@@ -940,7 +1390,8 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
                   {ev.budgetAmount && ev.budgetAmount > 0 ? (
                     <div className="text-xs text-slate-400">
-                      Ngân sách dự kiến: <b className="text-slate-200">{formatVND(ev.budgetAmount)}</b> (
+                      Ngân sách dự kiến:{' '}
+                      <b className="text-slate-200">{formatVND(ev.budgetAmount)}</b> (
                       {Math.round((totalSpent / ev.budgetAmount) * 100)}%)
                     </div>
                   ) : null}
@@ -980,81 +1431,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
             })}
           </div>
         )}
-
-        {isEventModalOpen && (
-          <div
-            className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex items-center justify-center p-4"
-            onClick={() => setIsEventModalOpen(false)}
-          >
-            <div
-              className="w-full max-w-md bg-slate-900 rounded-3xl border border-white/12 p-5 flex flex-col gap-3.5 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-                <span className="text-sm font-bold text-slate-100">Tạo Sự kiện / Chuyến đi</span>
-                <button
-                  type="button"
-                  onClick={() => setIsEventModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center border-none cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Tên Sự kiện / Chuyến đi
-                </label>
-                <input
-                  type="text"
-                  value={evName}
-                  onChange={(e) => setEvName(e.target.value)}
-                  placeholder="VD: Du lịch Đà Lạt, Tết 2026..."
-                  className="input-ios"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Ngân sách dự kiến (Tùy chọn - VNĐ)
-                </label>
-                <input
-                  type="text"
-                  value={evBudgetStr}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setEvBudgetStr(
-                      val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                    );
-                  }}
-                  placeholder="Ví dụ: 10.000.000"
-                  className="input-ios"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Ngày bắt đầu
-                </label>
-                <input
-                  type="date"
-                  value={evStartDate}
-                  onChange={(e) => setEvStartDate(e.target.value)}
-                  className="input-ios"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCreateEvent}
-                className="touch-btn py-3 rounded-2xl bg-emerald-500 text-slate-950 font-black text-sm cursor-pointer border-none mt-1"
-              >
-                Tạo sự kiện
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1071,11 +1447,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
       {/* NHÓM 1: TÀI CHÍNH & QUẢN LÝ */}
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-          Tài chính & Quản lý
+          Tài chính & Quản lý (Thêm / Sửa / Xóa)
         </h3>
 
         <div className="bg-slate-900/90 rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
-          {/* Mục 1: Sổ Nợ (Theo dõi Vay & Cho vay chuẩn MISA) */}
+          {/* Mục 1: Sổ Nợ & Người nợ */}
           <button
             type="button"
             onClick={() => setSubView('DEBTS')}
@@ -1087,7 +1463,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
-                  <span>Sổ Nợ (Quản lý Vay & Cho vay)</span>
+                  <span>Sổ Nợ & Quản lý Người Nợ</span>
                   {(debtSummaryByContact.totalReceivable > 0 ||
                     debtSummaryByContact.totalPayable > 0) && (
                     <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold">
@@ -1096,14 +1472,36 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                   )}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  Theo dõi Cần thu ({formatVND(debtSummaryByContact.totalReceivable)}) & Phải trả ({formatVND(debtSummaryByContact.totalPayable)})
+                  Thêm/sửa/xóa người nợ • Cần thu ({formatVND(debtSummaryByContact.totalReceivable)}) & Phải trả ({formatVND(debtSummaryByContact.totalPayable)})
                 </div>
               </div>
             </div>
             <ChevronRight size={16} className="text-slate-500 shrink-0" />
           </button>
 
-          {/* Mục 2: Hạn mức chi tiêu */}
+          {/* Mục 2: Hạng mục thu/chi */}
+          <button
+            type="button"
+            onClick={() => setSubView('CATEGORIES')}
+            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
+                <Tags size={19} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-100">
+                  Hạng mục Thu / Chi / Vay nợ
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Thêm, sửa, xóa {categories.length} hạng mục & gợi ý ghi chú nhanh
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={16} className="text-slate-500 shrink-0" />
+          </button>
+
+          {/* Mục 3: Hạn mức chi tiêu */}
           <button
             type="button"
             onClick={() => setSubView('BUDGETS')}
@@ -1124,26 +1522,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   Thiết lập hạn mức 50/30/20 hoặc từng mục & cảnh báo vượt chi
-                </div>
-              </div>
-            </div>
-            <ChevronRight size={16} className="text-slate-500 shrink-0" />
-          </button>
-
-          {/* Mục 3: Hạng mục thu/chi */}
-          <button
-            type="button"
-            onClick={() => setSubView('CATEGORIES')}
-            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
-                <Tags size={19} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">Hạng mục thu / chi</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {categories.length} danh mục cài đặt sẵn & quick tags
                 </div>
               </div>
             </div>
@@ -1228,58 +1606,31 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-5 gap-1 pt-1">
-              {[
-                { id: 'editor', name: 'Ghi GD' },
-                { id: 'overview', name: 'Tổng quan' },
-                { id: 'wallets', name: 'Tài khoản' },
-                { id: 'analytics', name: 'Báo cáo' },
-                { id: 'more', name: 'Khác' }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    onChangeDefaultTab(tab.id as AppStartupTab);
-                    showToast(`Đã đặt "${tab.name}" làm màn hình khởi động!`);
-                  }}
-                  className={`touch-btn py-2 px-1 rounded-xl text-[11px] font-bold cursor-pointer border transition-all text-center ${
-                    defaultInitialTab === tab.id
-                      ? 'bg-sky-500/25 border-sky-400 text-sky-300 shadow-sm'
-                      : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {tab.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-3.5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center shrink-0">
-                <Moon size={19} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">
-                  Chế độ giao diện (Tối / Sáng)
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Chuẩn AMOLED Dark Mode tiết kiệm pin & bảo vệ mắt
-                </div>
-              </div>
-            </div>
-            <div className="px-2.5 py-1 rounded-full bg-slate-800 border border-white/10 text-xs font-semibold text-slate-300">
-              Giao diện tối
+            <div className="pt-1">
+              <select
+                value={defaultInitialTab}
+                onChange={(e) => {
+                  const selectedId = e.target.value as AppStartupTab;
+                  onChangeDefaultTab(selectedId);
+                  showToast('Đã lưu màn hình khởi động mặc định!');
+                }}
+                className="input-ios cursor-pointer text-xs font-bold"
+              >
+                <option value="overview">📊 Tổng quan (Sổ giao dịch)</option>
+                <option value="editor">➕ Ghi giao dịch mới</option>
+                <option value="wallets">🏦 Tài khoản & Ví tiền</option>
+                <option value="analytics">📈 Báo cáo phân tích</option>
+                <option value="more">⚙️ Tiện ích khác</option>
+              </select>
             </div>
           </div>
         </div>
       </section>
 
-      {/* NHÓM 3: DỮ LIỆU & SAO LƯU */}
+      {/* NHÓM 3: ĐỒNG BỘ SUPABASE & SAO LƯU */}
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-          Dữ liệu & Sao lưu
+          Dữ liệu & Đồng bộ Đám mây
         </h3>
 
         <div className="bg-slate-900/90 rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
@@ -1294,13 +1645,13 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-                  <span>Đồng bộ Google Drive 2 chiều</span>
+                  <span>Đồng bộ đám mây Supabase 2 chiều</span>
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                    Máy tính & Điện thoại
+                    PC & Điện thoại
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  Tự động đồng bộ & hợp nhất dữ liệu liên thông qua Drive
+                  Kết nối tài khoản / Mã đồng bộ Supabase siêu tốc, không lo mất dữ liệu
                 </div>
               </div>
             </div>
@@ -1377,7 +1728,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
       <div className="pt-2 text-center text-slate-500 text-[11px] flex flex-col items-center gap-1">
         <div className="flex items-center gap-1.5 font-semibold text-slate-400">
           <Sparkles size={13} className="text-emerald-400" />
-          <span>Sổ Thu Chi PWA V3.0 • Local-First • 0đ Vận Hành</span>
+          <span>Sổ Thu Chi PWA V3.0 • Local-First • Supabase Cloud</span>
         </div>
         <div>100% Offline • Dữ liệu lưu trữ bền vững trên thiết bị của bạn</div>
       </div>

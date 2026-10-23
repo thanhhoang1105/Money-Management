@@ -9,6 +9,7 @@ import {
   SYSTEM_ADJUSTMENT_CATEGORY_ID
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
+import { BankLogo, detectBankBrand } from './BankLogo';
 import {
   formatVND,
   formatFriendlyDate,
@@ -31,9 +32,6 @@ import {
   Search,
   X,
   Filter,
-  Clock,
-  Tag,
-  SlidersHorizontal,
   UserCheck,
   Plane,
   EyeOff
@@ -64,8 +62,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [typeFilter, setTypeFilter] = useState<TypeFilterOption>('ALL');
   const [walletFilter, setWalletFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
-  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState<boolean>(false);
-  const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
+
+  // Trạng thái mở rộng phẳng (Inline) thay cho Popup
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
 
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
@@ -98,7 +98,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       .reduce((sum, w) => sum + w.balance, 0);
   }, [wallets]);
 
-  // Tính tổng Thu & Chi thuần của tháng đang chọn (Chuẩn MISA: Không gộp Vay/Nợ và không tính giao dịch excludeFromReport)
+  // Tính tổng Thu & Chi thuần của tháng đang chọn
   const { monthIncome, monthExpense } = useMemo(() => {
     let inc = 0;
     let exp = 0;
@@ -240,11 +240,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       )
     ) {
       await deleteTransaction(id);
-      setSelectedTxForDetail(null);
+      setExpandedTxId(null);
     }
   };
 
-  // Nhân bản giao dịch (Copy sang ngày hôm nay chỉ với 1 chạm)
   const handleDuplicate = async (tx: Transaction) => {
     try {
       const today = getCurrentDate();
@@ -262,7 +261,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         time: getCurrentTime(),
         note: tx.note
       });
-      setSelectedTxForDetail(null);
+      setExpandedTxId(null);
       setSelectedMonth(today.slice(0, 7));
       setDuplicateFeedback(`Đã nhân bản giao dịch ${formatVND(tx.amount)} sang hôm nay!`);
       setTimeout(() => setDuplicateFeedback(''), 2800);
@@ -351,7 +350,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         </button>
       </div>
 
-      {/* 3. THANH TÌM KIẾM & BỘ LỌC ĐA NĂNG */}
+      {/* 3. THANH TÌM KIẾM & BỘ LỌC PHẲNG (INLINE) */}
       <div className="mx-4 mt-2.5 mb-3 flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -380,9 +379,9 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsFilterSheetOpen(true)}
+            onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
             className={`touch-btn relative h-10 px-3 rounded-xl border flex items-center gap-1.5 cursor-pointer text-xs font-semibold ${
-              advancedFilterCount > 0
+              isFilterPanelOpen || advancedFilterCount > 0
                 ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
                 : 'bg-slate-800/80 text-slate-300 border-white/10 hover:text-white'
             }`}
@@ -397,6 +396,69 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             )}
           </button>
         </div>
+
+        {/* Khung lọc phẳng (Inline) theo Ví & Hạng mục - không dùng Popup */}
+        {isFilterPanelOpen && (
+          <div className="p-3.5 rounded-2xl bg-slate-900 border border-sky-500/30 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                Lọc theo Tài khoản / Ví
+              </label>
+              <select
+                value={walletFilter}
+                onChange={(e) => setWalletFilter(e.target.value)}
+                className="input-ios text-xs py-2"
+              >
+                <option value="ALL">Tất cả ví ({wallets.length})</option>
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({formatVND(w.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+                Lọc theo Hạng mục
+              </label>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="input-ios text-xs py-2"
+              >
+                <option value="ALL">Tất cả hạng mục</option>
+                <optgroup label="Khoản Chi">
+                  {categories
+                    .filter((c) => c.type === 'EXPENSE')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Khoản Thu">
+                  {categories
+                    .filter((c) => c.type === 'INCOME')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Vay / Nợ">
+                  {categories
+                    .filter((c) => c.type === 'DEBT')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Chips Chọn Nhanh Loại Giao Dịch */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
@@ -521,7 +583,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         )}
       </div>
 
-      {/* 4. Danh Sách Giao Dịch Gom Nhóm Theo Ngày */}
+      {/* 4. Danh Sách Giao Dịch Gom Nhóm Theo Ngày (Mở rộng thao tác Sửa / Nhân bản / Xóa trực tiếp trên dòng) */}
       {allMonthTransactions.length === 0 ? (
         <div className="py-12 px-5 text-center text-slate-500">
           <div className="text-4xl mb-2.5">📝</div>
@@ -534,9 +596,9 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
           <button
             type="button"
             onClick={onOpenQuickAdd}
-            className="touch-btn bg-emerald-500 text-white border-none py-2.5 px-5 rounded-2xl text-sm font-semibold cursor-pointer shadow-lg shadow-emerald-500/30"
+            className="touch-btn bg-emerald-500 text-slate-950 border-none py-2.5 px-5 rounded-2xl text-sm font-extrabold cursor-pointer shadow-lg shadow-emerald-500/30"
           >
-            + Ghi khoản chi mới
+            + Ghi giao dịch mới
           </button>
         </div>
       ) : filteredTransactions.length === 0 ? (
@@ -592,131 +654,180 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 </div>
 
                 {/* Danh sách các giao dịch trong ngày */}
-                <div className="flex flex-col">
+                <div className="flex flex-col divide-y divide-white/4">
                   {dayTxs.map((tx) => {
                     const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
                     const wallet = walletMap.get(tx.walletId);
                     const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
                     const event = tx.eventId ? eventMap.get(tx.eventId) : undefined;
                     const isSystemAdj = tx.categoryId === SYSTEM_ADJUSTMENT_CATEGORY_ID;
+                    const isExpanded = expandedTxId === tx.id;
+                    const walletBrand = wallet ? detectBankBrand(wallet.icon, wallet.name) : null;
 
                     return (
-                      <div
-                        key={tx.id}
-                        onClick={() => setSelectedTxForDetail(tx)}
-                        className="touch-btn flex items-center justify-between py-3 px-4 cursor-pointer border-b border-white/4 last:border-none hover:bg-white/3 transition-colors"
-                      >
-                        {/* Cột Trái: Icon & Tên Danh mục / Ghi chú */}
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className="cat-badge shrink-0"
-                            style={{
-                              backgroundColor:
-                                tx.type === 'TRANSFER'
-                                  ? '#3B82F6'
-                                  : cat?.color || '#6B7280'
-                            }}
-                          >
-                            <CategoryIcon
-                              name={
-                                tx.type === 'TRANSFER'
-                                  ? 'ArrowRightLeft'
-                                  : cat?.icon || 'CircleDot'
-                              }
-                              size={20}
-                              color="#ffffff"
-                            />
+                      <div key={tx.id} className="flex flex-col">
+                        <div
+                          onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                          className={`touch-btn flex items-center justify-between py-3 px-4 cursor-pointer transition-colors ${
+                            isExpanded ? 'bg-slate-800/70' : 'hover:bg-white/3'
+                          }`}
+                        >
+                          {/* Cột Trái: Icon & Tên Danh mục / Ghi chú */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className="cat-badge shrink-0"
+                              style={{
+                                backgroundColor:
+                                  tx.type === 'TRANSFER'
+                                    ? '#3B82F6'
+                                    : cat?.color || '#6B7280'
+                              }}
+                            >
+                              <CategoryIcon
+                                name={
+                                  tx.type === 'TRANSFER'
+                                    ? 'ArrowRightLeft'
+                                    : cat?.icon || 'CircleDot'
+                                }
+                                size={20}
+                                color="#ffffff"
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold text-slate-100 truncate">
+                                  {tx.type === 'TRANSFER'
+                                    ? 'Chuyển ví'
+                                    : tx.type === 'LEND'
+                                    ? 'Cho vay'
+                                    : tx.type === 'BORROW'
+                                    ? 'Đi vay'
+                                    : tx.type === 'COLLECT_DEBT'
+                                    ? 'Thu nợ'
+                                    : tx.type === 'PAY_DEBT'
+                                    ? 'Trả nợ'
+                                    : tx.type === 'ADJUST'
+                                    ? 'Điều chỉnh số dư'
+                                    : cat?.name || 'Chưa phân loại'}
+                                </span>
+                                {tx.contactName && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-0.5">
+                                    <UserCheck size={10} />
+                                    {tx.contactName}
+                                  </span>
+                                )}
+                                {event && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium flex items-center gap-0.5">
+                                    <Plane size={10} />
+                                    {event.name}
+                                  </span>
+                                )}
+                                {tx.excludeFromReport && (
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 font-medium flex items-center gap-0.5"
+                                    title="Không tính vào báo cáo Thu/Chi"
+                                  >
+                                    <EyeOff size={10} />
+                                    Chi hộ
+                                  </span>
+                                )}
+                                {isSystemAdj && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
+                                    Hệ thống
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                                {tx.note ? (
+                                  <span className="text-slate-200 truncate">{tx.note} •</span>
+                                ) : null}
+                                <span className="inline-flex items-center gap-1 truncate">
+                                  {walletBrand && <BankLogo brand={walletBrand} size={15} />}
+                                  <span>
+                                    {tx.type === 'TRANSFER'
+                                      ? `${wallet?.name || 'Ví gửi'} ➔ ${
+                                          toWallet?.name || 'Ví nhận'
+                                        }${
+                                          tx.transferFee
+                                            ? ` (Phí: ${formatVND(tx.transferFee)})`
+                                            : ''
+                                        }`
+                                      : wallet?.name || 'Ví'}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-sm font-semibold text-slate-100 truncate">
-                                {tx.type === 'TRANSFER'
-                                  ? 'Chuyển ví'
+                          {/* Cột Phải: Số tiền & Giờ */}
+                          <div className="text-right shrink-0 ml-3">
+                            <div
+                              className={`text-[15px] font-bold ${
+                                tx.type === 'EXPENSE' || tx.type === 'PAY_DEBT'
+                                  ? 'text-expense'
+                                  : tx.type === 'INCOME' || tx.type === 'COLLECT_DEBT'
+                                  ? 'text-income'
                                   : tx.type === 'LEND'
-                                  ? 'Cho vay'
+                                  ? 'text-amber-400'
                                   : tx.type === 'BORROW'
-                                  ? 'Đi vay'
-                                  : tx.type === 'COLLECT_DEBT'
-                                  ? 'Thu nợ'
-                                  : tx.type === 'PAY_DEBT'
-                                  ? 'Trả nợ'
-                                  : tx.type === 'ADJUST'
-                                  ? 'Điều chỉnh số dư'
-                                  : cat?.name || 'Chưa phân loại'}
-                              </span>
-                              {tx.contactName && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-0.5">
-                                  <UserCheck size={10} />
-                                  {tx.contactName}
-                                </span>
-                              )}
-                              {event && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium flex items-center gap-0.5">
-                                  <Plane size={10} />
-                                  {event.name}
-                                </span>
-                              )}
-                              {tx.excludeFromReport && (
-                                <span
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 font-medium flex items-center gap-0.5"
-                                  title="Không tính vào báo cáo Thu/Chi"
-                                >
-                                  <EyeOff size={10} />
-                                  Chi hộ
-                                </span>
-                              )}
-                              {isSystemAdj && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
-                                  Hệ thống
-                                </span>
-                              )}
+                                  ? 'text-purple-400'
+                                  : tx.type === 'TRANSFER'
+                                  ? 'text-sky-400'
+                                  : 'text-slate-300'
+                              }`}
+                            >
+                              {tx.type === 'EXPENSE' ||
+                              tx.type === 'LEND' ||
+                              tx.type === 'PAY_DEBT'
+                                ? `-${formatVND(tx.amount)}`
+                                : tx.type === 'INCOME' ||
+                                  tx.type === 'BORROW' ||
+                                  tx.type === 'COLLECT_DEBT'
+                                ? `+${formatVND(tx.amount)}`
+                                : formatVND(tx.amount)}
                             </div>
-
-                            <div className="text-xs text-slate-400 mt-0.5 truncate">
-                              {tx.note ? (
-                                <span className="text-slate-200">{tx.note} • </span>
-                              ) : null}
-                              <span>
-                                {tx.type === 'TRANSFER'
-                                  ? `${wallet?.name || 'Ví gửi'} ➔ ${toWallet?.name || 'Ví nhận'}${
-                                      tx.transferFee ? ` (Phí: ${formatVND(tx.transferFee)})` : ''
-                                    }`
-                                  : wallet?.name || 'Ví'}
-                              </span>
-                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">{tx.time}</div>
                           </div>
                         </div>
 
-                        {/* Cột Phải: Số tiền & Giờ */}
-                        <div className="text-right shrink-0 ml-3">
-                          <div
-                            className={`text-[15px] font-bold ${
-                              tx.type === 'EXPENSE' || tx.type === 'PAY_DEBT'
-                                ? 'text-expense'
-                                : tx.type === 'INCOME' || tx.type === 'COLLECT_DEBT'
-                                ? 'text-income'
-                                : tx.type === 'LEND'
-                                ? 'text-amber-400'
-                                : tx.type === 'BORROW'
-                                ? 'text-purple-400'
-                                : tx.type === 'TRANSFER'
-                                ? 'text-sky-400'
-                                : 'text-slate-300'
-                            }`}
-                          >
-                            {tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT'
-                              ? `-${formatVND(tx.amount)}`
-                              : tx.type === 'INCOME' ||
-                                tx.type === 'BORROW' ||
-                                tx.type === 'COLLECT_DEBT'
-                              ? `+${formatVND(tx.amount)}`
-                              : formatVND(tx.amount)}
+                        {/* Thanh hành động phẳng (Inline) khi bấm vào giao dịch - Sửa / Nhân bản / Xóa */}
+                        {isExpanded && (
+                          <div className="px-4 py-2.5 bg-slate-950/80 border-t border-white/6 flex items-center justify-between gap-2 animate-fade-in">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedTxId(null);
+                                  onEditTransaction(tx);
+                                }}
+                                className="touch-btn py-1.5 px-3 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-sky-500/25"
+                              >
+                                <Edit3 size={14} />
+                                <span>Sửa giao dịch</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicate(tx)}
+                                className="touch-btn py-1.5 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-emerald-500/25"
+                              >
+                                <Copy size={14} />
+                                <span>Nhân bản (Hôm nay)</span>
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(tx.id)}
+                              className="touch-btn py-1.5 px-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-rose-500/25"
+                            >
+                              <Trash2 size={14} />
+                              <span>Xóa</span>
+                            </button>
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            {tx.time}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -724,307 +835,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* 5. MODAL: BẢNG LỌC NÂNG CAO (VÍ & DANH MỤC) */}
-      {isFilterSheetOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
-          onClick={() => setIsFilterSheetOpen(false)}
-        >
-          <div
-            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-x md:border border-white/10 flex flex-col gap-4 animate-slide-up shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-white/8 pb-3">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal size={18} className="text-sky-400" />
-                <span className="text-base font-bold text-slate-100">
-                  Bộ lọc nâng cao
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsFilterSheetOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border-none cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                Lọc theo tài khoản / Ví
-              </label>
-              <select
-                value={walletFilter}
-                onChange={(e) => setWalletFilter(e.target.value)}
-                className="input-ios"
-              >
-                <option value="ALL">Tất cả ví ({wallets.length})</option>
-                {wallets.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({formatVND(w.balance)})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                Lọc theo danh mục
-              </label>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="input-ios"
-              >
-                <option value="ALL">Tất cả danh mục ({categories.length})</option>
-                <optgroup label="Khoản Chi (EXPENSE)">
-                  {categories
-                    .filter((c) => c.type === 'EXPENSE')
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label="Khoản Thu (INCOME)">
-                  {categories
-                    .filter((c) => c.type === 'INCOME')
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label="Sổ Nợ (DEBT)">
-                  {categories
-                    .filter((c) => c.type === 'DEBT')
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </optgroup>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setWalletFilter('ALL');
-                  setCategoryFilter('ALL');
-                }}
-                className="touch-btn flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 font-semibold text-sm border-none cursor-pointer hover:bg-slate-700"
-              >
-                Đặt lại
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsFilterSheetOpen(false)}
-                className="touch-btn flex-1 py-3 rounded-xl bg-sky-500 text-slate-950 font-bold text-sm border-none cursor-pointer shadow-lg shadow-sky-500/25"
-              >
-                Áp dụng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. MODAL: CHI TIẾT GIAO DỊCH & NHÂN BẢN 1 CHẠM */}
-      {selectedTxForDetail && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
-          onClick={() => setSelectedTxForDetail(null)}
-        >
-          <div
-            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-x md:border border-white/10 flex flex-col gap-4 animate-slide-up shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 rounded-full bg-slate-700 mx-auto -mt-1 mb-1" />
-
-            <div className="text-center py-2">
-              <div
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-2 ${
-                  selectedTxForDetail.type === 'EXPENSE' || selectedTxForDetail.type === 'PAY_DEBT'
-                    ? 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
-                    : selectedTxForDetail.type === 'INCOME' ||
-                      selectedTxForDetail.type === 'COLLECT_DEBT'
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-                    : selectedTxForDetail.type === 'LEND'
-                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
-                    : selectedTxForDetail.type === 'BORROW'
-                    ? 'bg-purple-500/15 text-purple-400 border border-purple-500/25'
-                    : selectedTxForDetail.type === 'TRANSFER'
-                    ? 'bg-sky-500/15 text-sky-400 border border-sky-500/25'
-                    : 'bg-slate-700/50 text-slate-300 border border-slate-500/25'
-                }`}
-              >
-                {selectedTxForDetail.type === 'EXPENSE'
-                  ? 'Khoản chi tiêu'
-                  : selectedTxForDetail.type === 'INCOME'
-                  ? 'Khoản thu nhập'
-                  : selectedTxForDetail.type === 'LEND'
-                  ? 'Khoản cho vay'
-                  : selectedTxForDetail.type === 'BORROW'
-                  ? 'Khoản đi vay'
-                  : selectedTxForDetail.type === 'COLLECT_DEBT'
-                  ? 'Khoản thu nợ'
-                  : selectedTxForDetail.type === 'PAY_DEBT'
-                  ? 'Khoản trả nợ'
-                  : selectedTxForDetail.type === 'TRANSFER'
-                  ? 'Chuyển ví nội bộ'
-                  : 'Điều chỉnh số dư'}
-              </div>
-
-              <div
-                className={`font-heading text-3xl font-black ${
-                  selectedTxForDetail.type === 'EXPENSE' || selectedTxForDetail.type === 'PAY_DEBT'
-                    ? 'text-expense'
-                    : selectedTxForDetail.type === 'INCOME' ||
-                      selectedTxForDetail.type === 'COLLECT_DEBT'
-                    ? 'text-income'
-                    : selectedTxForDetail.type === 'LEND'
-                    ? 'text-amber-400'
-                    : selectedTxForDetail.type === 'BORROW'
-                    ? 'text-purple-400'
-                    : selectedTxForDetail.type === 'TRANSFER'
-                    ? 'text-sky-400'
-                    : 'text-slate-300'
-                }`}
-              >
-                {selectedTxForDetail.type === 'EXPENSE' ||
-                selectedTxForDetail.type === 'LEND' ||
-                selectedTxForDetail.type === 'PAY_DEBT'
-                  ? `-${formatVND(selectedTxForDetail.amount)}`
-                  : selectedTxForDetail.type === 'INCOME' ||
-                    selectedTxForDetail.type === 'BORROW' ||
-                    selectedTxForDetail.type === 'COLLECT_DEBT'
-                  ? `+${formatVND(selectedTxForDetail.amount)}`
-                  : formatVND(selectedTxForDetail.amount)}
-              </div>
-            </div>
-
-            {/* Thông tin chi tiết */}
-            <div className="rounded-2xl bg-slate-800/60 border border-white/6 p-3.5 flex flex-col gap-3 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <Tag size={14} className="text-slate-400" />
-                  Danh mục
-                </span>
-                <span className="font-semibold text-slate-100 flex items-center gap-1.5">
-                  {selectedTxForDetail.type === 'TRANSFER'
-                    ? 'Chuyển ví nội bộ'
-                    : categoryMap.get(selectedTxForDetail.categoryId || '')?.name ||
-                      (selectedTxForDetail.categoryId === SYSTEM_ADJUSTMENT_CATEGORY_ID
-                        ? 'Điều chỉnh số dư'
-                        : 'Chưa phân loại')}
-                </span>
-              </div>
-
-              {selectedTxForDetail.contactName && (
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 flex items-center gap-1.5">
-                    <UserCheck size={14} className="text-amber-400" />
-                    Người giao dịch
-                  </span>
-                  <span className="font-bold text-amber-300">
-                    {selectedTxForDetail.contactName}
-                  </span>
-                </div>
-              )}
-
-              {selectedTxForDetail.transferFee && selectedTxForDetail.transferFee > 0 ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Phí chuyển khoản</span>
-                  <span className="font-semibold text-rose-400">
-                    -{formatVND(selectedTxForDetail.transferFee)}
-                  </span>
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <WalletIcon size={14} className="text-slate-400" />
-                  {selectedTxForDetail.type === 'TRANSFER' ? 'Tuyến chuyển' : 'Tài khoản / Ví'}
-                </span>
-                <span className="font-semibold text-slate-100">
-                  {selectedTxForDetail.type === 'TRANSFER'
-                    ? `${walletMap.get(selectedTxForDetail.walletId)?.name || 'Ví gửi'} ➔ ${
-                        walletMap.get(selectedTxForDetail.toWalletId || '')?.name || 'Ví nhận'
-                      }`
-                    : walletMap.get(selectedTxForDetail.walletId)?.name || 'Chưa rõ'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 flex items-center gap-1.5">
-                  <Clock size={14} className="text-slate-400" />
-                  Thời gian
-                </span>
-                <span className="font-semibold text-slate-100">
-                  {selectedTxForDetail.date} lúc {selectedTxForDetail.time}
-                </span>
-              </div>
-
-              {selectedTxForDetail.note && (
-                <div className="pt-2 border-t border-white/6">
-                  <span className="text-slate-400 block mb-1">Ghi chú:</span>
-                  <div className="text-slate-100 bg-slate-900/60 p-2.5 rounded-xl text-xs leading-relaxed border border-white/4">
-                    {selectedTxForDetail.note}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Các nút hành động: Sửa + Nhân bản (1 chạm) + Xóa */}
-            <div className="flex flex-col gap-2 pt-1">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tx = selectedTxForDetail;
-                    setSelectedTxForDetail(null);
-                    onEditTransaction(tx);
-                  }}
-                  className="touch-btn flex items-center justify-center gap-1.5 p-3.5 rounded-2xl bg-sky-500/15 border border-sky-500/25 text-sky-400 text-xs font-bold cursor-pointer hover:bg-sky-500/20"
-                >
-                  <Edit3 size={16} />
-                  <span>Chỉnh sửa</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDuplicate(selectedTxForDetail)}
-                  className="touch-btn flex items-center justify-center gap-1.5 p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-bold cursor-pointer hover:bg-emerald-500/20"
-                  title="Tạo bản sao giao dịch này cho ngày hôm nay"
-                >
-                  <Copy size={16} />
-                  <span>Nhân bản (Hôm nay)</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleDelete(selectedTxForDetail.id)}
-                className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-rose-500/12 border border-rose-500/20 text-rose-400 text-xs font-semibold cursor-pointer hover:bg-rose-500/20"
-              >
-                <Trash2 size={16} />
-                <span>Xóa giao dịch (Hoàn tác số dư)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTxForDetail(null)}
-                className="touch-btn p-2.5 rounded-2xl bg-transparent text-slate-400 border-none text-xs font-medium cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -1,19 +1,16 @@
+// src/components/ui/WalletSelect.tsx
 import React, { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import * as Dialog from '@radix-ui/react-dialog';
-import {
-  Wallet as WalletIcon,
-  ChevronDown,
-  Plus,
-  Check,
-  X,
-  Landmark,
-  Smartphone
-} from 'lucide-react';
+import { ChevronDown, Check, Plus, X } from 'lucide-react';
 import type { Wallet, WalletType } from '../../types';
+import { CategoryIcon } from '../CategoryIcon';
+import {
+  BANK_BRANDS,
+  BankBrandAccordionPicker,
+  type BankBrandInfo
+} from '../BankLogo';
 import { formatVND } from '../../utils/formatters';
-import { db } from '../../db';
-import { generateUUID } from '../../utils/uuid';
+import { createWallet } from '../../services/transactionService';
 
 interface WalletSelectProps {
   wallets: Wallet[];
@@ -21,322 +18,290 @@ interface WalletSelectProps {
   onSelect: (walletId: string) => void;
   label?: string;
   excludeWalletId?: string;
-  className?: string;
 }
-
-const PRESET_COLORS = [
-  '#00573D', // VCB Green
-  '#10B981', // Emerald
-  '#3B82F6', // Blue
-  '#004B87', // Navy
-  '#A50064', // MoMo Pink
-  '#F59E0B', // Amber
-  '#8B5CF6', // Purple
-  '#EE1C25'  // Techcom Red
-];
 
 export const WalletSelect: React.FC<WalletSelectProps> = ({
   wallets,
   selectedWalletId,
   onSelect,
   label = 'Tài khoản / Ví',
-  excludeWalletId,
-  className = ''
+  excludeWalletId
 }) => {
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  // Form tạo ví nhanh
-  const [newWalletName, setNewWalletName] = useState('');
-  const [newWalletType, setNewWalletType] = useState<WalletType>('BANK');
-  const [newWalletBalance, setNewWalletBalance] = useState('0');
-  const [newWalletColor, setNewWalletColor] = useState('#00573D');
+  // Chế độ tạo ví nhanh phẳng (Inline) ngay bên dưới mà không bật Popup
+  const [isAddingWallet, setIsAddingWallet] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newBalanceStr, setNewBalanceStr] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState<BankBrandInfo>(BANK_BRANDS[0]);
+  const [errorMsg, setErrorMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const availableWallets = excludeWalletId
     ? wallets.filter((w) => w.id !== excludeWalletId)
     : wallets;
 
-  const currentWallet = wallets.find((w) => w.id === selectedWalletId);
+  const selectedWallet =
+    availableWallets.find((w) => w.id === selectedWalletId) || availableWallets[0];
 
-  const handleOpenCreateModal = () => {
-    setPopoverOpen(false);
-    setNewWalletName('');
-    setNewWalletType('BANK');
-    setNewWalletBalance('0');
-    setNewWalletColor('#00573D');
-    setCreateModalOpen(true);
+  const handleSelectBrand = (brand: BankBrandInfo) => {
+    setSelectedBrand(brand);
+    const isPrevBrandName = BANK_BRANDS.some(
+      (b) => b.shortName.toLowerCase() === newName.trim().toLowerCase()
+    );
+    if (!newName.trim() || isPrevBrandName) {
+      setNewName(brand.shortName);
+    }
   };
 
   const handleQuickCreateWallet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWalletName.trim()) {
-      alert('Vui lòng nhập tên tài khoản!');
+    setErrorMsg('');
+
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      setErrorMsg('Vui lòng nhập tên ví (VD: Vietcombank, MoMo...)');
       return;
     }
 
-    setIsSaving(true);
+    const rawDigits = newBalanceStr.replace(/\D/g, '');
+    const initialBalance = rawDigits ? parseInt(rawDigits, 10) : 0;
+
+    const walletType: WalletType =
+      selectedBrand.category === 'BANK'
+        ? 'BANK'
+        : selectedBrand.category === 'EWALLET'
+        ? 'E_WALLET'
+        : selectedBrand.category === 'CARD'
+        ? 'CREDIT'
+        : 'CASH';
+
     try {
-      const numBalance = Number(newWalletBalance.replace(/[^0-9-]/g, '')) || 0;
-      const now = new Date().toISOString();
-      const newId = generateUUID();
-
-      let defaultIcon = 'Landmark';
-      if (newWalletType === 'CASH') defaultIcon = 'Wallet';
-      else if (newWalletType === 'E_WALLET') defaultIcon = 'Smartphone';
-      else if (newWalletType === 'CREDIT') defaultIcon = 'CreditCard';
-      else if (newWalletType === 'INVESTMENT') defaultIcon = 'TrendingUp';
-      else if (newWalletType === 'OTHER') defaultIcon = 'Package';
-
-      await db.wallets.add({
-        id: newId,
-        name: newWalletName.trim(),
-        type: newWalletType,
-        balance: numBalance,
-        initialBalance: numBalance,
-        currency: 'VND',
-        icon: defaultIcon,
-        color: newWalletColor,
-        isExcludedFromTotal: false,
-        createdAt: now,
-        updatedAt: now
+      setIsSaving(true);
+      const created = await createWallet({
+        name: trimmedName,
+        type: walletType,
+        initialBalance,
+        icon: selectedBrand.id,
+        color: selectedBrand.primaryColor,
+        isExcludedFromTotal: false
       });
 
-      // Tự động chọn ví vừa tạo
-      onSelect(newId);
-      setCreateModalOpen(false);
+      onSelect(created.id);
+      setIsAddingWallet(false);
+      setNewName('');
+      setNewBalanceStr('');
     } catch (err: any) {
-      alert('Không thể tạo ví: ' + (err?.message || 'Lỗi DB'));
+      setErrorMsg(err?.message || 'Không thể tạo ví mới');
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <>
-      <Popover.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
+    <div className="flex flex-col gap-1.5">
+      <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger asChild>
           <button
             type="button"
-            className={`relative p-3 rounded-2xl bg-slate-900 border border-white/8 hover:border-sky-400/50 flex items-center justify-between text-left transition-all cursor-pointer outline-none focus:ring-2 focus:ring-sky-500/40 ${className}`}
+            className="w-full p-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800/90 border border-white/10 hover:border-sky-400/40 flex flex-col justify-between text-left cursor-pointer transition-all group outline-none focus:ring-2 focus:ring-sky-500/40"
           >
-            <div className="truncate pr-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {label}
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {label}
+            </span>
+            <div className="flex items-center justify-between gap-2 mt-1 w-full">
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                  style={{
+                    backgroundColor: `${selectedWallet?.color || '#10B981'}22`
+                  }}
+                >
+                  <CategoryIcon
+                    name={selectedWallet?.icon || 'Wallet'}
+                    walletName={selectedWallet?.name}
+                    size={15}
+                    color={selectedWallet?.color || '#10B981'}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-100 truncate">
+                    {selectedWallet?.name || 'Chọn ví'}
+                  </div>
+                  {selectedWallet && (
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {formatVND(selectedWallet.balance)}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="text-xs font-bold text-white truncate mt-0.5">
-                {currentWallet?.name || 'Chọn ví'}
-              </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                {currentWallet ? formatVND(currentWallet.balance) : '0 ₫'}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                style={{ backgroundColor: currentWallet?.color || '#3B82F6' }}
-              >
-                <WalletIcon size={16} />
-              </div>
-              <ChevronDown size={14} className="text-slate-400" />
+              <ChevronDown
+                size={15}
+                className="text-slate-400 group-hover:text-sky-400 shrink-0 transition-transform duration-200"
+              />
             </div>
           </button>
         </Popover.Trigger>
 
         <Popover.Portal>
           <Popover.Content
+            sideOffset={6}
             align="start"
-            sideOffset={8}
-            className="z-[90] w-[300px] max-h-[380px] flex flex-col bg-slate-900/98 backdrop-blur-xl border border-white/12 rounded-2xl shadow-2xl p-2.5 text-slate-100 animate-fade-in outline-none focus:outline-none"
+            className="z-[110] w-68 rounded-2xl bg-slate-900 border border-white/15 shadow-2xl p-2 text-slate-100 animate-fade-in"
           >
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1.5 border-b border-white/10 mb-1">
-              Chọn tài khoản thanh toán
+            <div className="px-2.5 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/8 mb-1">
+              Chọn Tài Khoản / Ví
             </div>
 
-            {/* Danh sách các ví */}
-            <div className="flex-1 overflow-y-auto flex flex-col gap-1 py-1 max-h-[220px]">
+            <div className="max-h-60 overflow-y-auto flex flex-col gap-1 pr-0.5">
               {availableWallets.map((w) => {
-                const isSelected = w.id === selectedWalletId;
+                const isSelected = w.id === selectedWallet?.id;
                 return (
                   <button
                     key={w.id}
                     type="button"
                     onClick={() => {
                       onSelect(w.id);
-                      setPopoverOpen(false);
+                      setOpen(false);
                     }}
-                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all text-left ${
+                    className={`w-full flex items-center justify-between p-2 rounded-xl text-left cursor-pointer transition-colors ${
                       isSelected
-                        ? 'bg-sky-500/20 border border-sky-400/40 text-white font-semibold'
-                        : 'hover:bg-slate-800 text-slate-300'
+                        ? 'bg-sky-500/20 border border-sky-400/40 text-white'
+                        : 'hover:bg-slate-800 text-slate-300 border border-transparent'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 truncate">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
-                        style={{ backgroundColor: w.color || '#3B82F6' }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${w.color}25` }}
                       >
-                        <WalletIcon size={14} />
+                        <CategoryIcon
+                          name={w.icon}
+                          walletName={w.name}
+                          size={16}
+                          color={w.color}
+                        />
                       </div>
-                      <div className="truncate">
-                        <div className="text-xs font-bold truncate text-white">{w.name}</div>
-                        <div className="text-[10px] text-slate-400">{formatVND(w.balance)}</div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate">{w.name}</div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {formatVND(w.balance)}
+                        </div>
                       </div>
                     </div>
-                    {isSelected && <Check size={16} className="text-sky-400 shrink-0 ml-2" />}
+                    {isSelected && <Check size={15} className="text-sky-400 shrink-0" />}
                   </button>
                 );
               })}
             </div>
 
-            {/* Nút Tạo ví mới ngay tại chỗ */}
-            <div className="pt-2 border-t border-white/10 mt-1">
+            {/* Nút mở khung tạo ví phẳng ngay bên dưới */}
+            <div className="pt-1.5 mt-1 border-t border-white/8">
               <button
                 type="button"
-                onClick={handleOpenCreateModal}
-                className="w-full py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                onClick={() => {
+                  setOpen(false);
+                  setErrorMsg('');
+                  setNewName(BANK_BRANDS[0].shortName);
+                  setSelectedBrand(BANK_BRANDS[0]);
+                  setIsAddingWallet(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold cursor-pointer transition-colors"
               >
-                <Plus size={15} strokeWidth={2.5} />
-                <span>+ Thêm tài khoản mới</span>
+                <Plus size={15} />
+                <span>Tạo tài khoản / ví mới</span>
               </button>
             </div>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
 
-      {/* Modal Tạo ví nhanh (Dialog chuẩn Web cho cả PC & Mobile) */}
-      <Dialog.Root open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md animate-fade-in" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-[90%] max-w-[420px] bg-slate-900 border border-white/12 rounded-3xl shadow-2xl p-5 text-slate-100 animate-fade-in outline-none focus:outline-none">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <Plus size={18} />
-                </div>
-                <Dialog.Title className="text-sm font-bold text-white uppercase tracking-wider">
-                  Tạo tài khoản mới
-                </Dialog.Title>
-              </div>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </Dialog.Close>
+      {/* Khung tạo ví nhanh phẳng (Inline) không dùng Popup */}
+      {isAddingWallet && (
+        <div className="p-3.5 rounded-2xl bg-slate-900 border border-emerald-500/30 flex flex-col gap-3 animate-fade-in col-span-2">
+          <div className="flex items-center justify-between border-b border-white/8 pb-2">
+            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+              + Thêm nhanh Ngân hàng / Ví mới
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsAddingWallet(false)}
+              className="w-6 h-6 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border-none cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">
+              Chọn Logo Ngân hàng / Ví điện tử
+            </label>
+            <BankBrandAccordionPicker
+              selectedBrandId={selectedBrand.id}
+              onSelectBrand={handleSelectBrand}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
+                Tên ví / tài khoản
+              </label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="VD: Vietcombank, MoMo..."
+                className="input-ios w-full rounded-xl bg-slate-800 border border-white/10 px-3 py-2 text-xs text-white"
+              />
             </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
+                Số dư ban đầu (VNĐ)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={newBalanceStr}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '');
+                  setNewBalanceStr(
+                    digits ? parseInt(digits, 10).toLocaleString('vi-VN') : ''
+                  );
+                }}
+                placeholder="0"
+                className="input-ios w-full rounded-xl bg-slate-800 border border-white/10 px-3 py-2 text-xs font-bold text-emerald-400"
+              />
+            </div>
+          </div>
 
-            <form onSubmit={handleQuickCreateWallet} className="flex flex-col gap-3.5">
-              {/* Chọn loại ví */}
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                  Loại tài khoản
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { type: 'BANK' as const, label: 'Ngân hàng', icon: Landmark },
-                    { type: 'CASH' as const, label: 'Tiền mặt', icon: WalletIcon },
-                    { type: 'E_WALLET' as const, label: 'Ví điện tử', icon: Smartphone }
-                  ].map((item) => (
-                    <button
-                      key={item.type}
-                      type="button"
-                      onClick={() => {
-                        setNewWalletType(item.type);
-                        if (item.type === 'CASH') setNewWalletName('Tiền mặt');
-                        else if (item.type === 'E_WALLET') setNewWalletName('MoMo');
-                        else setNewWalletName('Vietcombank');
-                      }}
-                      className={`p-2 rounded-xl border flex flex-col items-center gap-1 text-[11px] font-semibold cursor-pointer transition-all ${
-                        newWalletType === item.type
-                          ? 'bg-sky-500/20 border-sky-400 text-sky-400 shadow-sm'
-                          : 'bg-slate-800 border-white/5 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <item.icon size={16} />
-                      <span>{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {errorMsg && (
+            <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs">
+              {errorMsg}
+            </div>
+          )}
 
-              {/* Tên ví */}
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Tên tài khoản / Ngân hàng
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Vietcombank, Techcombank, Tiền mặt..."
-                  value={newWalletName}
-                  onChange={(e) => setNewWalletName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-white font-semibold text-sm outline-none focus:border-sky-400"
-                  autoFocus
-                />
-              </div>
-
-              {/* Số dư ban đầu */}
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Số dư ban đầu (VNĐ)
-                </label>
-                <input
-                  type="text"
-                  placeholder="0"
-                  value={newWalletBalance}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/[^0-9-]/g, '');
-                    setNewWalletBalance(digits ? new Intl.NumberFormat('vi-VN').format(Number(digits)) : '');
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-emerald-400 font-bold text-base outline-none focus:border-emerald-400"
-                />
-              </div>
-
-              {/* Màu sắc nhận diện */}
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                  Màu đại diện
-                </label>
-                <div className="flex items-center gap-2">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setNewWalletColor(c)}
-                      className={`w-7 h-7 rounded-full cursor-pointer transition-transform ${
-                        newWalletColor === c ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-80 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Nút hành động */}
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setCreateModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20"
-                >
-                  <Check size={16} strokeWidth={2.5} />
-                  <span>{isSaving ? 'Đang tạo...' : 'Lưu tài khoản'}</span>
-                </button>
-              </div>
-            </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAddingWallet(false)}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleQuickCreateWallet}
+              className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold border-none cursor-pointer"
+            >
+              {isSaving ? 'Đang tạo...' : 'Lưu ví mới'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
+
+export default WalletSelect;

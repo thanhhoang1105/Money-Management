@@ -1,11 +1,58 @@
 // src/services/transactionService.ts
 import { db } from '../db';
-import type { Transaction, RecurringFrequency } from '../types';
+import type { Transaction, RecurringFrequency, Wallet, WalletType } from '../types';
 import { generateUUID } from '../utils/uuid';
 import { recordDeletedEntity } from './syncService';
 import { getCurrentDate, getCurrentTime } from '../utils/formatters';
 
 export const SYSTEM_ADJUSTMENT_CATEGORY_ID = 'system_adjustment';
+
+/**
+ * Tạo tài khoản / ví mới và lưu vào IndexedDB
+ */
+export async function createWallet(params: {
+  name: string;
+  type: WalletType;
+  initialBalance: number;
+  icon: string;
+  color: string;
+  isExcludedFromTotal?: boolean;
+}): Promise<Wallet> {
+  const now = new Date().toISOString();
+  const newWallet: Wallet = {
+    id: generateUUID(),
+    name: params.name.trim(),
+    type: params.type,
+    balance: params.initialBalance,
+    initialBalance: params.initialBalance,
+    currency: 'VND',
+    icon: params.icon || 'Wallet',
+    color: params.color || '#10B981',
+    isExcludedFromTotal: Boolean(params.isExcludedFromTotal),
+    createdAt: now,
+    updatedAt: now
+  };
+  await db.wallets.add(newWallet);
+  return newWallet;
+}
+
+/**
+ * Xóa tài khoản / ví nếu chưa phát sinh giao dịch nào
+ */
+export async function deleteWallet(walletId: string): Promise<void> {
+  const txCount = await db.transactions
+    .filter((tx) => tx.walletId === walletId || tx.toWalletId === walletId)
+    .count();
+
+  if (txCount > 0) {
+    throw new Error(
+      `Không thể xóa tài khoản này vì đang có ${txCount} giao dịch liên quan. Hãy xóa hoặc chuyển các giao dịch sang ví khác trước.`
+    );
+  }
+
+  await db.wallets.delete(walletId);
+  await recordDeletedEntity('wallet', walletId);
+}
 
 function isOutflowType(type: Transaction['type']): boolean {
   return type === 'EXPENSE' || type === 'LEND' || type === 'PAY_DEBT';

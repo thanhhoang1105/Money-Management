@@ -8,8 +8,7 @@ import { WalletsTab } from './components/WalletsTab';
 import { MoreTab } from './components/MoreTab';
 import { TransactionEditorScreen } from './components/TransactionEditorScreen';
 import { SettingsModal } from './components/SettingsModal';
-import { IosInstallPromptModal } from './components/IosInstallPromptModal';
-import { checkAndRunGoogleDriveAutoSync } from './services/googleDriveService';
+import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
 import type { Transaction, AppStartupTab } from './types';
 import {
@@ -18,7 +17,6 @@ import {
   Smartphone,
   Settings as SettingsIcon,
   Check,
-  ArrowRight,
   Plus,
   LayoutDashboard,
   Wallet as WalletIcon,
@@ -59,10 +57,9 @@ export function App() {
   const [currentTab, setCurrentTab] = useState<TabType>(
     defaultInitialTab === 'editor' ? 'overview' : (defaultInitialTab as TabType)
   );
-  // Nếu màn mặc định là 'editor' (Ghi giao dịch), tự động mở thẳng editor khi mở app
+  // Nếu màn mặc định là 'editor' (Ghi giao dịch), mở thẳng màn hình phẳng Ghi Giao Dịch
   const [isEditorOpen, setIsEditorOpen] = useState(defaultInitialTab === 'editor');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isIosGuideOpen, setIsIosGuideOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
 
@@ -98,7 +95,7 @@ export function App() {
     }
   });
 
-  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Auto Sync Google Drive ngầm
+  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Auto Sync Supabase ngầm
   useEffect(() => {
     requestPersistentStorage();
     initializeSeedData()
@@ -109,9 +106,9 @@ export function App() {
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
 
-        const driveRes = await checkAndRunGoogleDriveAutoSync();
-        if (driveRes.ran) {
-          setAutoBackupNotice(driveRes.message);
+        const sbRes = await checkAndRunSupabaseAutoSync();
+        if (sbRes.ran) {
+          setAutoBackupNotice(sbRes.message);
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
       })
@@ -119,12 +116,11 @@ export function App() {
         console.error('Lỗi khởi tạo dữ liệu seed:', err);
       });
 
-    // Tự động kiểm tra đồng bộ khi mở lại app hoặc chuyển tab (Visibility Change)
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
-        const driveRes = await checkAndRunGoogleDriveAutoSync();
-        if (driveRes.ran) {
-          setAutoBackupNotice(driveRes.message);
+        const sbRes = await checkAndRunSupabaseAutoSync();
+        if (sbRes.ran) {
+          setAutoBackupNotice(sbRes.message);
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
       }
@@ -133,9 +129,9 @@ export function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const timer = setInterval(async () => {
-      const driveRes = await checkAndRunGoogleDriveAutoSync();
-      if (driveRes.ran) {
-        setAutoBackupNotice(driveRes.message);
+      const sbRes = await checkAndRunSupabaseAutoSync();
+      if (sbRes.ran) {
+        setAutoBackupNotice(sbRes.message);
         setTimeout(() => setAutoBackupNotice(null), 6000);
       }
     }, 60000);
@@ -148,12 +144,16 @@ export function App() {
 
   const handleOpenQuickAdd = () => {
     setEditingTransaction(null);
+    setIsSettingsOpen(false);
     setIsEditorOpen(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
   const handleEditTransaction = (tx: Transaction) => {
     setEditingTransaction(tx);
+    setIsSettingsOpen(false);
     setIsEditorOpen(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
   const handleDismissIosTip = () => {
@@ -181,11 +181,15 @@ export function App() {
                   Sổ Thu Chi
                 </h1>
                 <span className="hidden md:inline-block text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Local-First
+                  Supabase Sync
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 md:hidden">
-                {currentTab === 'overview'
+                {isEditorOpen
+                  ? 'Ghi giao dịch'
+                  : isSettingsOpen
+                  ? 'Đồng bộ & Cài đặt'
+                  : currentTab === 'overview'
                   ? 'Tổng quan'
                   : currentTab === 'wallets'
                   ? 'Tài khoản'
@@ -203,9 +207,10 @@ export function App() {
               onClick={() => {
                 setCurrentTab('overview');
                 setIsEditorOpen(false);
+                setIsSettingsOpen(false);
               }}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentTab === 'overview'
+                !isEditorOpen && !isSettingsOpen && currentTab === 'overview'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -219,9 +224,10 @@ export function App() {
               onClick={() => {
                 setCurrentTab('wallets');
                 setIsEditorOpen(false);
+                setIsSettingsOpen(false);
               }}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentTab === 'wallets'
+                !isEditorOpen && !isSettingsOpen && currentTab === 'wallets'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -235,9 +241,10 @@ export function App() {
               onClick={() => {
                 setCurrentTab('analytics');
                 setIsEditorOpen(false);
+                setIsSettingsOpen(false);
               }}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentTab === 'analytics'
+                !isEditorOpen && !isSettingsOpen && currentTab === 'analytics'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -251,9 +258,10 @@ export function App() {
               onClick={() => {
                 setCurrentTab('more');
                 setIsEditorOpen(false);
+                setIsSettingsOpen(false);
               }}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentTab === 'more'
+                !isEditorOpen && !isSettingsOpen && currentTab === 'more'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
@@ -268,7 +276,11 @@ export function App() {
             <button
               type="button"
               onClick={handleOpenQuickAdd}
-              className="hidden md:flex items-center gap-1.5 py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-extrabold cursor-pointer shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
+              className={`hidden md:flex items-center gap-1.5 py-2 px-4 rounded-xl text-xs font-extrabold cursor-pointer shadow-lg transition-all active:scale-95 ${
+                isEditorOpen
+                  ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/20'
+              }`}
             >
               <Plus size={16} strokeWidth={3} />
               <span>Ghi giao dịch</span>
@@ -283,9 +295,16 @@ export function App() {
 
             <button
               type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="touch-btn w-8 h-8 rounded-[10px] bg-slate-800 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white hover:bg-slate-700"
-              title="Cài đặt & Sao lưu"
+              onClick={() => {
+                setIsEditorOpen(false);
+                setIsSettingsOpen(!isSettingsOpen);
+              }}
+              className={`touch-btn w-8 h-8 rounded-[10px] border flex items-center justify-center cursor-pointer transition-colors ${
+                isSettingsOpen
+                  ? 'bg-sky-500/20 border-sky-400 text-sky-400'
+                  : 'bg-slate-800 border-white/8 text-slate-400 hover:text-white hover:bg-slate-700'
+              }`}
+              title="Đồng bộ Supabase & Sao lưu"
             >
               <SettingsIcon size={18} />
             </button>
@@ -293,9 +312,9 @@ export function App() {
         </div>
       </header>
 
-      {/* Thông báo sao lưu tự động thành công */}
+      {/* Thông báo đồng bộ tự động thành công */}
       {autoBackupNotice && (
-        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[13px] font-semibold flex items-center justify-between gap-2 animate-fade-in">
+        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[13px] font-semibold flex items-center justify-between gap-2 animate-fade-in max-w-5xl md:mx-auto md:w-full">
           <div className="flex items-center gap-2">
             <Check size={16} strokeWidth={3} />
             <span>{autoBackupNotice}</span>
@@ -310,22 +329,17 @@ export function App() {
         </div>
       )}
 
-      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" */}
+      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" phẳng trên Mobile */}
       {!isStandalone && showIosTip && (
         <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/30 flex items-center justify-between gap-2.5 shadow-lg shadow-sky-500/5 max-w-5xl md:hidden">
-          <button
-            type="button"
-            onClick={() => setIsIosGuideOpen(true)}
-            className="flex items-center gap-2.5 text-left bg-transparent border-none p-0 cursor-pointer flex-1"
-          >
+          <div className="flex items-center gap-2.5 text-left flex-1">
             <Smartphone size={20} className="text-sky-400 shrink-0" />
             <div className="text-xs text-slate-200 leading-snug">
-              <b>Dùng trên iPhone:</b> Bấm <Share size={12} className="inline align-middle mx-0.5 text-sky-400" /> ➔ <b>"Thêm vào MH chính"</b> để mở full màn hình như app thật!
-              <span className="text-sky-400 font-bold ml-1 inline-flex items-center gap-0.5 underline">
-                Xem hướng dẫn <ArrowRight size={11} />
-              </span>
+              <b>Dùng trên iPhone:</b> Bấm{' '}
+              <Share size={12} className="inline align-middle mx-0.5 text-sky-400" /> ➔{' '}
+              <b>"Thêm vào MH chính"</b> để mở full màn hình như app thật!
             </div>
-          </button>
+          </div>
           <button
             type="button"
             onClick={handleDismissIosTip}
@@ -339,7 +353,7 @@ export function App() {
 
       {/* Thông báo Service Worker có phiên bản mới */}
       {needRefresh && (
-        <div className="fixed bottom-24 left-4 right-4 z-50 p-3.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-2xl border border-white/20 flex items-center justify-between gap-3 animate-slide-up max-w-[440px] mx-auto">
+        <div className="mx-4 mt-2.5 p-3.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-xl border border-white/20 flex items-center justify-between gap-3 max-w-5xl md:mx-auto">
           <div className="text-xs font-semibold leading-tight">
             Đã có phiên bản cập nhật mới của ứng dụng!
           </div>
@@ -347,14 +361,14 @@ export function App() {
             <button
               type="button"
               onClick={() => setNeedRefresh(false)}
-              className="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-[11px] font-medium cursor-pointer"
+              className="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-[11px] font-medium cursor-pointer border-none text-white"
             >
               Để sau
             </button>
             <button
               type="button"
               onClick={() => updateServiceWorker(true)}
-              className="px-3 py-1.5 rounded-xl bg-white text-sky-700 text-[11px] font-bold shadow cursor-pointer active:scale-95 transition-transform"
+              className="px-3 py-1.5 rounded-xl bg-white text-sky-700 text-[11px] font-bold shadow cursor-pointer border-none"
             >
               Cập nhật ngay
             </button>
@@ -362,68 +376,67 @@ export function App() {
         </div>
       )}
 
-      {/* 3. Nội dung Tab hiện tại */}
+      {/* 3. TOÀN BỘ MÀN HÌNH ĐỀU LÀ MÀN HÌNH PHẲNG TRONG <main> (KHÔNG DÙNG POPUP OVERLAY) */}
       <main className="app-scroll-container flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <div className="w-full max-w-5xl mx-auto pb-24 md:pb-12">
-          {currentTab === 'overview' && (
-            <TransactionListTab
-              onEditTransaction={handleEditTransaction}
-              onOpenQuickAdd={handleOpenQuickAdd}
+          {isEditorOpen ? (
+            <TransactionEditorScreen
+              isOpen={true}
+              onClose={() => {
+                setIsEditorOpen(false);
+                setEditingTransaction(null);
+              }}
+              editingTransaction={editingTransaction}
             />
-          )}
-
-          {currentTab === 'wallets' && <WalletsTab />}
-
-          {currentTab === 'analytics' && (
-            <AnalyticsTab onEditTransaction={handleEditTransaction} />
-          )}
-
-          {currentTab === 'more' && (
-            <MoreTab
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              defaultInitialTab={defaultInitialTab}
-              onChangeDefaultTab={handleChangeDefaultTab}
+          ) : isSettingsOpen ? (
+            <SettingsModal
+              isOpen={true}
+              onClose={() => setIsSettingsOpen(false)}
             />
+          ) : (
+            <>
+              {currentTab === 'overview' && (
+                <TransactionListTab
+                  onEditTransaction={handleEditTransaction}
+                  onOpenQuickAdd={handleOpenQuickAdd}
+                />
+              )}
+
+              {currentTab === 'wallets' && <WalletsTab />}
+
+              {currentTab === 'analytics' && (
+                <AnalyticsTab onEditTransaction={handleEditTransaction} />
+              )}
+
+              {currentTab === 'more' && (
+                <MoreTab
+                  onOpenSettings={() => {
+                    setIsEditorOpen(false);
+                    setIsSettingsOpen(true);
+                  }}
+                  onEditTransaction={handleEditTransaction}
+                  defaultInitialTab={defaultInitialTab}
+                  onChangeDefaultTab={handleChangeDefaultTab}
+                />
+              )}
+            </>
           )}
         </div>
       </main>
 
-      {/* 4. Màn hình Ghi Giao Dịch */}
-      <TransactionEditorScreen
-        isOpen={isEditorOpen}
-        onClose={() => {
-          setIsEditorOpen(false);
-          setEditingTransaction(null);
-        }}
-        editingTransaction={editingTransaction}
-      />
-
-      {/* 5. Bottom Tab Navigation */}
+      {/* 4. Bottom Tab Navigation (Trên Mobile) */}
       <BottomNav
         currentTab={currentTab}
         isEditorOpen={isEditorOpen}
         onSelectTab={(tab) => {
           setCurrentTab(tab);
           setIsEditorOpen(false);
+          setIsSettingsOpen(false);
           setEditingTransaction(null);
         }}
         onOpenQuickAdd={() => {
-          if (!isEditorOpen) {
-            handleOpenQuickAdd();
-          }
+          handleOpenQuickAdd();
         }}
-      />
-
-      {/* 6. Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-
-      {/* 7. Modal Hướng dẫn Cài đặt lên iPhone */}
-      <IosInstallPromptModal
-        isOpen={isIosGuideOpen}
-        onClose={() => setIsIosGuideOpen(false)}
       />
     </div>
   );
