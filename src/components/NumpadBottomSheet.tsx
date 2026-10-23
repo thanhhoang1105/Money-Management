@@ -13,7 +13,6 @@ interface NumpadBottomSheetProps {
   computedAmount: number;
   hasOperator: boolean;
   onKeyPress: (key: string) => void;
-  onConfirmAndSave?: () => void;
   currentWalletBalance?: number;
   adjustDiff?: number;
 }
@@ -26,7 +25,6 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   computedAmount,
   hasOperator,
   onKeyPress,
-  onConfirmAndSave,
   currentWalletBalance,
   adjustDiff = 0
 }) => {
@@ -306,7 +304,7 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
               +
             </button>
 
-            {/* HÀNG 4: 7 | 8 | 9 | Xong (Chọn tiếp hạng mục/ghi chú) */}
+            {/* HÀNG 4: 7 | 8 | 9 | = (Tính kết quả biểu thức) */}
             <button
               type="button"
               onClick={() => onKeyPress('7')}
@@ -330,14 +328,14 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
             </button>
             <button
               type="button"
-              onClick={onClose}
-              className="touch-btn h-12 rounded-2xl bg-slate-800 border border-sky-400/30 text-sky-300 font-heading text-xs font-extrabold flex items-center justify-center cursor-pointer active:bg-slate-700"
-              title="Nhập xong số tiền để chọn tiếp danh mục / ghi chú"
+              onClick={() => onKeyPress('=')}
+              className="touch-btn h-12 rounded-2xl bg-sky-500/15 border border-sky-400/25 text-sky-400 font-heading text-xl font-black flex items-center justify-center cursor-pointer active:bg-sky-500/25"
+              title="Tính kết quả phép tính"
             >
-              Xong
+              =
             </button>
 
-            {/* HÀNG 5 (Đáy công thái học): 0 | 000 (Chính giữa) | LƯU GIAO DỊCH (Rộng 2 ô góc phải) */}
+            {/* HÀNG 5 (Đáy công thái học): 0 | 000 (Chính giữa) | XÁC NHẬN (Rộng 2 ô góc phải, chỉ xác nhận số tiền & đóng popup bàn phím) */}
             <button
               type="button"
               onClick={() => onKeyPress('0')}
@@ -353,25 +351,14 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
               000
             </button>
 
-            {onConfirmAndSave ? (
-              <button
-                type="button"
-                onClick={onConfirmAndSave}
-                className={`col-span-2 touch-btn touch-bounce h-12 rounded-2xl text-white font-extrabold flex items-center justify-center gap-1.5 text-xs shadow-lg cursor-pointer border-none ${getSaveButtonStyle()}`}
-              >
-                <Check size={17} strokeWidth={2.8} />
-                <span>LƯU GIAO DỊCH</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onClose}
-                className="col-span-2 touch-btn touch-bounce h-12 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 text-white font-extrabold flex items-center justify-center gap-1.5 text-xs shadow-lg shadow-sky-500/25 cursor-pointer border-none"
-              >
-                <Check size={17} strokeWidth={2.8} />
-                <span>XÁC NHẬN</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={`col-span-2 touch-btn touch-bounce h-12 rounded-2xl text-white font-extrabold flex items-center justify-center gap-1.5 text-xs shadow-lg cursor-pointer border-none ${getSaveButtonStyle()}`}
+            >
+              <Check size={17} strokeWidth={2.8} />
+              <span>XÁC NHẬN</span>
+            </button>
           </div>
         </div>
       </div>

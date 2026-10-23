@@ -34,7 +34,12 @@ import {
   Filter,
   UserCheck,
   Plane,
-  EyeOff
+  EyeOff,
+  HandCoins,
+  Plus,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface TransactionListTabProps {
@@ -68,9 +73,44 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
 
+  // Trạng thái cho bảng Theo dõi Vay / Nợ ngay trên màn hình Tổng quan
+  const [isAddingDebtQuick, setIsAddingDebtQuick] = useState<boolean>(false);
+  const [debtContactInput, setDebtContactInput] = useState<string>('');
+  const [debtTypeInput, setDebtTypeInput] = useState<
+    'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT'
+  >('LEND');
+  const [debtAmountInput, setDebtAmountInput] = useState<string>('');
+  const [debtWalletIdInput, setDebtWalletIdInput] = useState<string>('');
+  const [debtNoteInput, setDebtNoteInput] = useState<string>('');
+
+  const [settleDebtInline, setSettleDebtInline] = useState<{
+    contactName: string;
+    mode: 'COLLECT_DEBT' | 'PAY_DEBT';
+  } | null>(null);
+  const [settleAmountInput, setSettleAmountInput] = useState<string>('');
+  const [settleWalletIdInput, setSettleWalletIdInput] = useState<string>('');
+  const [expandedDebtContact, setExpandedDebtContact] = useState<string | null>(null);
+  const [showSettledDebts, setShowSettledDebts] = useState<boolean>(false);
+
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const events = useLiveQuery(() => db.events.toArray()) || [];
+  const savedContactsSetting = useLiveQuery(() => db.settings.get('saved_debt_contacts'));
+
+  // Toàn bộ giao dịch Vay / Nợ xuyên suốt các tháng để tính chính xác Ai đang nợ mình & Đang nợ ai
+  const allDebtTransactions =
+    useLiveQuery(async () => {
+      return await db.transactions
+        .filter(
+          (tx) =>
+            tx.type === 'LEND' ||
+            tx.type === 'BORROW' ||
+            tx.type === 'COLLECT_DEBT' ||
+            tx.type === 'PAY_DEBT'
+        )
+        .reverse()
+        .sortBy('date');
+    }, []) || [];
 
   const allMonthTransactions =
     useLiveQuery(async () => {
@@ -97,6 +137,95 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       .filter((w) => !w.isExcludedFromTotal)
       .reduce((sum, w) => sum + w.balance, 0);
   }, [wallets]);
+
+  // Tổng hợp Sổ Vay / Nợ ngay trên Tổng quan: Ai đang nợ mình (Cần thu) & Đang nợ ai (Phải trả)
+  const debtOverview = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        contactName: string;
+        lent: number;
+        collected: number;
+        borrowed: number;
+        paid: number;
+        txs: Transaction[];
+      }
+    >();
+
+    const savedNames = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    savedNames.forEach((n) => {
+      const clean = n.trim();
+      if (clean) {
+        map.set(clean.toLowerCase(), {
+          contactName: clean,
+          lent: 0,
+          collected: 0,
+          borrowed: 0,
+          paid: 0,
+          txs: []
+        });
+      }
+    });
+
+    allDebtTransactions.forEach((tx) => {
+      const name =
+        tx.contactName?.trim() || (tx.note?.trim() ? tx.note.trim() : 'Chưa ghi tên');
+      const key = name.toLowerCase();
+      const entry = map.get(key) || {
+        contactName: name,
+        lent: 0,
+        collected: 0,
+        borrowed: 0,
+        paid: 0,
+        txs: []
+      };
+      entry.txs.push(tx);
+      if (tx.type === 'LEND') entry.lent += tx.amount;
+      if (tx.type === 'COLLECT_DEBT') entry.collected += tx.amount;
+      if (tx.type === 'BORROW') entry.borrowed += tx.amount;
+      if (tx.type === 'PAY_DEBT') entry.paid += tx.amount;
+      map.set(key, entry);
+    });
+
+    let totalReceivable = 0;
+    let totalPayable = 0;
+
+    const allContacts = Array.from(map.values())
+      .filter(
+        (c) =>
+          c.txs.length > 0 ||
+          savedNames.some((s) => s.toLowerCase() === c.contactName.toLowerCase())
+      )
+      .map((c) => {
+        const receivable = Math.max(0, c.lent - c.collected);
+        const payable = Math.max(0, c.borrowed - c.paid);
+        totalReceivable += receivable;
+        totalPayable += payable;
+        return {
+          ...c,
+          receivable,
+          payable
+        };
+      });
+
+    // Danh sách người đang nợ mình (receivable > 0)
+    const whoOwesMe = allContacts.filter((c) => c.receivable > 0);
+    // Danh sách người mình đang nợ (payable > 0)
+    const whoIOwe = allContacts.filter((c) => c.payable > 0);
+    // Danh sách đã tất toán (receivable === 0 && payable === 0)
+    const settledList = allContacts.filter((c) => c.receivable === 0 && c.payable === 0);
+
+    return {
+      allContacts,
+      whoOwesMe,
+      whoIOwe,
+      settledList,
+      totalReceivable,
+      totalPayable
+    };
+  }, [allDebtTransactions, savedContactsSetting?.value]);
 
   // Tính tổng Thu & Chi thuần của tháng đang chọn
   const { monthIncome, monthExpense } = useMemo(() => {
@@ -268,6 +397,105 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     } catch (err: any) {
       alert(err?.message || 'Lỗi khi nhân bản giao dịch');
     }
+  };
+
+  // Ghi nhanh khoản Vay / Nợ mới ngay trên Tổng quan
+  const handleQuickCreateDebt = async () => {
+    const person = debtContactInput.trim();
+    if (!person) {
+      alert('Vui lòng nhập tên người vay / chủ nợ');
+      return;
+    }
+    const amount = Number(debtAmountInput.replace(/\D/g, ''));
+    if (!amount || amount <= 0) {
+      alert('Vui lòng nhập số tiền lớn hơn 0');
+      return;
+    }
+    const walletId = debtWalletIdInput || wallets[0]?.id;
+    if (!walletId) {
+      alert('Chưa có ví tiền để ghi nhận');
+      return;
+    }
+
+    const targetNameMap: Record<string, string> = {
+      LEND: 'cho vay',
+      BORROW: 'đi vay',
+      COLLECT_DEBT: 'thu nợ',
+      PAY_DEBT: 'trả nợ'
+    };
+    const debtCat = categories.find(
+      (c) => c.type === 'DEBT' && c.name.trim().toLowerCase() === targetNameMap[debtTypeInput]
+    );
+
+    const today = getCurrentDate();
+    await createTransaction({
+      walletId,
+      categoryId: debtCat?.id,
+      type: debtTypeInput,
+      amount,
+      contactName: person,
+      date: today,
+      time: getCurrentTime(),
+      note: debtNoteInput.trim() || `${debtCat?.name || 'Vay nợ'} - ${person}`
+    });
+
+    const currentSaved = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    if (!currentSaved.some((s) => s.toLowerCase() === person.toLowerCase())) {
+      await db.settings.put({
+        key: 'saved_debt_contacts',
+        value: [person, ...currentSaved]
+      });
+    }
+
+    setIsAddingDebtQuick(false);
+    setDebtContactInput('');
+    setDebtAmountInput('');
+    setDebtNoteInput('');
+    setDuplicateFeedback(`Đã ghi nhận khoản vay/nợ của "${person}" (${formatVND(amount)})!`);
+    setTimeout(() => setDuplicateFeedback(''), 3000);
+  };
+
+  // Thu nợ / Trả nợ trực tiếp 1 chạm ngay trên Tổng quan
+  const handleConfirmSettleDebt = async () => {
+    if (!settleDebtInline) return;
+    const amount = Number(settleAmountInput.replace(/\D/g, ''));
+    if (!amount || amount <= 0) {
+      alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0');
+      return;
+    }
+    const walletId = settleWalletIdInput || wallets[0]?.id;
+    if (!walletId) return;
+
+    const targetCatName = settleDebtInline.mode === 'COLLECT_DEBT' ? 'thu nợ' : 'trả nợ';
+    const debtCat = categories.find(
+      (c) => c.type === 'DEBT' && c.name.trim().toLowerCase() === targetCatName
+    );
+
+    await createTransaction({
+      walletId,
+      categoryId: debtCat?.id,
+      type: settleDebtInline.mode,
+      amount,
+      contactName: settleDebtInline.contactName,
+      date: getCurrentDate(),
+      time: getCurrentTime(),
+      note:
+        settleDebtInline.mode === 'COLLECT_DEBT'
+          ? `Thu nợ từ ${settleDebtInline.contactName}`
+          : `Trả nợ cho ${settleDebtInline.contactName}`
+    });
+
+    const doneName = settleDebtInline.contactName;
+    const doneMode = settleDebtInline.mode;
+    setSettleDebtInline(null);
+    setDuplicateFeedback(
+      doneMode === 'COLLECT_DEBT'
+        ? `Đã thu nợ ${formatVND(amount)} từ "${doneName}"!`
+        : `Đã trả nợ ${formatVND(amount)} cho "${doneName}"!`
+    );
+    setTimeout(() => setDuplicateFeedback(''), 3000);
   };
 
   return (
@@ -837,6 +1065,418 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
           })}
         </div>
       )}
+
+      {/* 5. KHU VỰC THEO DÕI VAY & NỢ TRỰC QUAN Ở DƯỚI CÙNG MÀN HÌNH TỔNG QUAN (AI ĐANG NỢ MÌNH / ĐANG NỢ AI) */}
+      <div className="mx-4 mt-4 rounded-3xl p-4 bg-slate-900/90 border border-white/10 shadow-lg flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0">
+              <HandCoins size={17} />
+            </div>
+            <div>
+              <h3 className="text-xs font-extrabold text-slate-100 uppercase tracking-wide m-0">
+                Theo dõi Vay & Nợ
+              </h3>
+              <p className="text-[11px] text-slate-400 m-0">
+                Nhìn nhanh ai đang nợ mình & mình đang nợ ai
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDebtWalletIdInput(wallets[0]?.id || '');
+              setIsAddingDebtQuick(!isAddingDebtQuick);
+            }}
+            className="touch-btn py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs flex items-center gap-1 cursor-pointer border-none shrink-0"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            <span>Ghi vay/nợ</span>
+          </button>
+        </div>
+
+        {/* Form phẳng Ghi nhanh Vay / Nợ ngay trên Tổng quan */}
+        {isAddingDebtQuick && (
+          <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-amber-500/35 flex flex-col gap-2.5 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-400">
+                + Ghi khoản Cho vay / Đi vay / Thu / Trả nợ
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAddingDebtQuick(false)}
+                className="text-slate-400 hover:text-white bg-transparent border-none cursor-pointer p-0.5"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {[
+                { id: 'LEND', label: '🤝 Cho vay' },
+                { id: 'BORROW', label: '🧾 Đi vay' },
+                { id: 'COLLECT_DEBT', label: '🐷 Thu nợ' },
+                { id: 'PAY_DEBT', label: '💳 Trả nợ' }
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setDebtTypeInput(t.id as any)}
+                  className={`py-2 px-2 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
+                    debtTypeInput === t.id
+                      ? 'bg-amber-500 text-slate-950 border-amber-300'
+                      : 'bg-slate-800 border-white/5 text-slate-300'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="text"
+                value={debtContactInput}
+                onChange={(e) => setDebtContactInput(e.target.value)}
+                placeholder="Tên người vay / chủ nợ (VD: Anh Nam)..."
+                className="input-ios text-xs py-2"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={debtAmountInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setDebtAmountInput(
+                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
+                  );
+                }}
+                placeholder="Số tiền (VNĐ)..."
+                className="input-ios text-xs py-2 font-extrabold text-amber-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select
+                value={debtWalletIdInput}
+                onChange={(e) => setDebtWalletIdInput(e.target.value)}
+                className="input-ios text-xs py-2"
+              >
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({formatVND(w.balance)})
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={debtNoteInput}
+                onChange={(e) => setDebtNoteInput(e.target.value)}
+                placeholder="Ghi chú (tùy chọn)..."
+                className="input-ios text-xs py-2"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddingDebtQuick(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickCreateDebt}
+                className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold border-none cursor-pointer"
+              >
+                Lưu khoản vay/nợ
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 2 Cột Trực Quan: AI ĐANG NỢ MÌNH vs MÌNH ĐANG NỢ AI */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* CỘT 1: AI ĐANG NỢ MÌNH (CẦN THU VỀ) */}
+          <div className="p-3.5 rounded-2xl bg-amber-500/8 border border-amber-500/25 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wide">
+                🤝 Ai đang nợ mình ({debtOverview.whoOwesMe.length})
+              </span>
+              <span className="font-heading text-sm font-black text-amber-400">
+                {formatVND(debtOverview.totalReceivable)}
+              </span>
+            </div>
+
+            {debtOverview.whoOwesMe.length === 0 ? (
+              <div className="text-xs text-slate-500 py-1.5">
+                Hiện không có ai đang nợ bạn.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {debtOverview.whoOwesMe.map((person) => {
+                  const isExpanded = expandedDebtContact === `recv_${person.contactName}`;
+                  return (
+                    <div
+                      key={person.contactName}
+                      className="p-2.5 rounded-xl bg-slate-950/70 border border-white/6 flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedDebtContact(
+                              isExpanded ? null : `recv_${person.contactName}`
+                            )
+                          }
+                          className="text-left bg-transparent border-none p-0 cursor-pointer min-w-0 flex-1"
+                        >
+                          <div className="text-xs font-bold text-slate-100 truncate flex items-center gap-1">
+                            <UserCheck size={13} className="text-amber-400 shrink-0" />
+                            <span className="truncate">{person.contactName}</span>
+                          </div>
+                          <div className="text-[11px] text-amber-400 font-extrabold mt-0.5">
+                            Nợ bạn: {formatVND(person.receivable)}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettleDebtInline({
+                              contactName: person.contactName,
+                              mode: 'COLLECT_DEBT'
+                            });
+                            setSettleAmountInput(
+                              new Intl.NumberFormat('vi-VN').format(person.receivable)
+                            );
+                            setSettleWalletIdInput(wallets[0]?.id || '');
+                          }}
+                          className="touch-btn py-1.5 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold cursor-pointer shrink-0"
+                        >
+                          + Thu nợ
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-white/6 flex flex-col gap-1.5 text-[11px] text-slate-400">
+                          <div className="flex justify-between">
+                            <span>Đã cho vay: {formatVND(person.lent)}</span>
+                            <span>Đã thu: {formatVND(person.collected)}</span>
+                          </div>
+                          {person.txs.slice(0, 4).map((t) => (
+                            <div
+                              key={t.id}
+                              onClick={() => onEditTransaction(t)}
+                              className="flex justify-between items-center py-1 px-2 rounded bg-slate-900/90 hover:bg-slate-800 cursor-pointer"
+                            >
+                              <span className="truncate text-slate-300">
+                                {t.date} • {t.note || 'Giao dịch vay/nợ'}
+                              </span>
+                              <span className="font-bold text-amber-300 shrink-0 ml-2">
+                                {formatVND(t.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* CỘT 2: MÌNH ĐANG NỢ AI (PHẢI TRẢ) */}
+          <div className="p-3.5 rounded-2xl bg-purple-500/8 border border-purple-500/25 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wide">
+                🧾 Đang nợ ai ({debtOverview.whoIOwe.length})
+              </span>
+              <span className="font-heading text-sm font-black text-purple-400">
+                {formatVND(debtOverview.totalPayable)}
+              </span>
+            </div>
+
+            {debtOverview.whoIOwe.length === 0 ? (
+              <div className="text-xs text-slate-500 py-1.5">
+                Hiện bạn không nợ ai.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {debtOverview.whoIOwe.map((person) => {
+                  const isExpanded = expandedDebtContact === `pay_${person.contactName}`;
+                  return (
+                    <div
+                      key={person.contactName}
+                      className="p-2.5 rounded-xl bg-slate-950/70 border border-white/6 flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedDebtContact(
+                              isExpanded ? null : `pay_${person.contactName}`
+                            )
+                          }
+                          className="text-left bg-transparent border-none p-0 cursor-pointer min-w-0 flex-1"
+                        >
+                          <div className="text-xs font-bold text-slate-100 truncate flex items-center gap-1">
+                            <UserCheck size={13} className="text-purple-400 shrink-0" />
+                            <span className="truncate">{person.contactName}</span>
+                          </div>
+                          <div className="text-[11px] text-purple-400 font-extrabold mt-0.5">
+                            Còn nợ: {formatVND(person.payable)}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettleDebtInline({
+                              contactName: person.contactName,
+                              mode: 'PAY_DEBT'
+                            });
+                            setSettleAmountInput(
+                              new Intl.NumberFormat('vi-VN').format(person.payable)
+                            );
+                            setSettleWalletIdInput(wallets[0]?.id || '');
+                          }}
+                          className="touch-btn py-1.5 px-2.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-[11px] font-bold cursor-pointer shrink-0"
+                        >
+                          - Trả nợ
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-white/6 flex flex-col gap-1.5 text-[11px] text-slate-400">
+                          <div className="flex justify-between">
+                            <span>Đã vay: {formatVND(person.borrowed)}</span>
+                            <span>Đã trả: {formatVND(person.paid)}</span>
+                          </div>
+                          {person.txs.slice(0, 4).map((t) => (
+                            <div
+                              key={t.id}
+                              onClick={() => onEditTransaction(t)}
+                              className="flex justify-between items-center py-1 px-2 rounded bg-slate-900/90 hover:bg-slate-800 cursor-pointer"
+                            >
+                              <span className="truncate text-slate-300">
+                                {t.date} • {t.note || 'Giao dịch vay/nợ'}
+                              </span>
+                              <span className="font-bold text-purple-300 shrink-0 ml-2">
+                                {formatVND(t.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Khung xác nhận Thu nợ / Trả nợ nhanh ngay trên Tổng quan */}
+        {settleDebtInline && (
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex flex-col gap-2.5 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400">
+                {settleDebtInline.mode === 'COLLECT_DEBT'
+                  ? `🐷 Thu nợ từ "${settleDebtInline.contactName}"`
+                  : `💳 Trả nợ cho "${settleDebtInline.contactName}"`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSettleDebtInline(null)}
+                className="text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={settleAmountInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  setSettleAmountInput(
+                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
+                  );
+                }}
+                placeholder="Số tiền..."
+                className="input-ios text-xs py-2 font-extrabold text-emerald-400"
+              />
+              <select
+                value={settleWalletIdInput}
+                onChange={(e) => setSettleWalletIdInput(e.target.value)}
+                className="input-ios text-xs py-2"
+              >
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({formatVND(w.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSettleDebtInline(null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSettleDebt}
+                className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold border-none cursor-pointer"
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Nút xem các người nợ đã tất toán xong (nếu có) */}
+        {debtOverview.settledList.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowSettledDebts(!showSettledDebts)}
+              className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1 bg-transparent border-none p-0 cursor-pointer"
+            >
+              <CheckCircle2 size={12} className="text-emerald-400" />
+              <span>
+                Đã tất toán xong ({debtOverview.settledList.length} người)
+              </span>
+              {showSettledDebts ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+
+            {showSettledDebts && (
+              <div className="mt-2 flex flex-wrap gap-1.5 animate-fade-in">
+                {debtOverview.settledList.map((s) => (
+                  <span
+                    key={s.contactName}
+                    onClick={() => setSearchQuery(s.contactName)}
+                    className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800/80 border border-white/6 text-slate-300 cursor-pointer hover:border-emerald-500/40 flex items-center gap-1"
+                    title="Bấm để lọc giao dịch của người này"
+                  >
+                    <CheckCircle2 size={11} className="text-emerald-400" />
+                    <span>{s.contactName}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

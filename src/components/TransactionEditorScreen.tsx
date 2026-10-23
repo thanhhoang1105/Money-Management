@@ -1614,17 +1614,17 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       {/* 5. POPUP BÀN PHÍM NUMPAD CHỈ HIỂN THỊ TRÊN ĐIỆN THOẠI (Render qua Portal gắn vào document.body) */}
       <NumpadBottomSheet
         isOpen={isNumpadOpen}
-        onClose={() => setIsNumpadOpen(false)}
+        onClose={() => {
+          if (hasOperator) {
+            handleKeyPress('=');
+          }
+          setIsNumpadOpen(false);
+        }}
         type={type}
         amountStr={amountStr}
         computedAmount={currentComputedAmount}
         hasOperator={hasOperator}
         onKeyPress={handleKeyPress}
-        onConfirmAndSave={
-          selectedCategoryId || type === 'TRANSFER' || type === 'ADJUST'
-            ? () => handleSave(false)
-            : undefined
-        }
         currentWalletBalance={currentWallet?.balance}
         adjustDiff={adjustDiff}
       />
