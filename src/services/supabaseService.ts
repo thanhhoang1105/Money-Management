@@ -1,11 +1,17 @@
 // src/services/supabaseService.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { db } from '../db';
+import {
+  db,
+  LOCAL_CONNECTED_SYNC_KEY,
+  clearLocalDataChanged,
+  hasLocalDataChanged
+} from '../db';
 import type { SyncDataPayload } from '../types';
 import {
   getLocalSyncPayload,
   mergeTwoWayData,
-  applyMergedDataToIndexedDB
+  applyMergedDataToIndexedDB,
+  deduplicateSyncPayload
 } from './syncService';
 import { getCurrentDate } from '../utils/formatters';
 
@@ -56,13 +62,22 @@ export async function getSupabaseConfig(): Promise<SupabaseSyncConfig> {
   const savedSyncKey = await db.settings.get('supabase_sync_key');
   const savedEmail = await db.settings.get('supabase_user_email');
 
+  let localStoredSyncKey = '';
+  try {
+    localStoredSyncKey = localStorage.getItem(LOCAL_CONNECTED_SYNC_KEY)?.trim() || '';
+  } catch {
+    // ignore
+  }
+
   const rawUrl =
     (typeof savedUrl?.value === 'string' && savedUrl.value.trim()) || ENV_SUPABASE_URL;
   const url = normalizeSupabaseUrl(rawUrl);
   const anonKey =
     (typeof savedKey?.value === 'string' && savedKey.value.trim()) || ENV_SUPABASE_ANON_KEY;
   const syncKey =
-    (typeof savedSyncKey?.value === 'string' && savedSyncKey.value.trim()) || '';
+    (typeof savedSyncKey?.value === 'string' && savedSyncKey.value.trim()) ||
+    localStoredSyncKey ||
+    '';
   const email =
     (typeof savedEmail?.value === 'string' && savedEmail.value.trim()) || undefined;
 
@@ -70,7 +85,7 @@ export async function getSupabaseConfig(): Promise<SupabaseSyncConfig> {
 }
 
 /**
- * Lưu cấu hình Supabase Project URL, Anon Key và Mã đồng bộ vào IndexedDB
+ * Lưu cấu hình Supabase Project URL, Anon Key và Mã đồng bộ vào IndexedDB & localStorage
  */
 export async function saveSupabaseConfig(input: {
   url?: string;
@@ -85,7 +100,17 @@ export async function saveSupabaseConfig(input: {
     await db.settings.put({ key: 'supabase_anon_key', value: input.anonKey.trim() });
   }
   if (input.syncKey !== undefined) {
-    await db.settings.put({ key: 'supabase_sync_key', value: input.syncKey.trim() });
+    const cleanSyncKey = input.syncKey.trim();
+    await db.settings.put({ key: 'supabase_sync_key', value: cleanSyncKey });
+    try {
+      if (cleanSyncKey) {
+        localStorage.setItem(LOCAL_CONNECTED_SYNC_KEY, cleanSyncKey);
+      } else {
+        localStorage.removeItem(LOCAL_CONNECTED_SYNC_KEY);
+      }
+    } catch {
+      // ignore
+    }
   }
   if (input.email !== undefined) {
     await db.settings.put({ key: 'supabase_user_email', value: input.email.trim() });
@@ -106,6 +131,12 @@ export async function disconnectSupabase(): Promise<void> {
   } catch {
     // ignore
   }
+  try {
+    localStorage.removeItem(LOCAL_CONNECTED_SYNC_KEY);
+  } catch {
+    // ignore
+  }
+  clearLocalDataChanged();
   await db.settings.delete('supabase_sync_key');
   await db.settings.delete('supabase_user_email');
 }
@@ -190,7 +221,9 @@ export async function backupToSupabase(): Promise<{
     throw new Error('Vui lòng đăng nhập hoặc nhập Mã Đồng Bộ (Sync Key) trước khi sao lưu.');
   }
 
-  const payload = await getLocalSyncPayload();
+  const rawPayload = await getLocalSyncPayload();
+  const payload = deduplicateSyncPayload(rawPayload);
+  await applyMergedDataToIndexedDB(payload);
   const now = new Date().toISOString();
 
   const { error } = await client.from('user_backups').upsert(
@@ -212,6 +245,7 @@ export async function backupToSupabase(): Promise<{
   const today = getCurrentDate();
   await db.settings.put({ key: 'last_supabase_backup_date', value: today });
   await db.settings.put({ key: 'last_supabase_sync_time', value: now });
+  clearLocalDataChanged();
 
   return { updatedAt: now, syncKey };
 }
@@ -253,6 +287,72 @@ export async function getBackupFromSupabase(): Promise<{
     payload,
     jsonContent: JSON.stringify(payload, null, 2),
     updatedAt: data.updated_at || new Date().toISOString()
+  };
+}
+
+/**
+ * Kết nối đồng bộ lần đầu trên thiết bị:
+ * - Nếu trên Supabase ĐÃ CÓ dữ liệu của mã đồng bộ này -> Xóa sạch (clear) dữ liệu local và nạp thẳng bản từ Cloud về (chống nhân đôi ví/hạng mục mặc định).
+ * - Nếu trên Supabase CHƯA CÓ dữ liệu -> Dọn trùng dữ liệu local hiện tại và đẩy lên Cloud làm gốc.
+ */
+export async function connectInitialSupabaseSync(): Promise<{
+  success: boolean;
+  action: 'UPLOADED_INITIAL' | 'RESTORED_FROM_CLOUD';
+  message: string;
+}> {
+  const client = await getSupabaseClient();
+  const { syncKey, email } = await getSupabaseConfig();
+
+  if (!client) {
+    throw new Error(
+      'Chưa nhận được biến môi trường VITE_SUPABASE_URL và VITE_SUPABASE_ANON_KEY. Vui lòng kiểm tra Environment Variables trên Vercel và Redeploy.'
+    );
+  }
+  if (!syncKey) {
+    throw new Error('Chưa kết nối tài khoản hoặc Mã đồng bộ Supabase.');
+  }
+
+  const remoteRecord = await getBackupFromSupabase();
+
+  // Trường hợp 1: Trên Cloud chưa có dữ liệu -> Đẩy dữ liệu máy hiện tại lên làm bản gốc
+  if (!remoteRecord) {
+    await backupToSupabase();
+    return {
+      success: true,
+      action: 'UPLOADED_INITIAL',
+      message: 'Đã khởi tạo và đẩy dữ liệu lên Supabase Cloud thành công!'
+    };
+  }
+
+  // Trường hợp 2: Trên Cloud ĐÃ CÓ dữ liệu -> Clear sạch data local và nạp bản chuẩn đã khử trùng từ Cloud
+  const cleanedCloudPayload = deduplicateSyncPayload(remoteRecord.payload);
+  await applyMergedDataToIndexedDB(cleanedCloudPayload);
+
+  // Cập nhật lại bản đã khử trùng lên Cloud để đảm bảo Cloud cũng sạch hoàn toàn
+  const now = new Date().toISOString();
+  const { error } = await client.from('user_backups').upsert(
+    {
+      sync_key: syncKey,
+      user_email: email || syncKey,
+      payload: cleanedCloudPayload,
+      updated_at: now
+    },
+    { onConflict: 'sync_key' }
+  );
+
+  if (error) {
+    throw new Error(`Lỗi cập nhật dữ liệu đồng bộ: ${error.message}`);
+  }
+
+  const today = getCurrentDate();
+  await db.settings.put({ key: 'last_supabase_backup_date', value: today });
+  await db.settings.put({ key: 'last_supabase_sync_time', value: now });
+  clearLocalDataChanged();
+
+  return {
+    success: true,
+    action: 'RESTORED_FROM_CLOUD',
+    message: `Đã xóa dữ liệu tạm ở máy và tải về ${cleanedCloudPayload.data.transactions.length} giao dịch, ${cleanedCloudPayload.data.wallets.length} ví từ Supabase!`
   };
 }
 
@@ -314,6 +414,7 @@ export async function performSupabaseSmartSync(): Promise<{
   const today = getCurrentDate();
   await db.settings.put({ key: 'last_supabase_backup_date', value: today });
   await db.settings.put({ key: 'last_supabase_sync_time', value: now });
+  clearLocalDataChanged();
 
   return {
     success: true,
@@ -323,7 +424,10 @@ export async function performSupabaseSmartSync(): Promise<{
 }
 
 /**
- * Tự động đồng bộ ngầm với Supabase khi mở ứng dụng hoặc chuyển tab
+ * Tự động đồng bộ ngầm với Supabase:
+ * - CHỈ chạy khi thiết bị đã kết nối và lưu Mã Đồng Bộ (syncKey) dưới local
+ * - CHỈ chạy khi có thay đổi dữ liệu thực sự dưới local (hasLocalDataChanged() === true)
+ * - Tuyệt đối không đồng bộ liên tục khi không có thay đổi ở local
  */
 export async function checkAndRunSupabaseAutoSync(): Promise<{
   ran: boolean;
@@ -339,15 +443,21 @@ export async function checkAndRunSupabaseAutoSync(): Promise<{
 
     const { url, anonKey, syncKey } = await getSupabaseConfig();
     if (!url || !anonKey || !syncKey) {
-      return { ran: false, message: 'Chưa cấu hình Supabase' };
+      return { ran: false, message: 'Chưa kết nối Mã đồng bộ dưới local' };
     }
 
-    const lastSyncSetting = await db.settings.get('last_supabase_sync_time');
-    if (lastSyncSetting?.value && typeof lastSyncSetting.value === 'string') {
-      const diffMs = Date.now() - new Date(lastSyncSetting.value).getTime();
-      if (diffMs < 45 * 1000) {
-        return { ran: false, message: 'Vừa mới đồng bộ Supabase gần đây' };
+    // Đảm bảo mã đồng bộ đã được lưu cố định ở localStorage
+    try {
+      if (!localStorage.getItem(LOCAL_CONNECTED_SYNC_KEY)) {
+        localStorage.setItem(LOCAL_CONNECTED_SYNC_KEY, syncKey);
       }
+    } catch {
+      // ignore
+    }
+
+    // CHỈ đồng bộ khi thực sự có thay đổi dữ liệu dưới local
+    if (!hasLocalDataChanged()) {
+      return { ran: false, message: 'Không có thay đổi dữ liệu mới dưới local' };
     }
 
     const res = await performSupabaseSmartSync();

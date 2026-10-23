@@ -2,6 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import {
+  PARENT_MUST_HAVE_ID,
+  PARENT_NICE_TO_HAVE_ID,
+  PARENT_WASTED_ID
+} from '../db/seed';
 import type { Category, CategoryType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { generateUUID } from '../utils/uuid';
@@ -23,6 +28,12 @@ interface CategoryManagerScreenProps {
   onSelectCategory?: (category: Category) => void;
   initialTab?: CategoryType;
 }
+
+const FIXED_EXPENSE_PARENT_IDS = new Set([
+  PARENT_MUST_HAVE_ID,
+  PARENT_NICE_TO_HAVE_ID,
+  PARENT_WASTED_ID
+]);
 
 const COLOR_PRESETS = [
   '#F97316',
@@ -60,7 +71,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   const [activeTab, setActiveTab] = useState<CategoryType>(initialTab);
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
 
-  // Trạng thái màn hình phẳng: Thêm / Sửa hạng mục (không dùng Popup)
+  // Trạng thái màn hình phẳng: Thêm / Sửa hạng mục
   const [isEditing, setIsEditing] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
 
@@ -116,13 +127,27 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   if (!isOpen) return null;
 
   const handleOpenAdd = (presetParentId?: string) => {
+    if (activeTab === 'DEBT') return; // Vay nợ chỉ dùng 4 option mặc định, không thêm mới
     setEditingCat(null);
     setFormName('');
     setFormType(activeTab);
-    setFormIsChild(activeTab === 'EXPENSE' ? true : !!presetParentId);
-    setFormParentId(presetParentId || (parentCategories[0]?.id || ''));
+
+    if (activeTab === 'EXPENSE') {
+      // Khoản Chi bắt buộc là mục con thuộc 1 trong 3 nhóm cha (Must have, Nice to have, Wasted)
+      const targetParentId =
+        presetParentId || parentCategories[0]?.id || PARENT_MUST_HAVE_ID;
+      const targetParent = parentCategories.find((p) => p.id === targetParentId);
+      setFormIsChild(true);
+      setFormParentId(targetParentId);
+      setFormColor(targetParent?.color || '#10B981');
+    } else {
+      // Khoản Thu có thể là mục cha hoặc mục con
+      setFormIsChild(Boolean(presetParentId));
+      setFormParentId(presetParentId || (parentCategories[0]?.id || ''));
+      setFormColor('#10B981');
+    }
+
     setFormIcon('Tag');
-    setFormColor(parentCategories[0]?.color || '#3B82F6');
     setFormTagsStr('');
     setFormIsStarred(false);
     setFormError('');
@@ -134,8 +159,8 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
     setEditingCat(cat);
     setFormName(cat.name);
     setFormType(cat.type);
-    setFormIsChild(!!cat.parentId);
-    setFormParentId(cat.parentId || '');
+    setFormIsChild(cat.type === 'EXPENSE' ? !FIXED_EXPENSE_PARENT_IDS.has(cat.id) : !!cat.parentId);
+    setFormParentId(cat.parentId || (parentCategories[0]?.id || ''));
     setFormIcon(cat.icon || 'Tag');
     setFormColor(cat.color || '#3B82F6');
     setFormTagsStr(cat.quickTags?.join(', ') || '');
@@ -152,6 +177,21 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
       return;
     }
 
+    const isFixedExpenseParent =
+      editingCat && FIXED_EXPENSE_PARENT_IDS.has(editingCat.id);
+
+    let resolvedParentId: string | undefined = undefined;
+    if (formType === 'EXPENSE') {
+      if (!isFixedExpenseParent) {
+        resolvedParentId = formParentId || PARENT_MUST_HAVE_ID;
+      }
+    } else if (formType === 'INCOME') {
+      resolvedParentId = formIsChild ? formParentId || undefined : undefined;
+    } else {
+      // DEBT không có quan hệ cha - con
+      resolvedParentId = undefined;
+    }
+
     const now = new Date().toISOString();
     const tags = formTagsStr
       .split(',')
@@ -163,7 +203,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
         await db.categories.update(editingCat.id, {
           name: trimmed,
           type: formType,
-          parentId: formIsChild ? formParentId || undefined : undefined,
+          parentId: resolvedParentId,
           icon: formIcon,
           color: formColor,
           quickTags: tags,
@@ -176,7 +216,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           id: createdId,
           name: trimmed,
           type: formType,
-          parentId: formIsChild ? formParentId || undefined : undefined,
+          parentId: resolvedParentId,
           icon: formIcon,
           color: formColor,
           quickTags: tags,
@@ -199,6 +239,10 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   };
 
   const handleDeleteCategory = async (cat: Category) => {
+    if (FIXED_EXPENSE_PARENT_IDS.has(cat.id) || cat.type === 'DEBT') {
+      return;
+    }
+
     const isParent = !cat.parentId;
     const childs = childCategoriesByParent.get(cat.id) || [];
 
@@ -222,6 +266,10 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   };
 
   const handleItemClick = (cat: Category) => {
+    // Khoản Chi bắt buộc phải chọn mục con (có parentId)
+    if (cat.type === 'EXPENSE' && !cat.parentId) {
+      return;
+    }
     if (onSelectCategory) {
       onSelectCategory(cat);
       onClose();
@@ -232,6 +280,15 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   // MÀN HÌNH PHẲNG CON: THÊM HOẶC SỬA HẠNG MỤC
   // ==========================================
   if (isEditing) {
+    const isFixedExpenseParent =
+      editingCat && FIXED_EXPENSE_PARENT_IDS.has(editingCat.id);
+    const expenseParents = categories.filter(
+      (c) => c.type === 'EXPENSE' && !c.parentId && c.id !== 'system_adjustment'
+    );
+    const incomeParents = categories.filter(
+      (c) => c.type === 'INCOME' && !c.parentId && c.id !== editingCat?.id
+    );
+
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in font-body text-slate-100">
         <div className="flex items-center justify-between border-b border-white/8 pb-3">
@@ -241,7 +298,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
             className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
           >
             <ArrowLeft size={17} />
-            <span>Quay lại danh sách hạng mục</span>
+            <span>Quay lại</span>
           </button>
           <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
             {editingCat ? 'Chỉnh sửa hạng mục' : 'Thêm hạng mục mới'}
@@ -265,90 +322,94 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
               type="text"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              placeholder="Ví dụ: Ăn trưa, Đổ xăng, Tiền thưởng..."
+              placeholder={
+                formType === 'EXPENSE'
+                  ? 'Ví dụ: Ăn sáng, Đổ xăng, Tiền nhà...'
+                  : 'Ví dụ: Lương tháng 13, Thưởng dự án...'
+              }
               className="input-ios w-full bg-slate-800 rounded-xl px-3.5 py-2.5 text-white border border-white/10"
               autoFocus
             />
           </div>
 
-          {/* Chọn loại Hạng mục (Chi / Thu / Vay nợ) */}
-          <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              Loại hạng mục
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'EXPENSE', label: 'Khoản Chi' },
-                { id: 'INCOME', label: 'Khoản Thu' },
-                { id: 'DEBT', label: 'Vay / Nợ' }
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => {
-                    setFormType(t.id as CategoryType);
-                    if (t.id !== 'EXPENSE') setFormIsChild(false);
-                  }}
-                  className={`py-2 px-2 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                    formType === t.id
-                      ? 'bg-sky-500/20 border-sky-400 text-sky-300'
-                      : 'bg-slate-800 border-white/5 text-slate-400'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+          {/* Chọn nhóm cha cho Khoản Chi (Bắt buộc thuộc 1 trong 3 nhóm: Must have, Nice to have, Wasted) */}
+          {formType === 'EXPENSE' && !isFixedExpenseParent && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Thuộc nhóm Khoản Chi *
+              </label>
+              <select
+                value={formParentId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setFormParentId(nextId);
+                  const foundP = expenseParents.find((p) => p.id === nextId);
+                  if (foundP && !editingCat) {
+                    setFormColor(foundP.color);
+                  }
+                }}
+                className="input-ios w-full bg-slate-800 rounded-xl px-3 py-2.5 text-white border border-white/10 font-bold text-xs cursor-pointer"
+              >
+                {expenseParents.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
+          )}
 
-          {/* Phân cấp: Hạng mục cha hay Hạng mục con */}
-          {formType === 'EXPENSE' && (
+          {/* Phân cấp cho Khoản Thu (Có thể là Mục cha độc lập hoặc Mục con thuộc 1 mục Thu khác) */}
+          {formType === 'INCOME' && (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-300 block">
-                Phân cấp danh mục
+                Phân cấp Khoản Thu
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setFormIsChild(true)}
-                  className={`touch-btn p-2 rounded-xl border text-xs font-semibold cursor-pointer ${
+                  onClick={() => setFormIsChild(false)}
+                  className={`touch-btn p-2.5 rounded-xl border text-xs font-bold cursor-pointer ${
+                    !formIsChild
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                      : 'bg-slate-800 border-white/5 text-slate-400'
+                  }`}
+                >
+                  Hạng mục chính (Cha)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormIsChild(true);
+                    if (!formParentId && incomeParents[0]) {
+                      setFormParentId(incomeParents[0].id);
+                    }
+                  }}
+                  className={`touch-btn p-2.5 rounded-xl border text-xs font-bold cursor-pointer ${
                     formIsChild
-                      ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
                       : 'bg-slate-800 border-white/5 text-slate-400'
                   }`}
                 >
                   Hạng mục con
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setFormIsChild(false)}
-                  className={`touch-btn p-2 rounded-xl border text-xs font-semibold cursor-pointer ${
-                    !formIsChild
-                      ? 'bg-sky-500/20 border-sky-400 text-sky-300'
-                      : 'bg-slate-800 border-white/5 text-slate-400'
-                  }`}
-                >
-                  Hạng mục cha
-                </button>
               </div>
 
-              {formIsChild && (
+              {formIsChild && incomeParents.length > 0 && (
                 <div className="mt-1">
                   <label className="text-[11px] text-slate-400 block mb-1">
-                    Trực thuộc hạng mục cha:
+                    Trực thuộc khoản thu:
                   </label>
                   <select
                     value={formParentId}
                     onChange={(e) => setFormParentId(e.target.value)}
-                    className="input-ios w-full bg-slate-800 rounded-xl px-3 py-2 text-white border border-white/10"
+                    className="input-ios w-full bg-slate-800 rounded-xl px-3 py-2 text-white border border-white/10 text-xs font-bold cursor-pointer"
                   >
-                    {categories
-                      .filter((c) => c.type === 'EXPENSE' && !c.parentId && c.id !== 'system_adjustment')
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
+                    {incomeParents.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
@@ -441,59 +502,63 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           </div>
 
           {/* Quick tags */}
-          <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1">
-              Gợi ý ghi chú nhanh (cách nhau bằng dấu phẩy)
-            </label>
-            <input
-              type="text"
-              value={formTagsStr}
-              onChange={(e) => setFormTagsStr(e.target.value)}
-              placeholder="Ví dụ: Ăn sáng, Cơm trưa, Cà phê"
-              className="input-ios w-full bg-slate-800 rounded-xl px-3.5 py-2.5 text-white border border-white/10"
-            />
-          </div>
-
-          {/* Toggle Gắn sao ưu tiên */}
-          <div
-            onClick={() => setFormIsStarred(!formIsStarred)}
-            className="flex items-center justify-between p-3 rounded-xl bg-slate-800/80 border border-white/6 cursor-pointer hover:bg-slate-800 transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                  formIsStarred ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-400'
-                }`}
-              >
-                <Star size={16} className={formIsStarred ? 'fill-amber-400' : ''} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>Ưu tiên mục Hay dùng</span>
-                  {formIsStarred && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold">
-                      Đã gắn sao
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Luôn hiển thị trên cùng ngoài màn hình Ghi giao dịch
-                </div>
-              </div>
-            </div>
-
-            <div
-              className={`w-10 h-6 rounded-full p-0.5 transition-colors shrink-0 ml-2 ${
-                formIsStarred ? 'bg-amber-500' : 'bg-slate-700'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
-                  formIsStarred ? 'translate-x-4' : 'translate-x-0'
-                }`}
+          {!isFixedExpenseParent && (
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
+                Gợi ý ghi chú nhanh (cách nhau bằng dấu phẩy)
+              </label>
+              <input
+                type="text"
+                value={formTagsStr}
+                onChange={(e) => setFormTagsStr(e.target.value)}
+                placeholder="Ví dụ: Ăn sáng, Cơm trưa, Cà phê"
+                className="input-ios w-full bg-slate-800 rounded-xl px-3.5 py-2.5 text-white border border-white/10"
               />
             </div>
-          </div>
+          )}
+
+          {/* Toggle Gắn sao ưu tiên */}
+          {!isFixedExpenseParent && (
+            <div
+              onClick={() => setFormIsStarred(!formIsStarred)}
+              className="flex items-center justify-between p-3 rounded-xl bg-slate-800/80 border border-white/6 cursor-pointer hover:bg-slate-800 transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                    formIsStarred ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-400'
+                  }`}
+                >
+                  <Star size={16} className={formIsStarred ? 'fill-amber-400' : ''} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>Ưu tiên mục Hay dùng</span>
+                    {formIsStarred && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold">
+                        Đã gắn sao
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    Luôn hiển thị trên cùng ngoài màn hình Ghi giao dịch
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`w-10 h-6 rounded-full p-0.5 transition-colors shrink-0 ml-2 ${
+                  formIsStarred ? 'bg-amber-500' : 'bg-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
+                    formIsStarred ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Nút Hành Động */}
           <div className="flex items-center gap-2 pt-2">
@@ -505,7 +570,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
               Hủy
             </button>
 
-            {editingCat && (
+            {editingCat && !isFixedExpenseParent && editingCat.type !== 'DEBT' && (
               <button
                 type="button"
                 onClick={() => {
@@ -553,17 +618,21 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           {onSelectCategory ? 'Chọn & Quản lý hạng mục' : 'Quản lý hạng mục'}
         </h2>
 
-        <button
-          type="button"
-          onClick={() => handleOpenAdd()}
-          className="touch-btn flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none"
-        >
-          <Plus size={15} strokeWidth={2.5} />
-          <span>Thêm mới</span>
-        </button>
+        {activeTab !== 'DEBT' ? (
+          <button
+            type="button"
+            onClick={() => handleOpenAdd()}
+            className="touch-btn flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none"
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>Thêm mới</span>
+          </button>
+        ) : (
+          <div className="w-16" />
+        )}
       </div>
 
-      {/* 2. 3 TAB LỚN: CHI TIỀN, THU TIỀN, VAY NỢ */}
+      {/* 2. 3 TAB LỚN: KHOẢN CHI, KHOẢN THU, VAY NỢ */}
       <div className="px-4 pt-3 pb-2 bg-slate-900/60 border-b border-white/5">
         <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-800/80 rounded-2xl">
           <button
@@ -604,209 +673,340 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
         </div>
       </div>
 
-      {/* 3. DANH SÁCH HẠNG MỤC PHÂN CẤP (CÓ NÚT SỬA & XÓA TRỰC TIẾP) */}
+      {/* 3. DANH SÁCH HẠNG MỤC THEO TỪNG TAB */}
       <div className="px-4 py-3 space-y-4">
-        {onSelectCategory && (
-          <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/20 text-sky-300 text-xs flex items-center gap-2">
-            <HelpCircle size={15} className="shrink-0" />
-            <span>
-              Chạm vào tên hạng mục để chọn cho giao dịch, hoặc bấm biểu tượng Bút / Thùng rác để Sửa / Xóa.
-            </span>
-          </div>
-        )}
+        <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/20 text-sky-300 text-xs flex items-center gap-2">
+          <HelpCircle size={15} className="shrink-0" />
+          <span>
+            {activeTab === 'EXPENSE'
+              ? 'Khoản Chi có 3 nhóm mặc định (Must have, Nice to have, Wasted). Hãy bấm "+ Thêm con" để tạo và chọn mục con bên dưới.'
+              : activeTab === 'INCOME'
+              ? 'Khoản Thu có thể chạm chọn trực tiếp mục chính hoặc bấm "+ Thêm con" để tạo mục con.'
+              : 'Vay / Nợ gồm 4 loại giao dịch cố định (không phân nhánh cha - con).'}
+          </span>
+        </div>
 
-        {parentCategories.map((parent) => {
-          const children = childCategoriesByParent.get(parent.id) || [];
+        {/* ====================================================
+            TAB 1: KHOẢN CHI (EXPENSE) - Bắt buộc chọn mục con
+           ==================================================== */}
+        {activeTab === 'EXPENSE' &&
+          parentCategories.map((parent) => {
+            const children = childCategoriesByParent.get(parent.id) || [];
 
-          return (
-            <div
-              key={parent.id}
-              className="rounded-2xl bg-slate-900 border border-white/8 overflow-hidden shadow-md"
-            >
-              {/* Header Hạng mục cha */}
-              <div className="px-3.5 py-3 bg-slate-800/80 border-b border-white/6 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
-                    style={{ backgroundColor: parent.color }}
-                  >
-                    <CategoryIcon name={parent.icon || 'FolderTree'} size={15} color="#ffffff" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span>{parent.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300 font-normal">
-                        {children.length} mục
-                      </span>
+            return (
+              <div
+                key={parent.id}
+                className="rounded-2xl bg-slate-900 border border-white/8 overflow-hidden shadow-md"
+              >
+                {/* Header Nhóm cha (Không cho chọn trực tiếp làm giao dịch, chỉ dùng phân nhóm & thêm mục con) */}
+                <div className="px-3.5 py-3 bg-slate-800/80 border-b border-white/6 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
+                      style={{ backgroundColor: parent.color }}
+                    >
+                      <CategoryIcon name={parent.icon || 'FolderTree'} size={15} color="#ffffff" />
                     </div>
+                    <div className="truncate">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="truncate">{parent.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300 font-normal shrink-0">
+                          {children.length} mục con
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAdd(parent.id)}
+                      className="touch-btn text-xs font-bold text-sky-400 bg-sky-500/15 px-2.5 py-1.5 rounded-xl border border-sky-400/25 flex items-center gap-1 cursor-pointer hover:bg-sky-500/25"
+                      title="Thêm hạng mục con vào nhóm này"
+                    >
+                      <Plus size={13} strokeWidth={2.5} />
+                      <span>Thêm con</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                {/* Danh sách các Hạng mục con bên dưới */}
+                {children.length === 0 ? (
                   <button
                     type="button"
                     onClick={() => handleOpenAdd(parent.id)}
-                    className="touch-btn text-xs font-semibold text-sky-400 bg-sky-500/10 px-2 py-1 rounded-lg border-none flex items-center gap-0.5 cursor-pointer hover:bg-sky-500/20"
-                    title="Thêm mục con"
+                    className="w-full p-4 text-center text-xs text-slate-400 hover:text-sky-300 bg-transparent border-none cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Plus size={13} />
-                    <span>Thêm con</span>
+                    <Plus size={14} className="text-sky-400" />
+                    <span>Chưa có mục con nào. Bấm vào đây để thêm vào "{parent.name}"</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEdit(parent)}
-                    className="touch-btn p-1.5 text-slate-400 hover:text-white rounded-lg bg-transparent border-none cursor-pointer"
-                    title="Sửa hạng mục cha"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Lưới các Hạng mục con */}
-              {children.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-500">
-                  Chưa có hạng mục con nào. Bấm "Thêm con" ở trên để tạo.
-                </div>
-              ) : (
-                <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {children.map((child) => (
-                    <div
-                      key={child.id}
-                      onClick={() => handleItemClick(child)}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                        onSelectCategory
-                          ? 'hover:border-sky-400 hover:bg-slate-800/80 active:scale-98'
-                          : ''
-                      } bg-slate-800/50 border-white/5`}
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0"
-                          style={{ backgroundColor: child.color }}
-                        >
-                          <CategoryIcon name={child.icon || 'Tag'} size={15} color="#ffffff" />
-                        </div>
-                        <div className="truncate text-left">
-                          <div className="text-xs font-semibold text-slate-100 truncate">
-                            {child.name}
+                ) : (
+                  <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {children.map((child) => (
+                      <div
+                        key={child.id}
+                        onClick={() => handleItemClick(child)}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                          onSelectCategory
+                            ? 'hover:border-sky-400 hover:bg-slate-800/80 active:scale-98'
+                            : ''
+                        } bg-slate-800/50 border-white/5`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0"
+                            style={{ backgroundColor: child.color }}
+                          >
+                            <CategoryIcon name={child.icon || 'Tag'} size={15} color="#ffffff" />
                           </div>
-                          {child.quickTags && child.quickTags.length > 0 && (
-                            <div className="text-[10px] text-slate-400 truncate">
-                              {child.quickTags[0]}
-                              {child.quickTags.length > 1 ? ` +${child.quickTags.length - 1}` : ''}
+                          <div className="truncate text-left">
+                            <div className="text-xs font-semibold text-slate-100 truncate">
+                              {child.name}
                             </div>
+                            {child.quickTags && child.quickTags.length > 0 && (
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {child.quickTags[0]}
+                                {child.quickTags.length > 1 ? ` +${child.quickTags.length - 1}` : ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          className="flex items-center gap-0.5 shrink-0 ml-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStar(child)}
+                            className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                              child.isStarred
+                                ? 'text-amber-400 hover:text-amber-300'
+                                : 'text-slate-600 hover:text-slate-400'
+                            }`}
+                            title={child.isStarred ? 'Bỏ gắn sao ưu tiên' : 'Gắn sao ưu tiên'}
+                          >
+                            <Star size={14} className={child.isStarred ? 'fill-amber-400' : ''} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(child)}
+                            className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                            title="Sửa hạng mục"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(child)}
+                            className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                            title="Xóa hạng mục"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+        {/* ====================================================
+            TAB 2: KHOẢN THU (INCOME) - Chọn được cả Cha & Con
+           ==================================================== */}
+        {activeTab === 'INCOME' && (
+          <div className="space-y-2.5">
+            {parentCategories.map((parent) => {
+              const children = childCategoriesByParent.get(parent.id) || [];
+
+              return (
+                <div
+                  key={parent.id}
+                  className="rounded-2xl bg-slate-900 border border-white/8 overflow-hidden shadow-md"
+                >
+                  {/* Hàng Hạng mục cha: Bấm vào chọn trực tiếp được luôn */}
+                  <div
+                    onClick={() => handleItemClick(parent)}
+                    className={`px-3.5 py-3 flex items-center justify-between cursor-pointer transition-all ${
+                      onSelectCategory ? 'hover:bg-slate-800/90 active:scale-99' : ''
+                    } ${children.length > 0 ? 'border-b border-white/6 bg-slate-800/60' : ''}`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+                        style={{ backgroundColor: parent.color }}
+                      >
+                        <CategoryIcon name={parent.icon || 'Banknote'} size={16} color="#ffffff" />
+                      </div>
+                      <div className="truncate text-left">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span className="truncate">{parent.name}</span>
+                          {parent.isStarred && (
+                            <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />
                           )}
                         </div>
-                      </div>
-
-                      <div
-                        className="flex items-center gap-0.5 shrink-0 ml-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStar(child)}
-                          className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
-                            child.isStarred
-                              ? 'text-amber-400 hover:text-amber-300'
-                              : 'text-slate-600 hover:text-slate-400'
-                          }`}
-                          title={child.isStarred ? 'Bỏ gắn sao ưu tiên' : 'Gắn sao ưu tiên'}
-                        >
-                          <Star size={14} className={child.isStarred ? 'fill-amber-400' : ''} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(child)}
-                          className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
-                          title="Sửa hạng mục"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(child)}
-                          className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
-                          title="Xóa hạng mục"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {parent.quickTags && parent.quickTags.length > 0 && (
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {parent.quickTags.slice(0, 2).join(', ')}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
 
-        {/* Các mục độc lập không có cha (Tab Thu tiền / Vay nợ) */}
-        {parentCategories.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div
+                      className="flex items-center gap-0.5 shrink-0 ml-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAdd(parent.id)}
+                        className="touch-btn text-[11px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-1 rounded-lg border-none flex items-center gap-0.5 cursor-pointer hover:bg-sky-500/20 mr-1"
+                        title="Thêm mục con"
+                      >
+                        <Plus size={12} />
+                        <span>Thêm con</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStar(parent)}
+                        className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                          parent.isStarred
+                            ? 'text-amber-400 hover:text-amber-300'
+                            : 'text-slate-600 hover:text-slate-400'
+                        }`}
+                      >
+                        <Star size={14} className={parent.isStarred ? 'fill-amber-400' : ''} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(parent)}
+                        className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                        title="Sửa hạng mục"
+                      >
+                        <Edit2 size={13} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(parent)}
+                        className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                        title="Xóa hạng mục"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Nếu Khoản Thu này có tạo thêm mục con thì hiển thị bên dưới để chọn */}
+                  {children.length > 0 && (
+                    <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-950/40">
+                      {children.map((child) => (
+                        <div
+                          key={child.id}
+                          onClick={() => handleItemClick(child)}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                            onSelectCategory
+                              ? 'hover:border-emerald-400 hover:bg-slate-800/80 active:scale-98'
+                              : ''
+                          } bg-slate-800/50 border-white/5`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <div
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
+                              style={{ backgroundColor: child.color }}
+                            >
+                              <CategoryIcon name={child.icon || 'Tag'} size={14} color="#ffffff" />
+                            </div>
+                            <div className="truncate text-left">
+                              <div className="text-xs font-semibold text-slate-100 truncate">
+                                {child.name}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            className="flex items-center gap-0.5 shrink-0 ml-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStar(child)}
+                              className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent ${
+                                child.isStarred ? 'text-amber-400' : 'text-slate-600'
+                              }`}
+                            >
+                              <Star size={13} className={child.isStarred ? 'fill-amber-400' : ''} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(child)}
+                              className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(child)}
+                              className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ====================================================
+            TAB 3: VAY / NỢ (DEBT) - 4 Option mặc định phẳng
+           ==================================================== */}
+        {activeTab === 'DEBT' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {tabCategories.map((cat) => (
               <div
                 key={cat.id}
                 onClick={() => handleItemClick(cat)}
-                className="p-3 rounded-2xl bg-slate-900 border border-white/8 flex items-center justify-between cursor-pointer hover:border-sky-400"
+                className="p-3.5 rounded-2xl bg-slate-900 border border-white/8 flex items-center justify-between cursor-pointer hover:border-amber-400/50 transition-all"
               >
-                <div className="flex items-center gap-2.5 truncate">
+                <div className="flex items-center gap-3 truncate">
                   <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
                     style={{ backgroundColor: cat.color }}
                   >
-                    <CategoryIcon name={cat.icon || 'Tag'} size={16} color="#ffffff" />
+                    <CategoryIcon name={cat.icon || 'HandCoins'} size={18} color="#ffffff" />
                   </div>
                   <div className="truncate text-left">
-                    <div className="text-xs font-bold text-white truncate flex items-center gap-1">
-                      <span>{cat.name}</span>
-                      {cat.isStarred && (
-                        <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />
-                      )}
-                    </div>
+                    <div className="text-sm font-bold text-white truncate">{cat.name}</div>
                     {cat.quickTags && cat.quickTags.length > 0 && (
-                      <div className="text-[10px] text-slate-400 truncate">
-                        {cat.quickTags.slice(0, 2).join(', ')}
+                      <div className="text-[11px] text-slate-400 truncate">
+                        {cat.quickTags.slice(0, 3).join(', ')}
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div
-                  className="flex items-center gap-0.5 shrink-0"
+                  className="flex items-center gap-1 shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
                     type="button"
-                    onClick={() => handleToggleStar(cat)}
-                    className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
-                      cat.isStarred
-                        ? 'text-amber-400 hover:text-amber-300'
-                        : 'text-slate-600 hover:text-slate-400'
-                    }`}
-                  >
-                    <Star size={14} className={cat.isStarred ? 'fill-amber-400' : ''} />
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => handleOpenEdit(cat)}
                     className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
-                    title="Sửa hạng mục"
+                    title="Sửa gợi ý ghi chú / màu sắc"
                   >
-                    <Edit2 size={13} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(cat)}
-                    className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
-                    title="Xóa hạng mục"
-                  >
-                    <Trash2 size={13} />
+                    <Edit2 size={14} />
                   </button>
                 </div>
               </div>

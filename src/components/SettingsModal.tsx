@@ -1,7 +1,7 @@
 // src/components/SettingsModal.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
+import { db, LOCAL_CONNECTED_SYNC_KEY } from '../db';
 import {
   exportFullBackupJSON,
   downloadOrShareFile,
@@ -16,6 +16,7 @@ import {
   signInOrSignUpSupabase,
   backupToSupabase,
   getBackupFromSupabase,
+  connectInitialSupabaseSync,
   performSupabaseSmartSync
 } from '../services/supabaseService';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
@@ -135,9 +136,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
+  const localStoredKey = (() => {
+    try {
+      return localStorage.getItem(LOCAL_CONNECTED_SYNC_KEY)?.trim() || '';
+    } catch {
+      return '';
+    }
+  })();
+
   const activeSyncKey =
     (typeof supabaseSyncKeySetting?.value === 'string' &&
       supabaseSyncKeySetting.value.trim()) ||
+    localStoredKey ||
     '';
   const activeEmail =
     (typeof supabaseEmailSetting?.value === 'string' &&
@@ -177,9 +187,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         email: sbSyncKeyInput.trim()
       });
 
-      const syncRes = await performSupabaseSmartSync();
+      const syncRes = await connectInitialSupabaseSync();
       setStatusMsg({
-        text: `Đã kết nối Supabase & ${syncRes.message}`,
+        text: `Đã kết nối Supabase! ${syncRes.message}`,
         type: 'success'
       });
     } catch (err: any) {
@@ -199,7 +209,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     try {
       const res = await signInOrSignUpSupabase(sbEmailInput, sbPasswordInput, mode);
       setSbSyncKeyInput(res.syncKey);
-      const syncRes = await performSupabaseSmartSync();
+      const syncRes = await connectInitialSupabaseSync();
       setStatusMsg({
         text: `Đăng nhập thành công (${res.email})! ${syncRes.message}`,
         type: 'success'
@@ -743,14 +753,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </button>
               </div>
 
-              {/* Tự động đồng bộ ngầm khi mở app */}
+              {/* Tự động đồng bộ khi có thay đổi ở local */}
               <div className="flex items-center justify-between pt-2 border-t border-white/5">
                 <div>
                   <div className="text-xs font-medium text-slate-200">
-                    Tự động đồng bộ ngầm khi mở app
+                    Tự động đồng bộ khi có thay đổi dữ liệu ở máy
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Tự động cập nhật dữ liệu mới nhất giữa Web PC và Điện thoại
+                    Chỉ đẩy đồng bộ khi đã lưu mã dưới máy và bạn vừa thêm/sửa/xóa dữ liệu
                   </div>
                 </div>
 

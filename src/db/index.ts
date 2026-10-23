@@ -71,6 +71,89 @@ export class MoneyDatabase extends Dexie {
         console.warn('[DB] Persistent storage request on ready failed:', err);
       });
     });
+
+    // Theo dõi mọi thay đổi dữ liệu thực tế từ người dùng để bật cờ đồng bộ (tránh đồng bộ liên tục khi không có thay đổi)
+    const userTables = [
+      this.wallets,
+      this.categories,
+      this.transactions,
+      this.budgets,
+      this.recurringTransactions,
+      this.events
+    ];
+
+    for (const table of userTables) {
+      table.hook('creating', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+      table.hook('updating', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+      table.hook('deleting', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+    }
+  }
+}
+
+export const LOCAL_CONNECTED_SYNC_KEY = 'supabase_connected_sync_key';
+export const LOCAL_DIRTY_FLAG_KEY = 'supabase_has_local_changes';
+
+let isInternalSystemWrite = false;
+
+/**
+ * Chạy các tác vụ hệ thống (như khởi tạo Seed mặc định hoặc áp dụng dữ liệu tải từ Cloud về)
+ * mà KHÔNG đánh dấu là dữ liệu local bị người dùng thay đổi.
+ */
+export async function runWithoutDirtyTracking<T>(fn: () => Promise<T>): Promise<T> {
+  isInternalSystemWrite = true;
+  try {
+    return await fn();
+  } finally {
+    isInternalSystemWrite = false;
+  }
+}
+
+/**
+ * Đánh dấu dữ liệu dưới Local vừa có thay đổi mới do người dùng thao tác
+ */
+export function markLocalDataChanged(): void {
+  if (typeof window === 'undefined' || isInternalSystemWrite) return;
+  try {
+    localStorage.setItem(LOCAL_DIRTY_FLAG_KEY, 'true');
+    window.dispatchEvent(new CustomEvent('local-data-changed'));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Xóa cờ thay đổi dưới Local sau khi đã đồng bộ lên Supabase thành công
+ */
+export function clearLocalDataChanged(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_DIRTY_FLAG_KEY, 'false');
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Kiểm tra xem dưới Local có thay đổi dữ liệu nào chưa được đẩy lên Supabase không
+ */
+export function hasLocalDataChanged(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(LOCAL_DIRTY_FLAG_KEY) === 'true';
+  } catch {
+    return false;
   }
 }
 

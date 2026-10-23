@@ -205,7 +205,7 @@ export const WalletsTab: React.FC = () => {
             className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
           >
             <ArrowLeft size={17} />
-            <span>Quay lại danh sách ví</span>
+            <span>Quay lại ví</span>
           </button>
           <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
             {viewMode === 'CREATE' ? 'Thêm tài khoản / ví mới' : 'Chỉnh sửa tài khoản / ví'}
@@ -358,7 +358,7 @@ export const WalletsTab: React.FC = () => {
             className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
           >
             <ArrowLeft size={17} />
-            <span>Quay lại danh sách ví</span>
+            <span>Quay lại ví</span>
           </button>
           <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
             Điều chỉnh số dư thực tế

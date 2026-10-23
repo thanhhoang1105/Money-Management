@@ -1,5 +1,12 @@
 // src/services/syncService.ts
-import { db } from '../db';
+import { db, runWithoutDirtyTracking, markLocalDataChanged } from '../db';
+import {
+  SEED_CATEGORIES,
+  PARENT_MUST_HAVE_ID,
+  PARENT_NICE_TO_HAVE_ID,
+  PARENT_WASTED_ID
+} from '../db/seed';
+import { generateUUID } from '../utils/uuid';
 import type {
   Wallet,
   Category,
@@ -59,6 +66,7 @@ export async function recordDeletedEntity(
         key: DELETED_ENTITIES_SETTING_KEY,
         value: current
       });
+      markLocalDataChanged();
     }
   } catch (err) {
     console.error('Lỗi khi ghi nhận thực thể đã xóa cho đồng bộ:', err);
@@ -364,8 +372,10 @@ export function mergeTwoWayData(
     }
   };
 
+  const cleanedPayload = deduplicateSyncPayload(mergedPayload);
+
   return {
-    mergedPayload,
+    mergedPayload: cleanedPayload,
     changes: {
       addedTransactions: addedTxCount,
       updatedTransactions: updatedTxCount,
@@ -375,9 +385,321 @@ export function mergeTwoWayData(
 }
 
 /**
- * Ghi toàn bộ dữ liệu đã hợp nhất vào IndexedDB trong 1 Transaction nguyên tử duy nhất (ACID)
+ * DỌN DẸP & CHỐNG TRÙNG LẶP DỮ LIỆU (Deduplication & Category v6 Cleanup)
+ * - Gộp các Ví bị trùng tên + cùng loại (VD: 2 ví BIDV, 2 ví Grab, 2 ví Tiền mặt do khác UUID khi khởi tạo ở 2 máy)
+ * - Gộp các Hạng mục bị trùng tên + cùng loại + cùng nhóm cha, đồng thời dọn bỏ các mục con EXPENSE mặc định cũ
+ * - Ánh xạ lại walletId / categoryId của giao dịch và loại bỏ giao dịch bị nhân đôi trên ví trùng
+ */
+export function deduplicateSyncPayload(payload: SyncDataPayload): SyncDataPayload {
+  const nowIso = new Date().toISOString();
+  const rawWallets = payload.data.wallets || [];
+  const rawCategories = payload.data.categories || [];
+  const rawTransactions = payload.data.transactions || [];
+  const rawBudgets = payload.data.budgets || [];
+  const rawSettings = payload.data.settings || [];
+  const rawRecurring = payload.data.recurringTransactions || [];
+  const rawEvents = payload.data.events || [];
+
+  const deletedTxIds = new Set<string>(payload.deletedIds?.transactionIds || []);
+  const deletedWalletIds = new Set<string>(payload.deletedIds?.walletIds || []);
+  const deletedCatIds = new Set<string>(payload.deletedIds?.categoryIds || []);
+  const deletedBudgetIds = new Set<string>(payload.deletedIds?.budgetIds || []);
+
+  // 1. Đếm số lượng giao dịch tham chiếu tới từng Ví để ưu tiên giữ lại Ví chính
+  const walletTxCountMap = new Map<string, number>();
+  for (const tx of rawTransactions) {
+    if (deletedTxIds.has(tx.id)) continue;
+    walletTxCountMap.set(tx.walletId, (walletTxCountMap.get(tx.walletId) || 0) + 1);
+    if (tx.toWalletId) {
+      walletTxCountMap.set(tx.toWalletId, (walletTxCountMap.get(tx.toWalletId) || 0) + 1);
+    }
+  }
+
+  // Nhóm các ví theo `${type}_${name.trim().toLowerCase()}`
+  const walletGroups = new Map<string, Wallet[]>();
+  for (const w of rawWallets) {
+    if (deletedWalletIds.has(w.id)) continue;
+    const key = `${w.type}_${w.name.trim().toLowerCase()}`;
+    const list = walletGroups.get(key) || [];
+    list.push(w);
+    walletGroups.set(key, list);
+  }
+
+  const walletIdMap = new Map<string, string>();
+  const remappedDuplicateWalletIds = new Set<string>();
+  const dedupedWallets: Wallet[] = [];
+
+  for (const group of walletGroups.values()) {
+    if (group.length === 1) {
+      dedupedWallets.push(group[0]);
+      continue;
+    }
+
+    // Sắp xếp để chọn ví chính (canonical):
+    // Ưu tiên 1: Có nhiều giao dịch hơn
+    // Ưu tiên 2: Có số dư hoặc số dư ban đầu khác 0
+    // Ưu tiên 3: Có ID chuẩn mặc định hoặc được tạo sớm hơn
+    group.sort((a, b) => {
+      const txDiff = (walletTxCountMap.get(b.id) || 0) - (walletTxCountMap.get(a.id) || 0);
+      if (txDiff !== 0) return txDiff;
+
+      const aNonZero = Math.abs(a.balance || 0) > 0 || Math.abs(a.initialBalance || 0) > 0 ? 1 : 0;
+      const bNonZero = Math.abs(b.balance || 0) > 0 || Math.abs(b.initialBalance || 0) > 0 ? 1 : 0;
+      if (bNonZero !== aNonZero) return bNonZero - aNonZero;
+
+      const aIsDefaultId = a.id.startsWith('wallet_default_') ? 1 : 0;
+      const bIsDefaultId = b.id.startsWith('wallet_default_') ? 1 : 0;
+      if (bIsDefaultId !== aIsDefaultId) return bIsDefaultId - aIsDefaultId;
+
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
+
+    const canonical = { ...group[0] };
+    dedupedWallets.push(canonical);
+
+    for (let i = 1; i < group.length; i++) {
+      const dup = group[i];
+      walletIdMap.set(dup.id, canonical.id);
+      remappedDuplicateWalletIds.add(dup.id);
+      deletedWalletIds.add(dup.id);
+    }
+  }
+
+  // 2. DỌN DẸP & GỘP HẠNG MỤC (Categories)
+  const allowedDefaultExpenseIds = new Set<string>([
+    PARENT_MUST_HAVE_ID,
+    PARENT_NICE_TO_HAVE_ID,
+    PARENT_WASTED_ID,
+    'system_adjustment'
+  ]);
+
+  const categoryIdMap = new Map<string, string>();
+  const normalizedCategories: Category[] = [];
+
+  for (const rawCat of rawCategories) {
+    if (deletedCatIds.has(rawCat.id)) continue;
+
+    // Loại bỏ các mục con EXPENSE mặc định cũ (chỉ giữ lại 3 cha Must have, Nice to have, Wasted và các mục con do user tự tạo isDefault === false)
+    if (
+      rawCat.type === 'EXPENSE' &&
+      rawCat.isDefault &&
+      !allowedDefaultExpenseIds.has(rawCat.id)
+    ) {
+      const fallbackParentId =
+        rawCat.parentId && allowedDefaultExpenseIds.has(rawCat.parentId)
+          ? rawCat.parentId
+          : PARENT_MUST_HAVE_ID;
+      categoryIdMap.set(rawCat.id, fallbackParentId);
+      deletedCatIds.add(rawCat.id);
+      continue;
+    }
+
+    const cat: Category = { ...rawCat };
+    if (cat.type === 'INCOME' && cat.name.trim().toLowerCase() === 'lương chính') {
+      cat.name = 'Lương';
+    }
+    if (cat.type === 'INCOME' && cat.name.trim().toLowerCase() === 'thu nhập khác') {
+      cat.name = 'Khác';
+    }
+    if (cat.type === 'DEBT' && cat.parentId) {
+      cat.parentId = undefined;
+    }
+
+    normalizedCategories.push(cat);
+  }
+
+  const catGroups = new Map<string, Category[]>();
+  for (const c of normalizedCategories) {
+    const key = `${c.type}_${c.name.trim().toLowerCase()}_${c.parentId || ''}`;
+    const list = catGroups.get(key) || [];
+    list.push(c);
+    catGroups.set(key, list);
+  }
+
+  const dedupedCategories: Category[] = [];
+  for (const group of catGroups.values()) {
+    group.sort((a, b) => {
+      const aFixed =
+        allowedDefaultExpenseIds.has(a.id) ||
+        a.id.startsWith('cat_income_') ||
+        a.id.startsWith('cat_debt_')
+          ? 1
+          : 0;
+      const bFixed =
+        allowedDefaultExpenseIds.has(b.id) ||
+        b.id.startsWith('cat_income_') ||
+        b.id.startsWith('cat_debt_')
+          ? 1
+          : 0;
+      if (bFixed !== aFixed) return bFixed - aFixed;
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
+
+    const canonical = { ...group[0] };
+    const mergedTags = new Set<string>(canonical.quickTags || []);
+
+    for (let i = 1; i < group.length; i++) {
+      const dup = group[i];
+      if (dup.isStarred) canonical.isStarred = true;
+      (dup.quickTags || []).forEach((t) => mergedTags.add(t));
+      categoryIdMap.set(dup.id, canonical.id);
+      deletedCatIds.add(dup.id);
+    }
+
+    canonical.quickTags = Array.from(mergedTags);
+    dedupedCategories.push(canonical);
+  }
+
+  // Đảm bảo các hạng mục mặc định chuẩn v6 luôn tồn tại đầy đủ
+  const existingCatKeys = new Set(
+    dedupedCategories.map((c) => `${c.type}_${c.name.trim().toLowerCase()}_${c.parentId || ''}`)
+  );
+  const existingCatIds = new Set(dedupedCategories.map((c) => c.id));
+
+  for (const seedItem of SEED_CATEGORIES) {
+    const key = `${seedItem.type}_${seedItem.name.trim().toLowerCase()}_${seedItem.parentId || ''}`;
+    if (!existingCatKeys.has(key) && (!seedItem.id || !existingCatIds.has(seedItem.id))) {
+      const newCat: Category = {
+        id: seedItem.id || generateUUID(),
+        name: seedItem.name,
+        type: seedItem.type,
+        parentId: seedItem.parentId,
+        icon: seedItem.icon,
+        color: seedItem.color,
+        quickTags: seedItem.quickTags || [],
+        isDefault: true,
+        isStarred: !!seedItem.isStarred,
+        createdAt: nowIso
+      };
+      dedupedCategories.push(newCat);
+      existingCatKeys.add(key);
+      existingCatIds.add(newCat.id);
+    }
+  }
+
+  if (!existingCatIds.has('system_adjustment')) {
+    dedupedCategories.push({
+      id: 'system_adjustment',
+      name: 'Điều chỉnh số dư',
+      type: 'EXPENSE',
+      icon: 'SlidersHorizontal',
+      color: '#64748B',
+      quickTags: ['Khớp tiền thực tế', 'Tiền chênh lệch', 'Kiểm kê'],
+      isDefault: true,
+      createdAt: nowIso
+    });
+  }
+
+  // 3. ÁNH XẠ & CHỐNG TRÙNG GIAO DỊCH (Transactions)
+  // Sắp xếp giao dịch thuộc ví gốc lên trước, giao dịch thuộc ví trùng xuống sau
+  const sortedTransactions = [...rawTransactions].sort((a, b) => {
+    const aFromDup = remappedDuplicateWalletIds.has(a.walletId) ? 1 : 0;
+    const bFromDup = remappedDuplicateWalletIds.has(b.walletId) ? 1 : 0;
+    if (aFromDup !== bFromDup) return aFromDup - bFromDup;
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+
+  const seenCanonicalTxSignatures = new Set<string>();
+  const seenExactTxSignatures = new Set<string>();
+  const dedupedTransactions: Transaction[] = [];
+
+  for (const tx of sortedTransactions) {
+    if (deletedTxIds.has(tx.id)) continue;
+
+    const wasFromDuplicateWallet = remappedDuplicateWalletIds.has(tx.walletId);
+    const newWalletId = walletIdMap.get(tx.walletId) || tx.walletId;
+    const newToWalletId = tx.toWalletId
+      ? walletIdMap.get(tx.toWalletId) || tx.toWalletId
+      : undefined;
+    const newCategoryId = tx.categoryId
+      ? categoryIdMap.get(tx.categoryId) || tx.categoryId
+      : undefined;
+
+    // Nếu giao dịch đến từ ví bị nhân đôi và là giao dịch điều chỉnh số dư (system_adjustment),
+    // bỏ qua để tránh cộng dồn gấp đôi số dư của ví gốc
+    if (wasFromDuplicateWallet && newCategoryId === 'system_adjustment') {
+      deletedTxIds.add(tx.id);
+      continue;
+    }
+
+    const looseSig = `${newWalletId}_${newToWalletId || ''}_${tx.type}_${tx.amount}_${tx.date}_${(tx.note || '').trim().toLowerCase()}`;
+    const exactSig = `${looseSig}_${newCategoryId || ''}_${tx.createdAt || ''}`;
+
+    if (seenExactTxSignatures.has(exactSig)) {
+      deletedTxIds.add(tx.id);
+      continue;
+    }
+
+    if (wasFromDuplicateWallet && seenCanonicalTxSignatures.has(looseSig)) {
+      deletedTxIds.add(tx.id);
+      continue;
+    }
+
+    seenExactTxSignatures.add(exactSig);
+    seenCanonicalTxSignatures.add(looseSig);
+
+    dedupedTransactions.push({
+      ...tx,
+      walletId: newWalletId,
+      toWalletId: newToWalletId,
+      categoryId: newCategoryId
+    });
+  }
+
+  // 4. TÍNH LẠI SỐ DƯ VÍ SAU KHI GỘP
+  const finalWallets = recalculateWalletBalances(dedupedWallets, dedupedTransactions);
+
+  // 5. ÁNH XẠ & CHỐNG TRÙNG HẠN MỨC (Budgets)
+  const budgetKeyMap = new Map<string, Budget>();
+  for (const b of rawBudgets) {
+    if (deletedBudgetIds.has(b.id)) continue;
+    const mappedCatId = categoryIdMap.get(b.categoryId || '') || b.categoryId;
+    const key = `${mappedCatId}_${b.month}`;
+    const existing = budgetKeyMap.get(key);
+    if (!existing) {
+      budgetKeyMap.set(key, { ...b, categoryId: mappedCatId });
+    } else {
+      deletedBudgetIds.add(b.id);
+    }
+  }
+  const dedupedBudgets = Array.from(budgetKeyMap.values());
+
+  // 6. ÁNH XẠ GHI CHÉP ĐỊNH KỲ
+  const dedupedRecurring = rawRecurring.map((r) => ({
+    ...r,
+    walletId: walletIdMap.get(r.walletId) || r.walletId,
+    toWalletId: r.toWalletId ? walletIdMap.get(r.toWalletId) || r.toWalletId : undefined,
+    categoryId: r.categoryId ? categoryIdMap.get(r.categoryId) || r.categoryId : r.categoryId
+  }));
+
+  return {
+    version: '3.0',
+    appName: 'SoThuChi',
+    syncedAt: nowIso,
+    data: {
+      wallets: finalWallets,
+      categories: dedupedCategories,
+      transactions: dedupedTransactions,
+      budgets: dedupedBudgets,
+      settings: rawSettings,
+      recurringTransactions: dedupedRecurring,
+      events: rawEvents
+    },
+    deletedIds: {
+      transactionIds: Array.from(deletedTxIds),
+      walletIds: Array.from(deletedWalletIds),
+      categoryIds: Array.from(deletedCatIds),
+      budgetIds: Array.from(deletedBudgetIds)
+    }
+  };
+}
+
+/**
+ * Ghi toàn bộ dữ liệu đã hợp nhất vào IndexedDB trong 1 Transaction nguyên tử duy nhất (ACID).
+ * Xóa sạch (clear) 6 bảng dữ liệu thực thể trước khi ghi để đảm bảo không bao giờ bị trùng lặp bản ghi cũ ở local.
  */
 export async function applyMergedDataToIndexedDB(mergedPayload: SyncDataPayload): Promise<void> {
+  const cleanedPayload = deduplicateSyncPayload(mergedPayload);
   const {
     wallets,
     categories,
@@ -386,51 +708,78 @@ export async function applyMergedDataToIndexedDB(mergedPayload: SyncDataPayload)
     settings,
     recurringTransactions = [],
     events = []
-  } = mergedPayload.data;
-  const deletedIds = mergedPayload.deletedIds;
+  } = cleanedPayload.data;
+  const deletedIds = cleanedPayload.deletedIds;
 
-  await db.transaction(
-    'rw',
-    [
-      db.wallets,
-      db.categories,
-      db.transactions,
-      db.budgets,
-      db.settings,
-      db.recurringTransactions,
-      db.events
-    ],
-    async () => {
-      if (deletedIds?.transactionIds?.length) {
-        await db.transactions.bulkDelete(deletedIds.transactionIds);
-      }
-      if (deletedIds?.walletIds?.length) {
-        await db.wallets.bulkDelete(deletedIds.walletIds);
-      }
-      if (deletedIds?.categoryIds?.length) {
-        await db.categories.bulkDelete(deletedIds.categoryIds);
-      }
-      if (deletedIds?.budgetIds?.length) {
-        await db.budgets.bulkDelete(deletedIds.budgetIds);
-      }
+  const protectedSettingKeys = new Set([
+    'supabase_url',
+    'supabase_anon_key',
+    'supabase_sync_key',
+    'supabase_user_email',
+    'supabase_auto_sync_enabled'
+  ]);
 
-      if (wallets.length > 0) await db.wallets.bulkPut(wallets);
-      if (categories.length > 0) await db.categories.bulkPut(categories);
-      if (transactions.length > 0) await db.transactions.bulkPut(transactions);
-      if (budgets.length > 0) await db.budgets.bulkPut(budgets);
-      if (recurringTransactions.length > 0) await db.recurringTransactions.bulkPut(recurringTransactions);
-      if (events.length > 0) await db.events.bulkPut(events);
+  await runWithoutDirtyTracking(async () => {
+    await db.transaction(
+      'rw',
+      [
+        db.wallets,
+        db.categories,
+        db.transactions,
+        db.budgets,
+        db.settings,
+        db.recurringTransactions,
+        db.events
+      ],
+      async () => {
+        // Clear toàn bộ dữ liệu thực thể ở local trước khi nạp bản chuẩn đã đồng bộ
+        await Promise.all([
+          db.wallets.clear(),
+          db.categories.clear(),
+          db.transactions.clear(),
+          db.budgets.clear(),
+          db.recurringTransactions.clear(),
+          db.events.clear()
+        ]);
 
-      for (const s of settings) {
-        await db.settings.put(s);
-      }
+        if (wallets.length > 0) await db.wallets.bulkPut(wallets);
+        if (categories.length > 0) await db.categories.bulkPut(categories);
+        if (transactions.length > 0) await db.transactions.bulkPut(transactions);
+        if (budgets.length > 0) await db.budgets.bulkPut(budgets);
+        if (recurringTransactions.length > 0) {
+          await db.recurringTransactions.bulkPut(recurringTransactions);
+        }
+        if (events.length > 0) await db.events.bulkPut(events);
 
-      if (deletedIds) {
-        await db.settings.put({
-          key: DELETED_ENTITIES_SETTING_KEY,
-          value: deletedIds
-        });
+        for (const s of settings) {
+          if (!protectedSettingKeys.has(s.key)) {
+            await db.settings.put(s);
+          }
+        }
+
+        // Đảm bảo đánh dấu đã seed v6 để không chạy lại seed tạo thêm dữ liệu thừa
+        await db.settings.put({ key: 'has_seeded_categories_v6', value: true });
+        await db.settings.put({ key: 'has_seeded_v3', value: true });
+
+        if (wallets.length > 0) {
+          const walletIdSet = new Set(wallets.map((w) => w.id));
+          const lastUsedWallet = await db.settings.get('last_used_wallet_id');
+          if (
+            !lastUsedWallet?.value ||
+            typeof lastUsedWallet.value !== 'string' ||
+            !walletIdSet.has(lastUsedWallet.value)
+          ) {
+            await db.settings.put({ key: 'last_used_wallet_id', value: wallets[0].id });
+          }
+        }
+
+        if (deletedIds) {
+          await db.settings.put({
+            key: DELETED_ENTITIES_SETTING_KEY,
+            value: deletedIds
+          });
+        }
       }
-    }
-  );
+    );
+  });
 }

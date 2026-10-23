@@ -95,8 +95,18 @@ export function App() {
     }
   });
 
-  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Auto Sync Supabase ngầm
+  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Đồng bộ khi thực sự có thay đổi ở Local
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const triggerSyncIfDirty = async () => {
+      const sbRes = await checkAndRunSupabaseAutoSync();
+      if (sbRes.ran) {
+        setAutoBackupNotice(sbRes.message);
+        setTimeout(() => setAutoBackupNotice(null), 5000);
+      }
+    };
+
     requestPersistentStorage();
     initializeSeedData()
       .then(async () => {
@@ -106,39 +116,26 @@ export function App() {
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
 
-        const sbRes = await checkAndRunSupabaseAutoSync();
-        if (sbRes.ran) {
-          setAutoBackupNotice(sbRes.message);
-          setTimeout(() => setAutoBackupNotice(null), 6000);
-        }
+        // Chỉ đồng bộ nếu local đã lưu mã kết nối VÀ đang có thay đổi chưa đồng bộ
+        await triggerSyncIfDirty();
       })
       .catch((err) => {
         console.error('Lỗi khởi tạo dữ liệu seed:', err);
       });
 
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible') {
-        const sbRes = await checkAndRunSupabaseAutoSync();
-        if (sbRes.ran) {
-          setAutoBackupNotice(sbRes.message);
-          setTimeout(() => setAutoBackupNotice(null), 6000);
-        }
-      }
+    // Chỉ kích hoạt đồng bộ sau 3 giây kể từ khi người dùng thực sự thêm/sửa/xóa dữ liệu ở local
+    const handleLocalDataChanged = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        void triggerSyncIfDirty();
+      }, 3000);
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    const timer = setInterval(async () => {
-      const sbRes = await checkAndRunSupabaseAutoSync();
-      if (sbRes.ran) {
-        setAutoBackupNotice(sbRes.message);
-        setTimeout(() => setAutoBackupNotice(null), 6000);
-      }
-    }, 60000);
+    window.addEventListener('local-data-changed', handleLocalDataChanged);
 
     return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      window.removeEventListener('local-data-changed', handleLocalDataChanged);
     };
   }, []);
 

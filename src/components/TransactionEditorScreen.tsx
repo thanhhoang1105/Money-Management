@@ -549,11 +549,16 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         setErrorMsg(err?.message || 'Có lỗi khi điều chỉnh số dư');
         return;
       }
-    } else if (type === 'EXPENSE' || type === 'INCOME') {
-      if (!selectedCategoryId) {
+    } else if (type === 'EXPENSE') {
+      if (!selectedCategoryId || !selectedCategory || !selectedCategory.parentId) {
         setErrorMsg(
-          `Vui lòng chọn hạng mục cho khoản ${type === 'EXPENSE' ? 'chi tiêu' : 'thu nhập'}`
+          'Vui lòng chọn (hoặc thêm mới) một hạng mục con thuộc Must have, Nice to have hoặc Wasted'
         );
+        return;
+      }
+    } else if (type === 'INCOME') {
+      if (!selectedCategoryId || !selectedCategory) {
+        setErrorMsg('Vui lòng chọn hạng mục cho khoản thu nhập');
         return;
       }
     }

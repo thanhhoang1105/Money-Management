@@ -273,7 +273,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
             onClick={() => setIsModalOpen(false)}
             className="touch-btn text-sky-400 font-bold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
           >
-            ← Quay lại danh sách hạn mức
+            ← Quay lại hạn mức
           </button>
           <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
             {editingBudget ? 'Chỉnh sửa hạn mức' : 'Thiết lập hạn mức mới'}
