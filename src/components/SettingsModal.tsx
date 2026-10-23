@@ -6,8 +6,7 @@ import {
   downloadOrShareFile,
   restoreBackupData,
   validateBackupJSON,
-  exportTransactionsToExcel,
-  checkAndRunAutoBackup
+  exportTransactionsToExcel
 } from '../services/backupService';
 import {
   backupToGoogleDrive,
@@ -16,6 +15,7 @@ import {
   requestGoogleAccessToken,
   disconnectGoogleDrive,
   getSavedGoogleUser,
+  saveGoogleClientId,
   type GoogleDriveUser
 } from '../services/googleDriveService';
 import { IosInstallPromptModal } from './IosInstallPromptModal';
@@ -35,7 +35,11 @@ import {
   CloudUpload,
   CloudDownload,
   LogOut,
-  Smartphone
+  Smartphone,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  Key
 } from 'lucide-react';
 
 // Icon Google chuẩn 4 màu
@@ -81,36 +85,28 @@ interface RestorePreviewData {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const autoBackupEnabledSetting = useLiveQuery(() =>
-    db.settings.get('auto_backup_enabled')
-  );
-  const autoBackupTimeSetting = useLiveQuery(() =>
-    db.settings.get('auto_backup_time')
-  );
-  const lastBackupDateSetting = useLiveQuery(() =>
-    db.settings.get('last_auto_backup_date')
-  );
-
   // Google Drive Live Queries
   const googleDriveUserSetting = useLiveQuery(() => db.settings.get('google_drive_user'));
   const lastGoogleBackupDateSetting = useLiveQuery(() => db.settings.get('last_google_drive_backup_date'));
   const lastGoogleDriveSyncSetting = useLiveQuery(() => db.settings.get('last_google_drive_sync_time'));
   const googleDriveAutoBackupSetting = useLiveQuery(() => db.settings.get('google_drive_auto_backup_enabled'));
+  const googleClientIdSetting = useLiveQuery(() => db.settings.get('google_client_id'));
 
   const txCount = useLiveQuery(() => db.transactions.count()) || 0;
   const walletCount = useLiveQuery(() => db.wallets.count()) || 0;
   const categoryCount = useLiveQuery(() => db.categories.count()) || 0;
 
-  const [isEnabled, setIsEnabled] = useState<boolean>(true);
-  const [backupTime, setBackupTime] = useState<string>('21:00');
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isPersistent, setIsPersistent] = useState<boolean>(false);
 
   // Google Drive state
   const [googleUser, setGoogleUser] = useState<GoogleDriveUser | null>(null);
-  const [isDriveAutoBackup, setIsDriveAutoBackup] = useState<boolean>(false);
+  const [isDriveAutoBackup, setIsDriveAutoBackup] = useState<boolean>(true);
   const [isIosModalOpen, setIsIosModalOpen] = useState<boolean>(false);
+  const [customClientIdInput, setCustomClientIdInput] = useState<string>('');
+  const [showClientIdConfig, setShowClientIdConfig] = useState<boolean>(false);
+  const [isCopiedOrigin, setIsCopiedOrigin] = useState<boolean>(false);
 
   // Xem trước khôi phục JSON (FR-E-03)
   const [restorePreview, setRestorePreview] = useState<RestorePreviewData | null>(null);
@@ -140,15 +136,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Đồng bộ giá trị từ IndexedDB Settings khi modal mở
+  // Đồng bộ giá trị Client ID tùy chỉnh khi tải từ DB
   useEffect(() => {
-    if (autoBackupEnabledSetting !== undefined) {
-      setIsEnabled(autoBackupEnabledSetting ? Boolean(autoBackupEnabledSetting.value) : true);
+    if (googleClientIdSetting?.value) {
+      setCustomClientIdInput(googleClientIdSetting.value as string);
     }
-    if (autoBackupTimeSetting?.value) {
-      setBackupTime(autoBackupTimeSetting.value as string);
-    }
-  }, [autoBackupEnabledSetting, autoBackupTimeSetting]);
+  }, [googleClientIdSetting]);
 
   // Đồng bộ trạng thái Google Drive từ DB
   useEffect(() => {
@@ -178,52 +171,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
-  // Bật/Tắt tự động sao lưu
-  const handleToggleAutoBackup = async () => {
-    const nextVal = !isEnabled;
-    setIsEnabled(nextVal);
-    await db.settings.put({
-      key: 'auto_backup_enabled',
-      value: nextVal
-    });
-    setStatusMsg({
-      text: nextVal ? 'Đã bật Tự động sao lưu hàng ngày' : 'Đã tắt Tự động sao lưu',
-      type: 'info'
-    });
+  // Lưu Client ID tùy chỉnh do người dùng nhập
+  const handleSaveCustomClientId = async () => {
+    const trimmed = customClientIdInput.trim();
+    if (!trimmed) {
+      await db.settings.delete('google_client_id');
+      setStatusMsg({ text: 'Đã xóa Client ID tùy chỉnh, sử dụng cấu hình mặc định', type: 'info' });
+      return;
+    }
+    await saveGoogleClientId(trimmed);
+    setStatusMsg({ text: 'Đã lưu Google Client ID tùy chỉnh! Bạn có thể kết nối ngay.', type: 'success' });
   };
 
-  // Thay đổi khung giờ sao lưu
-  const handleTimeChange = async (newTime: string) => {
-    if (!newTime) return;
-    setBackupTime(newTime);
-    await db.settings.put({
-      key: 'auto_backup_time',
-      value: newTime
-    });
-    setStatusMsg({
-      text: `Đã cập nhật khung giờ sao lưu thành ${newTime}`,
-      type: 'info'
-    });
-  };
-
-  // Kích hoạt sao lưu ngay lập tức
-  const handleBackupNow = async () => {
-    setIsProcessing(true);
-    setStatusMsg(null);
+  // Sao chép URL Origin hiện tại để dán vào Google Cloud Console
+  const handleCopyOrigin = async () => {
     try {
-      const res = await checkAndRunAutoBackup({ force: true });
-      if (res.ran) {
-        setStatusMsg({
-          text: 'Sao lưu thành công! File JSON đã được tạo và kích hoạt chia sẻ/tải về.',
-          type: 'success'
-        });
-      } else {
-        setStatusMsg({ text: res.message, type: 'info' });
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      if (origin) {
+        await navigator.clipboard.writeText(origin);
+        setIsCopiedOrigin(true);
+        setTimeout(() => setIsCopiedOrigin(false), 2500);
       }
-    } catch (err: any) {
-      setStatusMsg({ text: err?.message || 'Có lỗi khi sao lưu', type: 'error' });
-    } finally {
-      setIsProcessing(false);
+    } catch {
+      // ignore
     }
   };
 
@@ -475,15 +445,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     });
   };
 
-  const lastBackupVal = lastBackupDateSetting?.value as string | undefined;
   const lastGoogleDriveBackupVal = lastGoogleBackupDateSetting?.value as string | undefined;
   const lastGoogleSyncVal = typeof lastGoogleDriveSyncSetting?.value === 'string'
     ? lastGoogleDriveSyncSetting.value
     : null;
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end items-center">
-      <div className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] border-t border-x border-white/10 flex flex-col w-full max-w-[480px] max-h-[92vh] pb-[max(18px,env(safe-area-inset-bottom,0px))] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex flex-col justify-end md:justify-center items-center p-0 md:p-6 animate-fade-in" onClick={onClose}>
+      <div
+        className="glass-panel animate-slide-up bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 flex flex-col w-full max-w-[480px] md:max-w-xl max-h-[92vh] pb-[max(18px,env(safe-area-inset-bottom,0px))] overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header Modal */}
         <div className="px-5 py-4 flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-2.5">
@@ -570,79 +542,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
-          {/* PHẦN 1: TỰ ĐỘNG SAO LƯU HÀNG NGÀY (AUTO-BACKUP) */}
-          <div className="glass-card bg-slate-800/90 rounded-2xl p-4 border border-white/5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <Clock size={20} className="text-sky-400" />
-                <div>
-                  <div className="text-sm font-bold text-slate-100">
-                    Tự động sao lưu hàng ngày
-                  </div>
-                  <div className="text-xs text-slate-400 mt-0.5">
-                    Tự động xuất file JSON khi mở app
-                  </div>
-                </div>
-              </div>
-
-              {/* Toggle Switch */}
-              <button
-                type="button"
-                onClick={handleToggleAutoBackup}
-                className={`w-12 h-7 rounded-full transition-colors relative cursor-pointer p-0.5 border-none ${
-                  isEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                }`}
-              >
-                <div
-                  className={`w-6 h-6 rounded-full bg-white transition-transform shadow-md ${
-                    isEnabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {isEnabled && (
-              <div className="mt-3.5 pt-3 border-t border-white/5 flex flex-col gap-3">
-                {/* Chọn Khung giờ */}
-                <div className="flex items-center justify-between">
-                  <label className="text-xs text-slate-300 font-medium">
-                    Khung giờ sao lưu:
-                  </label>
-                  <input
-                    type="time"
-                    value={backupTime}
-                    onChange={(e) => handleTimeChange(e.target.value)}
-                    className="bg-slate-900 text-sky-400 border border-sky-400/30 rounded-xl px-3 py-1 text-base font-bold outline-none"
-                  />
-                </div>
-
-                {/* Ngày sao lưu gần nhất */}
-                <div className="text-xs text-slate-400">
-                  Lần sao lưu gần nhất:{' '}
-                  <span className={`font-semibold ${lastBackupVal ? 'text-emerald-400' : 'text-slate-500'}`}>
-                    {lastBackupVal ? formatFriendlyDate(lastBackupVal) : 'Chưa có'}
-                  </span>
-                </div>
-
-                {/* Nút Sao lưu ngay */}
-                <button
-                  type="button"
-                  onClick={handleBackupNow}
-                  disabled={isProcessing}
-                  className="touch-btn bg-sky-500/15 text-sky-400 border border-sky-400/30 px-3.5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer flex items-center justify-center gap-2 mt-1 hover:bg-sky-500/20"
-                >
-                  {isProcessing ? (
-                    <RotateCw size={16} className="animate-spin" />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  <span>Sao lưu ngay bây giờ (Xuất JSON)</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* PHẦN 2: KẾT NỐI & ĐỒNG BỘ GOOGLE DRIVE (1-CLICK SYNC & BACKUP) */}
+          {/* PHẦN 1: SAO LƯU & ĐỒNG BỘ GOOGLE DRIVE (CLOUD BACKUP) */}
           <div className="glass-card bg-slate-800/90 rounded-2xl p-4 border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -651,10 +551,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </div>
                 <div>
                   <div className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                    <span>Đồng bộ Google Drive</span>
+                    <span>Sao lưu & Đồng bộ Google Drive</span>
                   </div>
                   <div className="text-xs text-slate-400 mt-0.5">
-                    Sao lưu đám mây 1 chạm, chống mất dữ liệu
+                    Lưu trữ đám mây 1 chạm, chống mất dữ liệu
                   </div>
                 </div>
               </div>
@@ -674,7 +574,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             {/* Trạng thái 1: Chưa kết nối Google Drive */}
             {!googleUser ? (
-              <div className="flex flex-col gap-2.5 pt-1">
+              <div className="flex flex-col gap-3 pt-1">
                 <button
                   type="button"
                   onClick={handleConnectGoogle}
@@ -689,9 +589,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <span className="text-xs">Kết nối với Google Drive</span>
                 </button>
 
-                {/* Hướng dẫn ngắn gọn */}
                 <div className="text-[11px] text-slate-400 text-center px-1">
-                  Đăng nhập tài khoản Google để tự động đồng bộ 2 chiều dữ liệu giữa Máy tính & Điện thoại.
+                  Đăng nhập tài khoản Google để tự động sao lưu & đồng bộ 2 chiều dữ liệu giữa Máy tính & Điện thoại.
+                </div>
+
+                {/* Hướng dẫn và cấu hình Client ID để khắc phục lỗi 400 origin_mismatch */}
+                <div className="pt-2 border-t border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setShowClientIdConfig(!showClientIdConfig)}
+                    className="text-xs text-sky-400 hover:text-sky-300 flex items-center justify-between w-full py-1 cursor-pointer bg-transparent border-none"
+                  >
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Key size={13} />
+                      <span>Cấu hình Google Client ID (Khắc phục lỗi origin_mismatch)</span>
+                    </span>
+                    {showClientIdConfig ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {showClientIdConfig && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-slate-900/90 border border-white/10 flex flex-col gap-2.5 text-xs text-slate-300">
+                      <div className="text-[11px] text-amber-300 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20 leading-relaxed">
+                        ⚠️ <strong>Lỗi 400 (origin_mismatch):</strong> Xảy ra khi URL trang web này chưa được đăng ký trong mục <em>Authorized JavaScript origins</em> tại Google Cloud Console.
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          1. URL trang web hiện tại của bạn:
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-slate-950 px-2.5 py-1.5 rounded-lg text-emerald-400 font-mono text-[11px] truncate border border-white/5">
+                            {typeof window !== 'undefined' ? window.location.origin : ''}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyOrigin}
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-medium flex items-center gap-1 cursor-pointer shrink-0 border border-white/10"
+                          >
+                            {isCopiedOrigin ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                            <span>{isCopiedOrigin ? 'Đã sao chép' : 'Sao chép URL'}</span>
+                          </button>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">
+                          Dán URL này vào mục <strong>Authorized JavaScript origins</strong> trong Google Cloud Console.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          2. Google OAuth Client ID của bạn:
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={customClientIdInput}
+                            onChange={(e) => setCustomClientIdInput(e.target.value)}
+                            placeholder="xxxx.apps.googleusercontent.com"
+                            className="flex-1 bg-slate-950 px-2.5 py-1.5 rounded-lg text-slate-100 text-xs border border-white/10 focus:border-sky-400 outline-none font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSaveCustomClientId}
+                            className="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg text-xs cursor-pointer shrink-0 border-none"
+                          >
+                            Lưu ID
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -722,76 +688,80 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   </span>
                 </div>
 
-                {/* NÚT CHÍNH: ĐỒNG BỘ 2 CHIỀU THÔNG MINH (SMART TWO-WAY SYNC) */}
+                {/* NÚT CHÍNH: SAO LƯU NGAY LÊN GOOGLE DRIVE */}
                 <button
                   type="button"
-                  onClick={handleSmartSyncGoogleDrive}
+                  onClick={handleBackupToGoogleDrive}
                   disabled={isProcessing}
-                  className="touch-btn w-full bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-indigo-500/20 hover:from-emerald-500/30 hover:to-indigo-500/30 border border-emerald-500/40 p-3.5 rounded-2xl flex items-center justify-between cursor-pointer transition-all active:scale-98 shadow-md"
+                  className="touch-btn w-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold p-3.5 rounded-2xl flex items-center justify-between cursor-pointer shadow-lg shadow-emerald-950/40 border border-emerald-400/30 transition-all active:scale-[0.98]"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                      <RotateCw size={20} className={isProcessing ? 'animate-spin text-emerald-400' : 'text-emerald-400'} />
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                      {isProcessing ? (
+                        <RotateCw size={20} className="animate-spin text-white" />
+                      ) : (
+                        <CloudUpload size={20} className="text-white" />
+                      )}
                     </div>
                     <div className="text-left">
                       <div className="text-xs font-black text-white flex items-center gap-1.5 uppercase tracking-wide">
-                        <span>Đồng bộ 2 chiều ngay</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/25 text-emerald-300 font-bold lowercase">
-                          khuyên dùng
-                        </span>
+                        <span>Sao lưu ngay lên Google Drive</span>
                       </div>
-                      <div className="text-[11px] text-slate-300 mt-0.5">
-                        Hợp nhất dữ liệu Máy tính & Điện thoại không mất dữ liệu
+                      <div className="text-[11px] text-emerald-100 mt-0.5">
+                        Lưu bản sao mới nhất vào thư mục SoThuChi_Backups
                       </div>
-                      {lastGoogleSyncVal && (
-                        <div className="text-[10px] text-emerald-400 font-medium mt-1">
-                          Lần cuối: {lastGoogleSyncVal.slice(0, 10)} {lastGoogleSyncVal.slice(11, 16)}
+                      {lastGoogleDriveBackupVal && (
+                        <div className="text-[10px] text-emerald-200 font-medium mt-1">
+                          Lần sao lưu gần nhất: {formatFriendlyDate(lastGoogleDriveBackupVal)}
                         </div>
                       )}
                     </div>
                   </div>
                 </button>
 
-                {/* 2 NÚT THAO TÁC PHỤ: SAO LƯU & KHÔI PHỤC THỦ CÔNG */}
+                {/* 2 NÚT THAO TÁC PHỤ: ĐỒNG BỘ 2 CHIỀU & KHÔI PHỤC TỪ DRIVE */}
                 <div className="grid grid-cols-2 gap-2">
-                  {/* Nút 1: Sao lưu lên Google Drive */}
                   <button
                     type="button"
-                    onClick={handleBackupToGoogleDrive}
+                    onClick={handleSmartSyncGoogleDrive}
                     disabled={isProcessing}
-                    className="touch-btn bg-slate-900/80 hover:bg-slate-800 border border-white/8 text-slate-300 hover:text-white p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors"
+                    className="touch-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-900 border border-white/10 flex items-center gap-2.5 text-left cursor-pointer transition-colors"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <CloudUpload size={14} className="text-slate-400" />
-                      <span className="text-xs font-semibold">Tạo file sao lưu</span>
+                    <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                      <RotateCw size={16} className={isProcessing ? 'animate-spin' : ''} />
                     </div>
-                    {lastGoogleDriveBackupVal && (
-                      <span className="text-[10px] text-slate-500">
-                        {lastGoogleDriveBackupVal.slice(0, 10)}
-                      </span>
-                    )}
+                    <div>
+                      <div className="text-xs font-bold text-slate-100">Đồng bộ 2 chiều</div>
+                      <div className="text-[10px] text-slate-400">
+                        {lastGoogleSyncVal ? `Lần cuối: ${lastGoogleSyncVal.slice(0, 10)}` : 'Hợp nhất PC & Mobile'}
+                      </div>
+                    </div>
                   </button>
 
-                  {/* Nút 2: Lấy dữ liệu từ Google Drive */}
                   <button
                     type="button"
                     onClick={handleRestoreFromGoogleDrive}
                     disabled={isProcessing}
-                    className="touch-btn bg-slate-900/80 hover:bg-slate-800 border border-white/8 text-slate-300 hover:text-white p-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    className="touch-btn p-3 rounded-xl bg-slate-900/90 hover:bg-slate-900 border border-white/10 flex items-center gap-2.5 text-left cursor-pointer transition-colors"
                   >
-                    <CloudDownload size={15} className="text-slate-400" />
-                    <span className="text-xs font-semibold">Khôi phục file</span>
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                      <CloudDownload size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-100">Khôi phục từ Drive</div>
+                      <div className="text-[10px] text-slate-400">Lấy bản sao gần nhất</div>
+                    </div>
                   </button>
                 </div>
 
-                {/* Tùy chọn Tự động đồng bộ 2 chiều khi mở app */}
+                {/* Tùy chọn Tự động đồng bộ ngầm khi mở app */}
                 <div className="flex items-center justify-between pt-2 border-t border-white/5">
                   <div>
                     <div className="text-xs font-medium text-slate-200">
-                      Tự động đồng bộ 2 chiều
+                      Tự động đồng bộ ngầm khi mở app
                     </div>
                     <div className="text-[11px] text-slate-400">
-                      Tự động kiểm tra & hợp nhất khi mở app hoặc quay lại màn hình
+                      Tự động lưu & cập nhật với Google Drive trong im lặng (không tải file về máy)
                     </div>
                   </div>
 
@@ -813,10 +783,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             )}
           </div>
 
-          {/* PHẦN 3: QUẢN LÝ DỮ LIỆU & XUẤT BÁO CÁO THỦ CÔNG */}
+          {/* PHẦN 2: LƯU TRỮ TỆP NGOẠI TUYẾN (OFFLINE) */}
           <div className="glass-card bg-slate-800/90 rounded-2xl p-4 border border-white/5 flex flex-col gap-2.5">
-            <div className="text-xs font-bold text-slate-400 mb-0.5 tracking-wider uppercase">
-              SAO LƯU & KHÔI PHỤC THỦ CÔNG
+            <div>
+              <div className="text-xs font-bold text-slate-400 mb-0.5 tracking-wider uppercase">
+                LƯU TRỮ TỆP NGOẠI TUYẾN (OFFLINE)
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Xuất hoặc nhập tệp dữ liệu trực tiếp trên thiết bị (không cần kết nối đám mây)
+              </div>
             </div>
 
             {/* Nút Xuất JSON */}
@@ -829,11 +804,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <div className="flex items-center gap-2.5 text-left">
                 <Download size={18} className="text-emerald-400 shrink-0" />
                 <div>
-                  <div className="text-xs font-semibold">Xuất toàn bộ dữ liệu (JSON)</div>
-                  <div className="text-[11px] text-slate-400">Bao gồm ví, danh mục, giao dịch, hạn mức</div>
+                  <div className="text-xs font-semibold">Tải tệp JSON về máy (Offline)</div>
+                  <div className="text-[11px] text-slate-400">Xuất file .json lưu trên ổ đĩa máy tính</div>
                 </div>
               </div>
-              <span className="text-xs text-emerald-400 font-semibold shrink-0">Tải / Chia sẻ</span>
+              <span className="text-xs text-emerald-400 font-semibold shrink-0">Tải về</span>
             </button>
 
             {/* Nút Nhập JSON */}

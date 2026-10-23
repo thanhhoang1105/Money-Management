@@ -10,6 +10,7 @@ import {
   downloadOrShareFile,
   restoreBackupData
 } from '../services/backupService';
+import { backupToGoogleDrive } from '../services/googleDriveService';
 import type { Wallet, WalletType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
@@ -31,7 +32,9 @@ import {
   CreditCard,
   TrendingUp,
   Package,
-  Check
+  Check,
+  Cloud,
+  CloudUpload
 } from 'lucide-react';
 
 export interface WalletPreset {
@@ -101,6 +104,8 @@ type ViewMode = 'LIST' | 'FORM' | 'TRANSFER';
 export const WalletsTab: React.FC = () => {
   // Lấy danh sách ví bằng .toArray() để lọc bằng JS (tránh lỗi IDBKeyRange)
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const googleDriveUserSetting = useLiveQuery(() => db.settings.get('google_drive_user'));
+  const [isBackingUpDrive, setIsBackingUpDrive] = useState(false);
 
   useEffect(() => {
     ensureDefaultWallets();
@@ -361,7 +366,25 @@ export const WalletsTab: React.FC = () => {
     }
   };
 
-  // Xuất JSON
+  // Sao lưu trực tiếp lên Google Drive
+  const handleDriveBackup = async () => {
+    if (!googleDriveUserSetting?.value) {
+      alert('Bạn chưa kết nối Google Drive! Hãy mở Cài đặt (biểu tượng bánh răng ở góc trên) để kết nối Google Drive và sao lưu tự động lên đám mây.');
+      return;
+    }
+    setIsBackingUpDrive(true);
+    try {
+      showStatus('Đang sao lưu lên Google Drive...');
+      const res = await backupToGoogleDrive();
+      showStatus(`Đã sao lưu lên Google Drive thành công (${res.fileName})!`);
+    } catch (err: any) {
+      alert('Lỗi sao lưu lên Google Drive: ' + (err?.message || 'Thao tác thất bại'));
+    } finally {
+      setIsBackingUpDrive(false);
+    }
+  };
+
+  // Xuất file JSON ngoại tuyến
   const handleBackupJSON = async () => {
     try {
       const jsonStr = await exportFullBackupJSON();
@@ -419,7 +442,14 @@ export const WalletsTab: React.FC = () => {
             {editingWallet ? 'Chỉnh sửa tài khoản' : 'Thêm tài khoản mới'}
           </h2>
 
-          <div className="w-16" /> {/* Spacer cân đối */}
+          <button
+            type="button"
+            onClick={handleSaveWallet}
+            className="touch-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer shadow-md shadow-emerald-500/20"
+          >
+            <Check size={16} strokeWidth={2.5} />
+            <span>Lưu ví</span>
+          </button>
         </div>
 
         {/* Nội dung Form cuộn tự nhiên của màn hình */}
@@ -986,7 +1016,7 @@ export const WalletsTab: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {wallets.map((w) => (
             <div
               key={w.id}
@@ -1075,49 +1105,52 @@ export const WalletsTab: React.FC = () => {
           Dữ liệu & Báo cáo
         </div>
 
-        <div className="flex flex-col gap-2">
-          {/* Nút 1: Xuất Excel */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Nút 1: Sao lưu Google Drive */}
           <button
             type="button"
-            onClick={handleExportExcel}
+            onClick={handleDriveBackup}
+            disabled={isBackingUpDrive}
             className="touch-btn p-3.5 rounded-2xl flex items-center justify-between cursor-pointer border border-white/6 bg-slate-800/80 hover:bg-slate-800 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400">
-                <FileSpreadsheet size={18} />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0">
+                <CloudUpload size={18} className={isBackingUpDrive ? 'animate-bounce' : ''} />
               </div>
-              <div className="text-left">
-                <div className="text-xs font-bold text-slate-100">
-                  Xuất báo cáo Excel (.xlsx)
+              <div className="text-left truncate">
+                <div className="text-xs font-bold text-slate-100 truncate">
+                  Sao lưu lên Google Drive
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  3 sheets chi tiết giao dịch & số dư
+                <div className="text-[11px] text-slate-400 truncate">
+                  {googleDriveUserSetting?.value
+                    ? (googleDriveUserSetting.value as any)?.email || 'Đã kết nối Drive'
+                    : 'Chạm để sao lưu (Cần kết nối)'}
                 </div>
               </div>
             </div>
-            <Download size={16} className="text-emerald-400" />
+            <Cloud size={16} className="text-emerald-400 shrink-0" />
           </button>
 
-          {/* Nút 2: Sao lưu JSON */}
+          {/* Nút 2: Tải JSON về máy */}
           <button
             type="button"
             onClick={handleBackupJSON}
             className="touch-btn p-3.5 rounded-2xl flex items-center justify-between cursor-pointer border border-white/6 bg-slate-800/80 hover:bg-slate-800 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400">
+              <div className="w-9 h-9 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400 shrink-0">
                 <ShieldCheck size={18} />
               </div>
-              <div className="text-left">
-                <div className="text-xs font-bold text-slate-100">
-                  Sao lưu toàn bộ dữ liệu (JSON)
+              <div className="text-left truncate">
+                <div className="text-xs font-bold text-slate-100 truncate">
+                  Tải file JSON về máy
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  Lưu trữ cục bộ an toàn 100%
+                <div className="text-[11px] text-slate-400 truncate">
+                  Lưu trữ ngoại tuyến an toàn
                 </div>
               </div>
             </div>
-            <Download size={16} className="text-sky-400" />
+            <Download size={16} className="text-sky-400 shrink-0" />
           </button>
 
           {/* Nút 3: Khôi phục JSON */}
@@ -1129,20 +1162,42 @@ export const WalletsTab: React.FC = () => {
               className="hidden"
             />
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400 shrink-0">
                 <Upload size={18} />
               </div>
-              <div className="text-left">
-                <div className="text-xs font-bold text-slate-100">
-                  Khôi phục dữ liệu (JSON)
+              <div className="text-left truncate">
+                <div className="text-xs font-bold text-slate-100 truncate">
+                  Khôi phục từ file JSON
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  Nhập file sao lưu để phục hồi dữ liệu
+                <div className="text-[11px] text-slate-400 truncate">
+                  Nạp file sao lưu từ máy
                 </div>
               </div>
             </div>
-            <Upload size={16} className="text-amber-400" />
+            <Upload size={16} className="text-amber-400 shrink-0" />
           </label>
+
+          {/* Nút 4: Xuất Excel */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="touch-btn p-3.5 rounded-2xl flex items-center justify-between cursor-pointer border border-white/6 bg-slate-800/80 hover:bg-slate-800 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-teal-500/15 flex items-center justify-center text-teal-400 shrink-0">
+                <FileSpreadsheet size={18} />
+              </div>
+              <div className="text-left truncate">
+                <div className="text-xs font-bold text-slate-100 truncate">
+                  Báo cáo Excel (.xlsx)
+                </div>
+                <div className="text-[11px] text-slate-400 truncate">
+                  3 sheets giao dịch & số dư
+                </div>
+              </div>
+            </div>
+            <Download size={16} className="text-teal-400 shrink-0" />
+          </button>
         </div>
       </div>
     </div>

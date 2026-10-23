@@ -106,3 +106,16 @@ export function getLastNMonths(referenceMonth: string, count: number = 6): strin
 
   return months;
 }
+
+/**
+ * Định dạng ngày hiển thị ngắn gọn kèm Hôm nay nếu trùng
+ */
+export function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const today = getCurrentDate();
+  const [y, m, d] = dateStr.split('-');
+  if (dateStr === today) {
+    return `Hôm nay (${d}/${m})`;
+  }
+  return `${d}/${m}/${y}`;
+}

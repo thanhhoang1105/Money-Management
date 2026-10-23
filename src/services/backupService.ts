@@ -1,6 +1,14 @@
 // src/services/backupService.ts
 import { db } from '../db';
-import type { Wallet, Category, Transaction, Budget, Setting } from '../types';
+import type {
+  Wallet,
+  Category,
+  Transaction,
+  Budget,
+  Setting,
+  RecurringTransaction,
+  EventTrip
+} from '../types';
 import { getCurrentDate, getCurrentTime } from '../utils/formatters';
 import * as XLSX from 'xlsx';
 
@@ -14,6 +22,8 @@ export interface FullBackupPayload {
     transactions: Transaction[];
     budgets: Budget[];
     settings: Setting[];
+    recurringTransactions?: RecurringTransaction[];
+    events?: EventTrip[];
   };
 }
 
@@ -37,16 +47,19 @@ export interface BackupValidationResult {
  * Xuất toàn bộ dữ liệu từ Dexie IndexedDB thành chuỗi JSON đầy đủ 100% (FR-E-02)
  */
 export async function exportFullBackupJSON(): Promise<string> {
-  const [wallets, categories, transactions, budgets, settings] = await Promise.all([
-    db.wallets.toArray(),
-    db.categories.toArray(),
-    db.transactions.toArray(),
-    db.budgets.toArray(),
-    db.settings.toArray()
-  ]);
+  const [wallets, categories, transactions, budgets, settings, recurringTransactions, events] =
+    await Promise.all([
+      db.wallets.toArray(),
+      db.categories.toArray(),
+      db.transactions.toArray(),
+      db.budgets.toArray(),
+      db.settings.toArray(),
+      db.recurringTransactions.toArray(),
+      db.events.toArray()
+    ]);
 
   const payload: FullBackupPayload = {
-    version: '2.0',
+    version: '3.0',
     appName: 'SoThuChi',
     exportedAt: new Date().toISOString(),
     data: {
@@ -54,7 +67,9 @@ export async function exportFullBackupJSON(): Promise<string> {
       categories,
       transactions,
       budgets,
-      settings
+      settings,
+      recurringTransactions,
+      events
     }
   };
 
@@ -85,7 +100,7 @@ export function validateBackupJSON(jsonString: string): BackupValidationResult {
       payload: parsed,
       metadata: {
         appName: parsed.appName || 'Sổ Thu Chi',
-        version: parsed.version || '2.0',
+        version: parsed.version || '3.0',
         exportedAt: parsed.exportedAt || 'Không xác định',
         walletsCount: parsed.data.wallets.length,
         categoriesCount: parsed.data.categories.length,
@@ -163,23 +178,42 @@ export async function restoreBackupData(jsonString: string): Promise<{
     throw new Error(validation.error || 'Cấu trúc file sao lưu không hợp lệ');
   }
 
-  const { wallets, categories, transactions = [], budgets = [], settings = [] } =
-    validation.payload.data;
+  const {
+    wallets,
+    categories,
+    transactions = [],
+    budgets = [],
+    settings = [],
+    recurringTransactions = [],
+    events = []
+  } = validation.payload.data;
 
   // Ghi đè vào IndexedDB trong 1 Transaction nguyên tử
   await db.transaction(
     'rw',
-    [db.wallets, db.categories, db.transactions, db.budgets, db.settings],
+    [
+      db.wallets,
+      db.categories,
+      db.transactions,
+      db.budgets,
+      db.settings,
+      db.recurringTransactions,
+      db.events
+    ],
     async () => {
       await db.wallets.clear();
       await db.categories.clear();
       await db.transactions.clear();
       await db.budgets.clear();
+      await db.recurringTransactions.clear();
+      await db.events.clear();
 
       if (wallets.length > 0) await db.wallets.bulkPut(wallets);
       if (categories.length > 0) await db.categories.bulkPut(categories);
       if (transactions.length > 0) await db.transactions.bulkPut(transactions);
       if (budgets.length > 0) await db.budgets.bulkPut(budgets);
+      if (recurringTransactions.length > 0) await db.recurringTransactions.bulkPut(recurringTransactions);
+      if (events.length > 0) await db.events.bulkPut(events);
 
       for (const s of settings) {
         await db.settings.put(s);
@@ -201,11 +235,6 @@ export async function restoreBackupData(jsonString: string): Promise<{
 
 /**
  * Xuất dữ liệu giao dịch ra file Excel (.xlsx) chuẩn ISO (FR-E-01)
- * Hỗ trợ xuất theo tháng cụ thể hoặc toàn bộ lịch sử.
- * Bao gồm 3 Sheets:
- * - Sheet 1: Bảng tổng hợp dòng tiền & tỷ trọng danh mục
- * - Sheet 2: Bảng kê chi tiết từng giao dịch kèm ghi chú và ví
- * - Sheet 3: Danh sách các tài khoản ví & số dư
  */
 export async function exportTransactionsToExcel(options?: {
   month?: string;
@@ -227,20 +256,27 @@ export async function exportTransactionsToExcel(options?: {
   const walletMap = new Map(wallets.map((w) => [w.id, w.name]));
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
 
-  // 1. Tính toán số liệu tổng hợp
+  // 1. Tính toán số liệu tổng hợp (loại trừ excludeFromReport và Vay nợ khỏi Thu/Chi thuần)
   let totalIncome = 0;
   let totalExpense = 0;
   let transferCount = 0;
   const catExpenseMap: Record<string, number> = {};
 
   transactions.forEach((t) => {
+    if (t.excludeFromReport) return;
     if (t.type === 'INCOME') totalIncome += t.amount;
     if (t.type === 'EXPENSE') {
       totalExpense += t.amount;
       const catName = t.categoryId ? catMap.get(t.categoryId) || 'Chưa phân loại' : 'Khác';
       catExpenseMap[catName] = (catExpenseMap[catName] || 0) + t.amount;
     }
-    if (t.type === 'TRANSFER') transferCount++;
+    if (t.type === 'TRANSFER') {
+      transferCount++;
+      if (t.transferFee && t.transferFee > 0) {
+        totalExpense += t.transferFee;
+        catExpenseMap['Phí chuyển khoản'] = (catExpenseMap['Phí chuyển khoản'] || 0) + t.transferFee;
+      }
+    }
   });
 
   const netSavings = totalIncome - totalExpense;
@@ -255,15 +291,14 @@ export async function exportTransactionsToExcel(options?: {
     },
     { 'CHỈ TIÊU TỔNG HỢP': 'Ngày xuất file', 'GIÁ TRỊ': `${getCurrentDate()} lúc ${getCurrentTime()}` },
     { 'CHỈ TIÊU TỔNG HỢP': 'Tổng số giao dịch', 'GIÁ TRỊ': transactions.length },
-    { 'CHỈ TIÊU TỔNG HỢP': 'Tổng thu nhập (VNĐ)', 'GIÁ TRỊ': totalIncome },
-    { 'CHỈ TIÊU TỔNG HỢP': 'Tổng chi tiêu (VNĐ)', 'GIÁ TRỊ': totalExpense },
+    { 'CHỈ TIÊU TỔNG HỢP': 'Tổng thu nhập thuần (VNĐ)', 'GIÁ TRỊ': totalIncome },
+    { 'CHỈ TIÊU TỔNG HỢP': 'Tổng chi tiêu thuần (VNĐ)', 'GIÁ TRỊ': totalExpense },
     { 'CHỈ TIÊU TỔNG HỢP': 'Dòng tiền ròng (Net = Thu - Chi)', 'GIÁ TRỊ': netSavings },
     { 'CHỈ TIÊU TỔNG HỢP': 'Số lượt chuyển ví nội bộ', 'GIÁ TRỊ': transferCount },
     { 'CHỈ TIÊU TỔNG HỢP': '', 'GIÁ TRỊ': '' },
     { 'CHỈ TIÊU TỔNG HỢP': '--- PHÂN BỔ CHI TIÊU THEO HẠNG MỤC ---', 'GIÁ TRỊ': '' }
   ];
 
-  // Thêm các hạng mục chi tiêu theo tỷ trọng
   Object.entries(catExpenseMap)
     .sort((a, b) => b[1] - a[1])
     .forEach(([catName, amount]) => {
@@ -274,19 +309,42 @@ export async function exportTransactionsToExcel(options?: {
       });
     });
 
+  const getTypeLabel = (type: Transaction['type']) => {
+    switch (type) {
+      case 'EXPENSE':
+        return 'Chi tiền';
+      case 'INCOME':
+        return 'Thu tiền';
+      case 'TRANSFER':
+        return 'Chuyển ví';
+      case 'LEND':
+        return 'Cho vay';
+      case 'BORROW':
+        return 'Đi vay';
+      case 'COLLECT_DEBT':
+        return 'Thu nợ';
+      case 'PAY_DEBT':
+        return 'Trả nợ';
+      default:
+        return 'Điều chỉnh';
+    }
+  };
+
   // Sheet 2: Danh sách chi tiết từng giao dịch
   const txRows = transactions.map((t, idx) => ({
     STT: idx + 1,
     Ngày: t.date,
     Giờ: t.time,
-    Loại: t.type === 'EXPENSE' ? 'Chi tiền' : t.type === 'INCOME' ? 'Thu tiền' : 'Chuyển ví',
+    Loại: getTypeLabel(t.type),
     'Số tiền (VNĐ)': t.amount,
+    'Phí CK (VNĐ)': t.transferFee || 0,
     'Hạng mục':
       t.type === 'TRANSFER'
         ? 'Chuyển tiền nội bộ'
         : t.categoryId
         ? catMap.get(t.categoryId) || 'Chưa phân loại'
         : 'Chưa phân loại',
+    'Người vay/Chủ nợ': t.contactName || '',
     'Ví nguồn': walletMap.get(t.walletId) || 'Ví không xác định',
     'Ví đích': t.toWalletId ? walletMap.get(t.toWalletId) || '' : '',
     'Ghi chú': t.note || ''
@@ -307,7 +365,6 @@ export async function exportTransactionsToExcel(options?: {
   const wsTx = XLSX.utils.json_to_sheet(txRows);
   const wsWallets = XLSX.utils.json_to_sheet(walletRows);
 
-  // Cấu hình độ rộng cột (Column widths) chống hiển thị ###
   wsSummary['!cols'] = [{ wch: 45 }, { wch: 25 }];
   wsTx['!cols'] = [
     { wch: 6 },
@@ -315,7 +372,9 @@ export async function exportTransactionsToExcel(options?: {
     { wch: 8 },
     { wch: 12 },
     { wch: 16 },
+    { wch: 14 },
     { wch: 24 },
+    { wch: 20 },
     { wch: 20 },
     { wch: 20 },
     { wch: 35 }
@@ -354,38 +413,17 @@ export async function checkAndRunAutoBackup(options?: {
   force?: boolean;
 }): Promise<{ ran: boolean; message: string; fileName?: string }> {
   try {
-    const [enabledSetting, timeSetting, lastDateSetting] = await Promise.all([
-      db.settings.get('auto_backup_enabled'),
-      db.settings.get('auto_backup_time'),
-      db.settings.get('last_auto_backup_date')
-    ]);
-
-    const isEnabled = enabledSetting ? Boolean(enabledSetting.value) : true;
-    if (!isEnabled && !options?.force) {
-      return { ran: false, message: 'Tính năng tự động sao lưu đang tắt' };
+    if (!options?.force) {
+      return { ran: false, message: 'Tự động tải file về máy đã tắt để tránh làm phiền.' };
     }
 
     const todayStr = getCurrentDate();
-    const lastBackupDate = lastDateSetting?.value || '';
-
-    if (lastBackupDate === todayStr && !options?.force) {
-      return { ran: false, message: `Hôm nay (${todayStr}) đã được sao lưu rồi` };
-    }
-
-    const configuredTime = (timeSetting?.value as string) || '21:00';
     const currentTime = getCurrentTime();
-
-    if (currentTime < configuredTime && !options?.force) {
-      return {
-        ran: false,
-        message: `Chưa tới khung giờ sao lưu (${currentTime} < ${configuredTime})`
-      };
-    }
 
     const jsonStr = await exportFullBackupJSON();
     const dateCompact = todayStr.replace(/-/g, '');
     const timeCompact = currentTime.replace(':', '');
-    const fileName = `SoThuChi_AutoBackup_${dateCompact}_${timeCompact}.json`;
+    const fileName = `SoThuChi_Backup_${dateCompact}_${timeCompact}.json`;
 
     await db.settings.put({
       key: 'last_auto_backup_date',
@@ -396,11 +434,11 @@ export async function checkAndRunAutoBackup(options?: {
 
     return {
       ran: true,
-      message: `Đã tự động sao lưu dữ liệu ngày ${todayStr} thành công!`,
+      message: `Đã xuất file sao lưu dữ liệu ngày ${todayStr} thành công!`,
       fileName
     };
   } catch (err: any) {
-    console.error('Lỗi khi tự động sao lưu:', err);
-    return { ran: false, message: err?.message || 'Lỗi sao lưu tự động' };
+    console.error('Lỗi khi sao lưu:', err);
+    return { ran: false, message: err?.message || 'Lỗi sao lưu' };
   }
 }

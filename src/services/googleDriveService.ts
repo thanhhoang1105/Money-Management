@@ -56,16 +56,16 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
  * Lấy Client ID từ biến môi trường hoặc từ cài đặt người dùng đã lưu
  */
 export async function getEffectiveClientId(): Promise<string> {
-  // 1. Kiểm tra biến môi trường Vite
-  const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  if (envClientId && typeof envClientId === 'string' && envClientId.trim().length > 0) {
-    return envClientId.trim();
-  }
-
-  // 2. Kiểm tra cài đặt người dùng cấu hình trong IndexedDB
+  // 1. Kiểm tra cài đặt người dùng cấu hình trong IndexedDB trước (Ưu tiên tùy chỉnh người dùng)
   const customSetting = await db.settings.get('google_client_id');
   if (customSetting?.value && typeof customSetting.value === 'string' && customSetting.value.trim().length > 0) {
     return customSetting.value.trim();
+  }
+
+  // 2. Kiểm tra biến môi trường Vite
+  const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  if (envClientId && typeof envClientId === 'string' && envClientId.trim().length > 0) {
+    return envClientId.trim();
   }
 
   // 3. Fallback sang Client ID tích hợp sẵn của ứng dụng

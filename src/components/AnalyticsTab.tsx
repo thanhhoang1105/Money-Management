@@ -26,7 +26,9 @@ import {
   Calendar,
   FileSpreadsheet,
   RotateCw,
-  Check
+  Check,
+  Layers,
+  ListTree
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -34,15 +36,16 @@ interface AnalyticsTabProps {
 }
 
 type ReportType = 'EXPENSE' | 'INCOME';
+type ExpenseGroupingMode = 'DETAIL' | 'PARENT';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
+  const [groupingMode, setGroupingMode] = useState<ExpenseGroupingMode>('DETAIL');
   const [drillDownCategory, setDrillDownCategory] = useState<Category | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
 
-  // 1. Dữ liệu Danh mục và Ví
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
 
@@ -54,49 +57,65 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     return new Map<string, Wallet>(wallets.map((w) => [w.id, w]));
   }, [wallets]);
 
-  // 2. Dữ liệu tháng hiện tại và tháng liền trước (MoM Analysis)
   const prevMonth = useMemo(() => getPreviousMonth(selectedMonth), [selectedMonth]);
 
-  const thisMonthTxs = useLiveQuery(
-    () => db.transactions.filter((tx) => tx.date.startsWith(selectedMonth)).toArray(),
-    [selectedMonth]
-  ) || [];
+  const thisMonthTxs =
+    useLiveQuery(
+      () => db.transactions.filter((tx) => tx.date.startsWith(selectedMonth)).toArray(),
+      [selectedMonth]
+    ) || [];
 
-  const prevMonthTxs = useLiveQuery(
-    () => db.transactions.filter((tx) => tx.date.startsWith(prevMonth)).toArray(),
-    [prevMonth]
-  ) || [];
+  const prevMonthTxs =
+    useLiveQuery(
+      () => db.transactions.filter((tx) => tx.date.startsWith(prevMonth)).toArray(),
+      [prevMonth]
+    ) || [];
 
-  // 3. Dữ liệu 6 tháng gần nhất cho Biểu đồ cột Xu hướng (FR-A-04)
   const last6Months = useMemo(() => getLastNMonths(selectedMonth, 6), [selectedMonth]);
   const minMonth = last6Months[0];
 
-  const multiMonthTxs = useLiveQuery(
-    () =>
-      db.transactions
-        .filter((tx) => tx.date >= `${minMonth}-01` && tx.date <= `${selectedMonth}-31`)
-        .toArray(),
-    [selectedMonth, minMonth]
-  ) || [];
+  const multiMonthTxs =
+    useLiveQuery(
+      () =>
+        db.transactions
+          .filter((tx) => tx.date >= `${minMonth}-01` && tx.date <= `${selectedMonth}-31`)
+          .toArray(),
+      [selectedMonth, minMonth]
+    ) || [];
 
-  // Tính toán số liệu tháng hiện tại
-  const { thisIncome, thisExpense, thisNet, thisCatExpenseMap, thisCatIncomeMap } = useMemo(() => {
+  // Tính toán số liệu tháng hiện tại (Chuẩn MISA: Chỉ tính Thu/Chi thuần, loại trừ Vay nợ & excludeFromReport)
+  const {
+    thisIncome,
+    thisExpense,
+    thisNet,
+    thisCatExpenseMap,
+    thisParentExpenseMap,
+    thisCatIncomeMap
+  } = useMemo(() => {
     let inc = 0;
     let exp = 0;
     const catExpMap: Record<string, number> = {};
+    const parentExpMap: Record<string, number> = {};
     const catIncMap: Record<string, number> = {};
 
     thisMonthTxs.forEach((tx) => {
-      if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+      if (tx.excludeFromReport) return;
+
+      if (tx.type === 'INCOME') {
         inc += tx.amount;
         if (tx.categoryId) {
           catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
         }
-      } else if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+      } else if (tx.type === 'EXPENSE') {
         exp += tx.amount;
         if (tx.categoryId) {
           catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
+          const cat = categoryMap.get(tx.categoryId);
+          const groupKey = cat?.parentId || tx.categoryId;
+          parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
         }
+      } else if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+        exp += tx.transferFee;
       }
     });
 
@@ -105,28 +124,43 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       thisExpense: exp,
       thisNet: inc - exp,
       thisCatExpenseMap: catExpMap,
+      thisParentExpenseMap: parentExpMap,
       thisCatIncomeMap: catIncMap
     };
-  }, [thisMonthTxs]);
+  }, [thisMonthTxs, categoryMap]);
 
   // Tính toán số liệu tháng trước để so sánh MoM
-  const { prevIncome, prevExpense, prevCatExpenseMap, prevCatIncomeMap } = useMemo(() => {
+  const {
+    prevIncome,
+    prevExpense,
+    prevCatExpenseMap,
+    prevParentExpenseMap,
+    prevCatIncomeMap
+  } = useMemo(() => {
     let inc = 0;
     let exp = 0;
     const catExpMap: Record<string, number> = {};
+    const parentExpMap: Record<string, number> = {};
     const catIncMap: Record<string, number> = {};
 
     prevMonthTxs.forEach((tx) => {
-      if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+      if (tx.excludeFromReport) return;
+
+      if (tx.type === 'INCOME') {
         inc += tx.amount;
         if (tx.categoryId) {
           catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
         }
-      } else if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+      } else if (tx.type === 'EXPENSE') {
         exp += tx.amount;
         if (tx.categoryId) {
           catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
+          const cat = categoryMap.get(tx.categoryId);
+          const groupKey = cat?.parentId || tx.categoryId;
+          parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
         }
+      } else if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+        exp += tx.transferFee;
       }
     });
 
@@ -134,11 +168,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       prevIncome: inc,
       prevExpense: exp,
       prevCatExpenseMap: catExpMap,
+      prevParentExpenseMap: parentExpMap,
       prevCatIncomeMap: catIncMap
     };
-  }, [prevMonthTxs]);
+  }, [prevMonthTxs, categoryMap]);
 
-  // Chỉ số chênh lệch MoM tổng thể
   const expenseDiff = thisExpense - prevExpense;
   const expenseMoMPercent =
     prevExpense > 0 ? (expenseDiff / prevExpense) * 100 : thisExpense > 0 ? 100 : 0;
@@ -147,15 +181,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
   const incomeMoMPercent =
     prevIncome > 0 ? (incomeDiff / prevIncome) * 100 : thisIncome > 0 ? 100 : 0;
 
-  // Dữ liệu biểu đồ cột xu hướng 6 tháng gần nhất (FR-A-04)
+  // Dữ liệu biểu đồ cột xu hướng 6 tháng gần nhất
   const trendData = useMemo(() => {
     return last6Months.map((mStr) => {
       let income = 0;
       let expense = 0;
       multiMonthTxs.forEach((tx) => {
+        if (tx.excludeFromReport) return;
         if (tx.date.startsWith(mStr)) {
-          if (tx.type === 'INCOME' || tx.type === 'BORROW') income += tx.amount;
-          if (tx.type === 'EXPENSE' || tx.type === 'LEND') expense += tx.amount;
+          if (tx.type === 'INCOME') income += tx.amount;
+          if (tx.type === 'EXPENSE') expense += tx.amount;
+          if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+            expense += tx.transferFee;
+          }
         }
       });
       const net = income - expense;
@@ -170,7 +208,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     });
   }, [last6Months, multiMonthTxs]);
 
-  // Giá trị trần cho biểu đồ cột
   const maxTrendValue = useMemo(() => {
     let max = 0;
     trendData.forEach((d) => {
@@ -180,9 +217,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     return max > 0 ? max : 1;
   }, [trendData]);
 
-  // Danh mục phân loại theo chế độ chọn (EXPENSE hoặc INCOME)
-  const activeCatMap = reportType === 'EXPENSE' ? thisCatExpenseMap : thisCatIncomeMap;
-  const prevActiveCatMap = reportType === 'EXPENSE' ? prevCatExpenseMap : prevCatIncomeMap;
+  // Danh mục phân loại theo chế độ chọn (EXPENSE: Chi tiết / Nhóm Cha 50-30-20; hoặc INCOME)
+  const activeCatMap =
+    reportType === 'EXPENSE'
+      ? groupingMode === 'PARENT'
+        ? thisParentExpenseMap
+        : thisCatExpenseMap
+      : thisCatIncomeMap;
+  const prevActiveCatMap =
+    reportType === 'EXPENSE'
+      ? groupingMode === 'PARENT'
+        ? prevParentExpenseMap
+        : prevCatExpenseMap
+      : prevCatIncomeMap;
   const activeTotal = reportType === 'EXPENSE' ? thisExpense : thisIncome;
 
   const sortedCategories = useMemo(() => {
@@ -209,7 +256,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       .sort((a, b) => b.amount - a.amount);
   }, [activeCatMap, prevActiveCatMap, activeTotal, categoryMap]);
 
-  // Tính toán góc cho Biểu đồ Donut SVG
   const donutSegments = useMemo(() => {
     const segments: Array<(typeof sortedCategories)[0] & { startAngle: number; angle: number }> = [];
     let currentAngle = 0;
@@ -225,19 +271,25 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     return segments;
   }, [sortedCategories]);
 
-  // Các giao dịch thuộc danh mục đang Drill-down
+  // Các giao dịch thuộc danh mục đang Drill-down (Hỗ trợ cả Hạng mục Cha và Hạng mục Con)
   const drillDownTxs = useMemo(() => {
     if (!drillDownCategory) return [];
     return thisMonthTxs
-      .filter((tx) => tx.type === reportType && tx.categoryId === drillDownCategory.id)
+      .filter((tx) => {
+        if (tx.excludeFromReport) return false;
+        if (tx.type !== reportType) return false;
+        if (tx.categoryId === drillDownCategory.id) return true;
+        // Nếu drillDownCategory là Nhóm Cha, lấy cả các giao dịch thuộc hạng mục con của nó
+        const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+        return txCat?.parentId === drillDownCategory.id;
+      })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [drillDownCategory, thisMonthTxs, reportType]);
+  }, [drillDownCategory, thisMonthTxs, reportType, categoryMap]);
 
   const drillDownTotal = useMemo(() => {
     return drillDownTxs.reduce((sum, tx) => sum + tx.amount, 0);
   }, [drillDownTxs]);
 
-  // Điều hướng tháng
   const handlePrevMonth = () => setSelectedMonth((m) => getPreviousMonth(m));
   const handleNextMonth = () => {
     const [year, month] = selectedMonth.split('-');
@@ -250,7 +302,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
     setSelectedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
 
-  // Xuất báo cáo Excel nhanh cho tháng hiện tại (FR-E-01)
   const handleExportMonth = async () => {
     if (thisMonthTxs.length === 0) {
       alert(`Tháng ${formatMonthDisplay(selectedMonth)} chưa có giao dịch nào để xuất.`);
@@ -299,7 +350,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           </button>
         </div>
 
-        {/* Nút Xuất Excel nhanh theo tháng */}
         <button
           type="button"
           onClick={handleExportMonth}
@@ -316,7 +366,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </button>
       </div>
 
-      {/* Thông báo xuất thành công */}
       {exportToast && (
         <div className="mx-4 mt-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-2 animate-fade-in">
           <Check size={15} />
@@ -324,9 +373,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </div>
       )}
 
-      {/* 2. Thẻ Tổng Quan Dòng Tiền & MoM (Month-over-Month Cashflow Hero) */}
+      {/* 2. Thẻ Tổng Quan Dòng Tiền & MoM */}
       <div className="mx-4 my-2.5 rounded-3xl p-5 bg-gradient-to-br from-slate-800/95 to-slate-900/98 border border-white/10 shadow-xl backdrop-blur-md">
-        {/* Hàng 1: Dòng tiền ròng (Net Savings) */}
         <div className="flex justify-between items-start">
           <div>
             <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
@@ -353,13 +401,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           </div>
         </div>
 
-        {/* Hàng 2: Grid Thu vs Chi kèm so sánh MoM */}
         <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-white/10">
-          {/* Tổng Thu */}
           <div className="p-3 rounded-2xl bg-slate-800/60 border border-white/5">
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <ArrowDownLeft size={14} className="text-emerald-400" />
-              <span>Tổng thu nhập</span>
+              <span>Tổng thu thuần</span>
             </div>
             <div className="text-base font-extrabold text-income mt-1">
               +{formatVND(thisIncome)}
@@ -376,11 +422,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
             </div>
           </div>
 
-          {/* Tổng Chi */}
           <div className="p-3 rounded-2xl bg-slate-800/60 border border-white/5">
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <ArrowUpRight size={14} className="text-rose-400" />
-              <span>Tổng chi tiêu</span>
+              <span>Tổng chi thuần</span>
             </div>
             <div className="text-base font-extrabold text-expense mt-1">
               -{formatVND(thisExpense)}
@@ -399,7 +444,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </div>
       </div>
 
-      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG 6 THÁNG GẦN NHẤT (FR-A-04 Cashflow Trend Chart) */}
+      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG 6 THÁNG GẦN NHẤT */}
       <div className="mx-4 my-3 rounded-3xl p-4 bg-slate-900/80 border border-white/10 shadow-lg">
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
@@ -420,11 +465,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           </div>
         </div>
 
-        {/* Khung Biểu đồ cột */}
         <div className="grid grid-cols-6 gap-2 pt-2 pb-1 border-b border-white/6 items-end h-28">
           {trendData.map((d) => {
             const isSelected = d.monthStr === selectedMonth;
-            // Chiều cao cột (tối đa 80px)
             const incomeHeight = d.income > 0 ? Math.max(6, Math.round((d.income / maxTrendValue) * 80)) : 0;
             const expenseHeight = d.expense > 0 ? Math.max(6, Math.round((d.expense / maxTrendValue) * 80)) : 0;
 
@@ -437,21 +480,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                 }`}
                 title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}`}
               >
-                {/* 2 cột Thu (xanh) và Chi (đỏ) */}
                 <div className="flex items-end gap-1 h-[80px] w-full justify-center">
-                  {/* Cột Thu */}
                   <div
                     className="w-2.5 rounded-t-sm bg-emerald-500 transition-all duration-300"
                     style={{ height: `${incomeHeight}px` }}
                   />
-                  {/* Cột Chi */}
                   <div
                     className="w-2.5 rounded-t-sm bg-rose-500 transition-all duration-300"
                     style={{ height: `${expenseHeight}px` }}
                   />
                 </div>
 
-                {/* Nhãn tháng */}
                 <span
                   className={`text-[11px] font-bold mt-1.5 ${
                     isSelected ? 'text-sky-400' : 'text-slate-400'
@@ -497,14 +536,48 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </button>
       </div>
 
-      {/* 5. INTERACTIVE DONUT CHART (Cơ cấu chi/thu) */}
+      {/* NÚT CHUYỂN CHẾ ĐỘ GOM NHÓM CHI TIÊU: HẠNG MỤC CHI TIẾT VS NHÓM CHA (50/30/20) */}
+      {reportType === 'EXPENSE' && (
+        <div className="mx-4 mb-2.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setGroupingMode('DETAIL')}
+            className={`touch-btn flex-1 py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              groupingMode === 'DETAIL'
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                : 'bg-slate-900/70 border-white/6 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ListTree size={14} />
+            <span>Theo Hạng mục con</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setGroupingMode('PARENT')}
+            className={`touch-btn flex-1 py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              groupingMode === 'PARENT'
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                : 'bg-slate-900/70 border-white/6 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Layers size={14} />
+            <span>Theo Nhóm Cha (50/30/20)</span>
+          </button>
+        </div>
+      )}
+
+      {/* 5. INTERACTIVE DONUT CHART */}
       {sortedCategories.length > 0 ? (
         <div className="mx-4 my-2.5 rounded-3xl p-5 bg-slate-900/80 border border-white/10 shadow-lg text-center">
           <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
-            {reportType === 'EXPENSE' ? 'Tỷ trọng các nhóm chi tiêu' : 'Tỷ trọng các nguồn thu nhập'}
+            {reportType === 'EXPENSE'
+              ? groupingMode === 'PARENT'
+                ? 'Tỷ trọng theo Nhóm Cha (Must have / Nice to have / Wasted)'
+                : 'Tỷ trọng các hạng mục chi tiêu chi tiết'
+              : 'Tỷ trọng các nguồn thu nhập'}
           </div>
 
-          {/* SVG Donut Chart */}
           <div className="relative w-48 h-48 mx-auto">
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
               {donutSegments.map((item) => {
@@ -529,7 +602,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               })}
             </svg>
 
-            {/* Tâm biểu đồ Donut */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4">
               <span className="text-[10px] text-slate-400 font-medium">Chiếm lớn nhất</span>
               <span
@@ -567,7 +639,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               className="touch-btn rounded-2xl p-3.5 bg-slate-900/70 border border-white/6 hover:border-white/15 cursor-pointer transition-all"
             >
               <div className="flex justify-between items-center">
-                {/* Trái: Icon + Tên Danh mục */}
                 <div className="flex items-center gap-3 min-w-0">
                   <div
                     className="cat-badge shrink-0"
@@ -589,7 +660,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                   </div>
                 </div>
 
-                {/* Phải: Số tiền + Badge MoM so sánh tháng trước */}
                 <div className="text-right shrink-0 ml-3">
                   <div
                     className={`text-sm font-bold ${
@@ -624,7 +694,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                 </div>
               </div>
 
-              {/* Thanh Progress Bar tỷ lệ % danh mục */}
               <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-300"
@@ -639,17 +708,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </div>
       </div>
 
-      {/* 7. P5 MODAL: DRILL-DOWN CHI TIẾT TỪNG GIAO DỊCH CỦA DANH MỤC */}
+      {/* 7. MODAL: DRILL-DOWN CHI TIẾT TỪNG GIAO DỊCH CỦA DANH MỤC */}
       {drillDownCategory && (
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end items-center"
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
           onClick={() => setDrillDownCategory(null)}
         >
           <div
-            className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] border-t border-white/10 max-h-[85vh] flex flex-col pb-[max(24px,env(safe-area-inset-bottom,0px))] animate-slide-up"
+            className="w-full max-w-[480px] md:max-w-xl bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 max-h-[85vh] flex flex-col pb-[max(24px,env(safe-area-inset-bottom,0px))] animate-slide-up shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header Drill-down */}
             <div className="px-5 pt-4 pb-3.5 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div
@@ -677,7 +745,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               </button>
             </div>
 
-            {/* Thẻ tóm tắt tổng tiền danh mục */}
             <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-slate-800/60 border border-white/6 flex items-center justify-between">
               <div>
                 <span className="text-[11px] text-slate-400">Tổng phát sinh danh mục</span>
@@ -700,7 +767,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               </div>
             </div>
 
-            {/* Danh sách giao dịch chi tiết */}
             <div className="p-4 overflow-y-auto flex flex-col gap-2.5">
               {drillDownTxs.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
@@ -709,6 +775,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
               ) : (
                 drillDownTxs.map((tx) => {
                   const wallet = walletMap.get(tx.walletId);
+                  const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
                   return (
                     <div
                       key={tx.id}
@@ -722,7 +789,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
                     >
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-slate-100 truncate">
-                          {tx.note || drillDownCategory.name}
+                          {tx.note || txCat?.name || drillDownCategory.name}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
                           <span>{formatFriendlyDate(tx.date)} lúc {tx.time}</span>

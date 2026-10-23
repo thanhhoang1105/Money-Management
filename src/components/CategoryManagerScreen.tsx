@@ -245,9 +245,10 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-[#090d16] flex flex-col text-slate-100 font-body animate-fade-in">
-      {/* 1. Header Bar chuẩn iOS */}
-      <header className="sticky top-0 z-40 safe-padding-top px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between">
+    <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-md flex flex-col md:items-center md:justify-center p-0 md:p-6 overflow-y-auto animate-fade-in font-body text-slate-100">
+      <div className="w-full md:max-w-2xl bg-slate-900 border-0 md:border md:border-white/12 md:rounded-3xl shadow-2xl flex flex-col min-h-full md:min-h-0 md:max-h-[92vh] overflow-hidden">
+        {/* 1. Header Bar chuẩn Web / Mobile */}
+        <header className="sticky top-0 z-40 safe-padding-top px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between">
         <button
           type="button"
           onClick={onClose}
@@ -500,8 +501,8 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
 
       {/* 4. MODAL THÊM / SỬA HẠNG MỤC */}
       {isEditing && (
-        <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-md flex flex-col justify-end items-center">
-          <div className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] border-t border-white/10 p-5 pb-[max(20px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4 animate-slide-up max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-md flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in" onClick={() => setIsEditing(false)}>
+          <div className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 p-5 pb-[max(20px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4 animate-slide-up max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {/* Header Form */}
             <div className="flex items-center justify-between border-b border-white/8 pb-3">
               <span className="text-base font-bold text-white">
@@ -759,6 +760,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

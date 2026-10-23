@@ -29,6 +29,37 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   currentWalletBalance,
   adjustDiff = 0
 }) => {
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        onKeyPress(e.key);
+      } else if (['+', '-', '*', '/'].includes(e.key)) {
+        e.preventDefault();
+        onKeyPress(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        onKeyPress('BACKSPACE');
+      } else if (e.key === 'c' || e.key === 'C') {
+        onKeyPress('CLEAR');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onKeyPress, onClose]);
+
   if (!isOpen) return null;
 
   const getTypeLabel = () => {
@@ -41,6 +72,10 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
         return 'Cho vay';
       case 'BORROW':
         return 'Đi vay';
+      case 'COLLECT_DEBT':
+        return 'Thu nợ';
+      case 'PAY_DEBT':
+        return 'Trả nợ';
       case 'TRANSFER':
         return 'Chuyển khoản';
       case 'ADJUST':
@@ -53,8 +88,10 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   const getTypeBadgeStyle = () => {
     switch (type) {
       case 'EXPENSE':
+      case 'PAY_DEBT':
         return 'bg-rose-500/15 border-rose-500/30 text-rose-300';
       case 'INCOME':
+      case 'COLLECT_DEBT':
         return 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300';
       case 'LEND':
         return 'bg-amber-500/15 border-amber-500/30 text-amber-300';
@@ -70,8 +107,10 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   const getAmountColor = () => {
     switch (type) {
       case 'EXPENSE':
+      case 'PAY_DEBT':
         return 'text-rose-400';
       case 'INCOME':
+      case 'COLLECT_DEBT':
         return 'text-emerald-400';
       case 'LEND':
         return 'text-amber-400';
@@ -86,23 +125,19 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
 
   return (
     <>
-      {/* 1. Backdrop làm mờ nhẹ - Chạm vào nền để gập bàn phím xuống */}
       <div
         onClick={onClose}
         className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-[2px] transition-opacity animate-fade-in"
       />
 
-      {/* 2. Sheet Popup đẩy từ dưới lên (Slide-up modal trên cùng) */}
       <div
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[71] bg-slate-900 border-t border-white/12 rounded-t-3xl shadow-2xl safe-nav-bottom animate-slide-up flex flex-col overflow-hidden"
+        className="fixed bottom-0 md:bottom-auto md:top-1/2 left-1/2 -translate-x-1/2 md:-translate-y-1/2 w-full max-w-[480px] md:max-w-[400px] z-[71] bg-slate-900 border-t md:border border-white/12 rounded-t-3xl md:rounded-3xl shadow-2xl safe-nav-bottom md:pb-4 animate-slide-up flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Grab Handle chuẩn iOS */}
         <div className="w-full pt-2.5 pb-1 flex justify-center cursor-pointer" onClick={onClose}>
           <div className="w-10 h-1.5 bg-slate-600 rounded-full" />
         </div>
 
-        {/* Thanh công cụ Sheet Header */}
         <div className="px-4 py-1.5 flex items-center justify-between border-b border-white/6">
           <div
             className={`px-2.5 py-1 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${getTypeBadgeStyle()}`}
@@ -134,7 +169,6 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
           </div>
         </div>
 
-        {/* Màn hình hiển thị số tiền & Biểu thức đang nhập */}
         <div className="px-5 py-2.5 bg-slate-950/60 border-b border-white/6 text-center">
           <div
             className={`text-xs font-medium min-h-[18px] mb-0.5 ${
@@ -175,7 +209,6 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
           )}
         </div>
 
-        {/* Bàn phím số Numpad 4x4 */}
         <div className="p-3 bg-slate-900">
           <div className="grid grid-cols-4 gap-2">
             <button
@@ -296,7 +329,6 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
             </button>
           </div>
 
-          {/* Hàng điều khiển đáy: C (Xóa hết) + Ẩn phím + Xong / Lưu nhanh */}
           <div className="grid grid-cols-4 gap-2 mt-2">
             <button
               type="button"
@@ -322,9 +354,9 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
                 type="button"
                 onClick={onConfirmAndSave}
                 className={`col-span-2 touch-btn touch-bounce h-12 rounded-xl text-white font-bold flex items-center justify-center gap-1.5 text-xs shadow-lg cursor-pointer border-none ${
-                  type === 'EXPENSE'
+                  type === 'EXPENSE' || type === 'PAY_DEBT'
                     ? 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-500/30'
-                    : type === 'INCOME'
+                    : type === 'INCOME' || type === 'COLLECT_DEBT'
                     ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-emerald-500/30'
                     : type === 'LEND'
                     ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-500/30'

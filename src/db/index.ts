@@ -1,6 +1,14 @@
 // src/db/index.ts
 import Dexie, { type Table } from 'dexie';
-import type { Wallet, Category, Transaction, Budget, Setting } from '../types';
+import type {
+  Wallet,
+  Category,
+  Transaction,
+  Budget,
+  Setting,
+  RecurringTransaction,
+  EventTrip
+} from '../types';
 
 export class MoneyDatabase extends Dexie {
   wallets!: Table<Wallet, string>;
@@ -8,6 +16,8 @@ export class MoneyDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   budgets!: Table<Budget, string>;
   settings!: Table<Setting, string>;
+  recurringTransactions!: Table<RecurringTransaction, string>;
+  events!: Table<EventTrip, string>;
 
   constructor() {
     super('MoneyTrackerDB');
@@ -41,6 +51,18 @@ export class MoneyDatabase extends Dexie {
       transactions: 'id, walletId, toWalletId, categoryId, type, date, createdAt, [walletId+date], [categoryId+date], [type+date]',
       budgets: 'id, categoryId, month, [categoryId+month]',
       settings: 'key'
+    });
+
+    // Schema Version 4 (V3.0: Thêm Ghi chép định kỳ, Sự kiện/Chuyến đi, Sổ Nợ contactName/eventId)
+    // Tuyệt đối KHÔNG đánh index trường boolean (isActive, isCompleted, excludeFromReport)
+    this.version(4).stores({
+      wallets: 'id, name, type, createdAt, updatedAt',
+      categories: 'id, name, type, createdAt',
+      transactions: 'id, walletId, toWalletId, categoryId, type, contactName, eventId, date, createdAt, [walletId+date], [categoryId+date], [type+date]',
+      budgets: 'id, categoryId, month, [categoryId+month]',
+      settings: 'key',
+      recurringTransactions: 'id, walletId, type, nextRunDate, createdAt',
+      events: 'id, startDate, createdAt'
     });
 
     // Tự động kích hoạt Persistent Storage khi DB sẵn sàng

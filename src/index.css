@@ -102,15 +102,12 @@
 
   #root {
     width: 100%;
-    max-width: 480px; /* Khung chuẩn cho màn hình iPhone / Mobile */
     min-height: 100vh;
     min-height: 100dvh;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
     position: relative;
     background-color: #090d16;
-    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
   }
 
   /* Scrollable Container (Main app views) */

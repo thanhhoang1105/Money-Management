@@ -365,7 +365,7 @@ export async function ensureDefaultWallets(): Promise<void> {
  * Đảm bảo nạp đầy đủ cấu trúc Hạng mục Cha & Con mới theo hành vi vào cơ sở dữ liệu
  */
 export async function ensureHierarchicalCategories(): Promise<void> {
-  const versionSetting = await db.settings.get('has_seeded_unique_icons_v3');
+  const versionSetting = await db.settings.get('has_seeded_categories_v5');
   if (versionSetting?.value) {
     return;
   }
@@ -439,7 +439,6 @@ export async function ensureHierarchicalCategories(): Promise<void> {
         });
         existingNameSet.add(key);
       } else {
-        // Cập nhật icon không trùng lặp, isStarred và quickTags nếu là danh mục mặc định
         const found = currentCategories.find(
           (c) => `${c.type}_${c.name.trim().toLowerCase()}` === key
         );
@@ -457,7 +456,7 @@ export async function ensureHierarchicalCategories(): Promise<void> {
     }
 
     await db.settings.put({
-      key: 'has_seeded_starred_categories_v4',
+      key: 'has_seeded_categories_v5',
       value: true
     });
   });
@@ -487,7 +486,6 @@ export async function initializeSeedData(): Promise<void> {
 
   const now = new Date().toISOString();
   await db.transaction('rw', [db.categories, db.wallets, db.settings], async () => {
-    // Đảm bảo danh mục hệ thống 'Điều chỉnh số dư' tồn tại
     const sysAdj = await db.categories.get('system_adjustment');
     if (!sysAdj) {
       await db.categories.add({

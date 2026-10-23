@@ -9,10 +9,22 @@ import { MoreTab } from './components/MoreTab';
 import { TransactionEditorScreen } from './components/TransactionEditorScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { IosInstallPromptModal } from './components/IosInstallPromptModal';
-import { checkAndRunAutoBackup } from './services/backupService';
 import { checkAndRunGoogleDriveAutoSync } from './services/googleDriveService';
+import { processDueRecurringTransactions } from './services/transactionService';
 import type { Transaction, AppStartupTab } from './types';
-import { Share, X, Smartphone, Settings as SettingsIcon, Check, ArrowRight } from 'lucide-react';
+import {
+  Share,
+  X,
+  Smartphone,
+  Settings as SettingsIcon,
+  Check,
+  ArrowRight,
+  Plus,
+  LayoutDashboard,
+  Wallet as WalletIcon,
+  PieChart,
+  MoreHorizontal
+} from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 // Kiểm tra nếu app đang chạy ở chế độ Standalone (Đã thêm vào Màn hình chính)
@@ -86,14 +98,14 @@ export function App() {
     }
   });
 
-  // Khởi tạo Seed Data & Auto backup & Auto Sync
+  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Auto Sync Google Drive ngầm
   useEffect(() => {
     requestPersistentStorage();
     initializeSeedData()
       .then(async () => {
-        const res = await checkAndRunAutoBackup();
-        if (res.ran) {
-          setAutoBackupNotice(res.message);
+        const recurringExecuted = await processDueRecurringTransactions();
+        if (recurringExecuted > 0) {
+          setAutoBackupNotice(`Đã tự động ghi ${recurringExecuted} giao dịch định kỳ đến hạn!`);
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
 
@@ -121,12 +133,6 @@ export function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const timer = setInterval(async () => {
-      const res = await checkAndRunAutoBackup();
-      if (res.ran) {
-        setAutoBackupNotice(res.message);
-        setTimeout(() => setAutoBackupNotice(null), 6000);
-      }
-
       const driveRes = await checkAndRunGoogleDriveAutoSync();
       if (driveRes.ran) {
         setAutoBackupNotice(driveRes.message);
@@ -161,45 +167,129 @@ export function App() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-app-bg text-text-main font-body">
-      {/* 1. Header Bar chuẩn phong cách iOS */}
-      <header className="sticky top-0 z-40 safe-padding-top pb-3 px-4 flex items-center justify-between bg-slate-900/90 backdrop-blur-md border-b border-white/8">
-        <div className="flex items-center gap-2.5">
-          <div className="w-[34px] h-[34px] rounded-[10px] bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center font-black text-base text-white shadow-md shadow-emerald-500/30 shrink-0">
-            ₫
-          </div>
-          <div>
-            <h1 className="font-heading text-[17px] font-extrabold text-slate-100 leading-tight m-0">
-              {currentTab === 'overview'
-                ? 'Tổng quan'
-                : currentTab === 'wallets'
-                ? 'Tài khoản'
-                : currentTab === 'analytics'
-                ? 'Báo cáo'
-                : 'Khác'}
-            </h1>
-            <span className="text-[11px] text-slate-400">
-              Local-First • 0đ Vận Hành
-            </span>
-          </div>
-        </div>
-
-        {/* Nút Cài đặt & Badge trạng thái dữ liệu */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-emerald-500/12 border border-emerald-500/25">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10B981]" />
-            <span className="text-[11px] font-bold text-emerald-400">
-              Offline 100%
-            </span>
+      {/* 1. Header Bar chuẩn Responsive Web (Mobile + Desktop) */}
+      <header className="sticky top-0 z-30 safe-padding-top pb-3 px-4 bg-slate-900/95 backdrop-blur-md border-b border-white/8">
+        <div className="w-full max-w-5xl mx-auto flex items-center justify-between">
+          {/* Logo & Tên ứng dụng */}
+          <div className="flex items-center gap-3">
+            <div className="w-[34px] h-[34px] rounded-[10px] bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center font-black text-base text-white shadow-md shadow-emerald-500/30 shrink-0">
+              ₫
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-heading text-[17px] font-extrabold text-slate-100 leading-tight m-0">
+                  Sổ Thu Chi
+                </h1>
+                <span className="hidden md:inline-block text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  Local-First
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 md:hidden">
+                {currentTab === 'overview'
+                  ? 'Tổng quan'
+                  : currentTab === 'wallets'
+                  ? 'Tài khoản'
+                  : currentTab === 'analytics'
+                  ? 'Báo cáo'
+                  : 'Khác'}
+              </span>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="touch-btn w-8 h-8 rounded-[10px] bg-slate-800 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
-            title="Cài đặt & Sao lưu"
-          >
-            <SettingsIcon size={18} />
-          </button>
+          {/* Điều hướng Desktop Navigation Tabs (Ẩn trên mobile) */}
+          <nav className="hidden md:flex items-center gap-1 bg-slate-800/80 p-1 rounded-2xl border border-white/6 shadow-inner">
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentTab('overview');
+                setIsEditorOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentTab === 'overview'
+                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <LayoutDashboard size={15} />
+              <span>Tổng quan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentTab('wallets');
+                setIsEditorOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentTab === 'wallets'
+                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <WalletIcon size={15} />
+              <span>Tài khoản</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentTab('analytics');
+                setIsEditorOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentTab === 'analytics'
+                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <PieChart size={15} />
+              <span>Báo cáo</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentTab('more');
+                setIsEditorOpen(false);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentTab === 'more'
+                  ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <MoreHorizontal size={15} />
+              <span>Khác</span>
+            </button>
+          </nav>
+
+          {/* Nút thao tác nhanh & Cài đặt */}
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleOpenQuickAdd}
+              className="hidden md:flex items-center gap-1.5 py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-extrabold cursor-pointer shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
+            >
+              <Plus size={16} strokeWidth={3} />
+              <span>Ghi giao dịch</span>
+            </button>
+
+            <div className="flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-emerald-500/12 border border-emerald-500/25">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10B981]" />
+              <span className="text-[11px] font-bold text-emerald-400">
+                Offline 100%
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="touch-btn w-8 h-8 rounded-[10px] bg-slate-800 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white hover:bg-slate-700"
+              title="Cài đặt & Sao lưu"
+            >
+              <SettingsIcon size={18} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -220,9 +310,9 @@ export function App() {
         </div>
       )}
 
-      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" (Tự động ẩn hoàn toàn khi đang chạy Standalone) */}
+      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" */}
       {!isStandalone && showIosTip && (
-        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/30 flex items-center justify-between gap-2.5 shadow-lg shadow-sky-500/5">
+        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/30 flex items-center justify-between gap-2.5 shadow-lg shadow-sky-500/5 max-w-5xl md:hidden">
           <button
             type="button"
             onClick={() => setIsIosGuideOpen(true)}
@@ -274,29 +364,31 @@ export function App() {
 
       {/* 3. Nội dung Tab hiện tại */}
       <main className="app-scroll-container flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-        {currentTab === 'overview' && (
-          <TransactionListTab
-            onEditTransaction={handleEditTransaction}
-            onOpenQuickAdd={handleOpenQuickAdd}
-          />
-        )}
+        <div className="w-full max-w-5xl mx-auto pb-24 md:pb-12">
+          {currentTab === 'overview' && (
+            <TransactionListTab
+              onEditTransaction={handleEditTransaction}
+              onOpenQuickAdd={handleOpenQuickAdd}
+            />
+          )}
 
-        {currentTab === 'wallets' && <WalletsTab />}
+          {currentTab === 'wallets' && <WalletsTab />}
 
-        {currentTab === 'analytics' && (
-          <AnalyticsTab onEditTransaction={handleEditTransaction} />
-        )}
+          {currentTab === 'analytics' && (
+            <AnalyticsTab onEditTransaction={handleEditTransaction} />
+          )}
 
-        {currentTab === 'more' && (
-          <MoreTab
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            defaultInitialTab={defaultInitialTab}
-            onChangeDefaultTab={handleChangeDefaultTab}
-          />
-        )}
+          {currentTab === 'more' && (
+            <MoreTab
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              defaultInitialTab={defaultInitialTab}
+              onChangeDefaultTab={handleChangeDefaultTab}
+            />
+          )}
+        </div>
       </main>
 
-      {/* 4. Màn hình Ghi Giao Dịch Riêng Lẻ Toàn Màn Hình (Full-Screen View với z-40 để BottomNav z-50 vẫn hiển thị) */}
+      {/* 4. Màn hình Ghi Giao Dịch */}
       <TransactionEditorScreen
         isOpen={isEditorOpen}
         onClose={() => {
@@ -306,7 +398,7 @@ export function App() {
         editingTransaction={editingTransaction}
       />
 
-      {/* 5. Bottom Tab Navigation chuẩn iOS (5 Tabs: Tổng quan, Tài khoản, [+], Báo cáo, Khác) */}
+      {/* 5. Bottom Tab Navigation */}
       <BottomNav
         currentTab={currentTab}
         isEditorOpen={isEditorOpen}
@@ -322,13 +414,13 @@ export function App() {
         }}
       />
 
-      {/* 6. Settings Modal (Cài đặt & Tự động sao lưu hàng ngày) */}
+      {/* 6. Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
 
-      {/* 7. Modal Hướng dẫn Cài đặt lên iPhone (A2HS Guide) */}
+      {/* 7. Modal Hướng dẫn Cài đặt lên iPhone */}
       <IosInstallPromptModal
         isOpen={isIosGuideOpen}
         onClose={() => setIsIosGuideOpen(false)}

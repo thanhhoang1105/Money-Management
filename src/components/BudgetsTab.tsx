@@ -41,51 +41,63 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
 
   const prevMonth = useMemo(() => getPreviousMonth(selectedMonth), [selectedMonth]);
 
-  // Tải danh mục từ DB
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const expenseCategories = useMemo(() => {
     return categories.filter((c) => c.type === 'EXPENSE');
   }, [categories]);
 
+  const parentExpenseCategories = useMemo(() => {
+    return expenseCategories.filter((c) => !c.parentId);
+  }, [expenseCategories]);
+
+  const childExpenseCategories = useMemo(() => {
+    return expenseCategories.filter((c) => !!c.parentId);
+  }, [expenseCategories]);
+
   const categoryMap = useMemo(() => {
     return new Map<string, Category>(categories.map((c) => [c.id, c]));
   }, [categories]);
 
-  // Hạn mức của tháng đang chọn
-  const currentBudgets = useLiveQuery(
-    () => db.budgets.filter((b) => b.month === selectedMonth).toArray(),
-    [selectedMonth]
-  ) || [];
+  const currentBudgets =
+    useLiveQuery(
+      () => db.budgets.filter((b) => b.month === selectedMonth).toArray(),
+      [selectedMonth]
+    ) || [];
 
-  // Hạn mức của tháng trước (để kích hoạt nút Sao Chép Hạn Mức - FR-B-02)
-  const prevMonthBudgets = useLiveQuery(
-    () => db.budgets.filter((b) => b.month === prevMonth).toArray(),
-    [prevMonth]
-  ) || [];
+  const prevMonthBudgets =
+    useLiveQuery(
+      () => db.budgets.filter((b) => b.month === prevMonth).toArray(),
+      [prevMonth]
+    ) || [];
 
-  // Toàn bộ giao dịch chi tiêu trong tháng đang chọn
-  const monthTransactions = useLiveQuery(
-    () =>
-      db.transactions
-        .filter((tx) => tx.date.startsWith(selectedMonth) && tx.type === 'EXPENSE')
-        .toArray(),
-    [selectedMonth]
-  ) || [];
+  const monthTransactions =
+    useLiveQuery(
+      () =>
+        db.transactions
+          .filter((tx) => tx.date.startsWith(selectedMonth) && tx.type === 'EXPENSE')
+          .toArray(),
+      [selectedMonth]
+    ) || [];
 
-  // Tính tổng chi tiêu thực tế theo từng danh mục và toàn tháng
+  // Tính tổng chi tiêu thực tế theo từng danh mục con, danh mục cha và toàn tháng
   const { spentByCatMap, totalMonthSpent } = useMemo(() => {
     const catMap: Record<string, number> = {};
     let total = 0;
     monthTransactions.forEach((tx) => {
+      if (tx.excludeFromReport) return;
       total += tx.amount;
       if (tx.categoryId) {
         catMap[tx.categoryId] = (catMap[tx.categoryId] || 0) + tx.amount;
+        // Cộng dồn lên cả Hạng mục Cha (nếu có) để hỗ trợ hạn mức theo Nhóm Cha (Must have / Nice to have / Wasted)
+        const cat = categoryMap.get(tx.categoryId);
+        if (cat?.parentId) {
+          catMap[cat.parentId] = (catMap[cat.parentId] || 0) + tx.amount;
+        }
       }
     });
     return { spentByCatMap: catMap, totalMonthSpent: total };
-  }, [monthTransactions]);
+  }, [monthTransactions, categoryMap]);
 
-  // Điều hướng tháng
   const handlePrevMonth = () => setSelectedMonth((m) => getPreviousMonth(m));
   const handleNextMonth = () => {
     const [year, month] = selectedMonth.split('-');
@@ -98,7 +110,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     setSelectedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
 
-  // Tính số ngày còn lại trong tháng để tính ngân sách chi tiêu an toàn mỗi ngày (FR-B-03)
   const { remainingDays, isCurrentActiveMonth } = useMemo(() => {
     const [yearNum, monthNum] = selectedMonth.split('-').map(Number);
     const totalDaysInMonth = new Date(yearNum, monthNum, 0).getDate();
@@ -109,7 +120,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     return { remainingDays: daysLeft, isCurrentActiveMonth: isActiveMonth };
   }, [selectedMonth]);
 
-  // Tính toán số liệu tổng thể các ngân sách trong tháng
   const { totalBudgetAmount, totalBudgetSpent, totalRemaining, totalPercent, isTotalOver } =
     useMemo(() => {
       let bAmount = 0;
@@ -134,18 +144,15 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
       };
     }, [currentBudgets, spentByCatMap, totalMonthSpent]);
 
-  // Ngân sách an toàn mỗi ngày cho tổng thể
   const totalDailySafe = useMemo(() => {
     return Math.max(0, Math.round(totalRemaining / remainingDays));
   }, [totalRemaining, remainingDays]);
 
-  // Hiển thị thông báo toast
   const showToast = (msg: string) => {
     setStatusNotice(msg);
     setTimeout(() => setStatusNotice(null), 4000);
   };
 
-  // Tính năng: SAO CHÉP HẠN MỨC TỪ THÁNG TRƯỚC (FR-B-02)
   const handleCopyFromPrevMonth = async () => {
     if (prevMonthBudgets.length === 0) return;
 
@@ -179,23 +186,23 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
       });
 
       if (copiedCount > 0) {
-        showToast(`Đã sao chép thành công ${copiedCount} hạn mức từ ${formatMonthDisplay(prevMonth)}!`);
+        showToast(
+          `Đã sao chép thành công ${copiedCount} hạn mức từ ${formatMonthDisplay(prevMonth)}!`
+        );
       } else {
         showToast('Các hạn mức của tháng trước đã có sẵn trong tháng này.');
       }
     }
   };
 
-  // Mở modal Thêm mới
   const handleOpenAddModal = () => {
     setEditingBudget(null);
-    setSelectedCategoryId(expenseCategories[0]?.id || '');
+    setSelectedCategoryId(parentExpenseCategories[0]?.id || expenseCategories[0]?.id || '');
     setAmountStr('');
     setErrorMsg('');
     setIsModalOpen(true);
   };
 
-  // Mở modal Chỉnh sửa
   const handleOpenEditModal = (b: Budget) => {
     setEditingBudget(b);
     setSelectedCategoryId(b.categoryId || '');
@@ -204,7 +211,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     setIsModalOpen(true);
   };
 
-  // Lưu hạn mức (Thêm mới hoặc Cập nhật)
   const handleSaveBudget = async () => {
     const amount = Number(amountStr.replace(/[^0-9]/g, ''));
     if (!amount || amount <= 0) {
@@ -215,14 +221,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     const now = new Date().toISOString();
 
     if (editingBudget) {
-      // Cập nhật hạn mức đang sửa
       await db.budgets.update(editingBudget.id, {
         categoryId: selectedCategoryId || undefined,
         amount
       });
       showToast('Đã cập nhật hạn mức chi tiêu thành công!');
     } else {
-      // Kiểm tra xem đã có hạn mức cho danh mục này trong tháng chưa
       const existing = await db.budgets
         .filter((b) => b.month === selectedMonth && b.categoryId === (selectedCategoryId || undefined))
         .first();
@@ -248,7 +252,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     setEditingBudget(null);
   };
 
-  // Xóa hạn mức
   const handleDeleteBudget = async (id: string, name: string) => {
     if (window.confirm(`Bạn có chắc muốn xóa hạn mức "${name}"?`)) {
       await db.budgets.delete(id);
@@ -256,7 +259,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
     }
   };
 
-  // Phím gõ nhanh số tiền
   const handleQuickAddAmount = (addValue: number) => {
     const current = Number(amountStr.replace(/[^0-9]/g, '')) || 0;
     const newVal = current + addValue;
@@ -265,7 +267,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
 
   return (
     <div className="pb-28">
-      {/* Nút Quay lại nếu là Subview */}
       {onBack && (
         <div className="px-4 pt-3 pb-1 flex items-center justify-between border-b border-white/8 mb-2">
           <button
@@ -308,7 +309,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* Thông báo Toast Thành Công */}
       {statusNotice && (
         <div className="mx-4 my-2 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between gap-2 animate-fade-in">
           <div className="flex items-center gap-2">
@@ -325,7 +325,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* 2. Thẻ Hero Tổng Quan Ngân Sách Tháng (FR-B-01 & FR-B-03) */}
+      {/* 2. Thẻ Hero Tổng Quan Ngân Sách Tháng */}
       {currentBudgets.length > 0 && (
         <div className="mx-4 my-2.5 rounded-3xl p-5 bg-gradient-to-br from-slate-800/95 to-slate-900/98 border border-white/10 shadow-xl backdrop-blur-md">
           <div className="flex justify-between items-start">
@@ -364,7 +364,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Thanh Tiến Độ Lớn Tổng Thể */}
           <div className="w-full h-2.5 rounded-full bg-slate-800 mt-4 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
@@ -378,7 +377,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
             />
           </div>
 
-          {/* Hàng Chi Tiêu An Toàn Trung Bình Mỗi Ngày */}
           <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
             <div>
               <span className="text-slate-400">Còn lại được chi: </span>
@@ -397,7 +395,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* 3. NÚT SAO CHÉP HẠN MỨC TỪ THÁNG TRƯỚC (FR-B-02) */}
+      {/* 3. NÚT SAO CHÉP HẠN MỨC TỪ THÁNG TRƯỚC */}
       {prevMonthBudgets.length > 0 && currentBudgets.length < prevMonthBudgets.length && (
         <div className="mx-4 my-2">
           <button
@@ -413,17 +411,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* 4. DANH SÁCH CÁC HẠN MỨC (BUDGET LIST) */}
+      {/* 4. DANH SÁCH CÁC HẠN MỨC */}
       <div className="px-4 mt-2 flex flex-col gap-3">
         {currentBudgets.length === 0 ? (
-          // Trạng thái trống
           <div className="text-center py-12 px-5 text-slate-400">
             <div className="text-5xl mb-3">🎯</div>
             <div className="text-base font-bold text-slate-100">
               Chưa có hạn mức nào trong {formatMonthDisplay(selectedMonth)}
             </div>
             <p className="text-xs text-slate-400 mt-1 mb-4 leading-relaxed">
-              Thiết lập hạn mức chi tiêu để kiểm soát dòng tiền, tránh tiêu hoang và tiết kiệm thông minh hơn!
+              Thiết lập hạn mức chi tiêu theo Nhóm 50/30/20 hoặc từng hạng mục để kiểm soát dòng tiền!
             </p>
             <button
               type="button"
@@ -437,7 +434,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
           <>
             <div className="flex justify-between items-center px-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Đang giám sát ({currentBudgets.length} danh mục)
+                Đang giám sát ({currentBudgets.length} hạn mức)
               </span>
               <button
                 type="button"
@@ -450,6 +447,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
 
             {currentBudgets.map((b) => {
               const cat = b.categoryId ? categoryMap.get(b.categoryId) : undefined;
+              const isParentCat = cat && !cat.parentId;
               const spent = b.categoryId ? spentByCatMap[b.categoryId] || 0 : totalMonthSpent;
               const remaining = b.amount - spent;
               const percent = Math.min(100, Math.round((spent / b.amount) * 100));
@@ -459,7 +457,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
               const dailySafe = Math.max(0, Math.round(remaining / remainingDays));
               const budgetName = cat?.name || 'Tổng chi tiêu toàn tháng';
 
-              // Màu cảnh báo 3 cấp độ (FR-B-03)
               const statusColorClass = isOver
                 ? 'bg-rose-500'
                 : isWarning
@@ -480,7 +477,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                   }`}
                 >
                   <div className="flex justify-between items-start">
-                    {/* Trái: Icon + Tên Danh mục */}
                     <div className="flex items-center gap-3 min-w-0">
                       <div
                         className="cat-badge shrink-0"
@@ -489,8 +485,15 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                         <CategoryIcon name={cat?.icon || 'Target'} size={20} color="#ffffff" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-slate-100 truncate">
-                          {budgetName}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-bold text-slate-100 truncate">
+                            {budgetName}
+                          </span>
+                          {isParentCat && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-semibold shrink-0">
+                              Nhóm Cha
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-400 mt-0.5">
                           Đã chi: <b className="text-slate-200">{formatVND(spent)}</b> / {formatVND(b.amount)}
@@ -498,7 +501,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                       </div>
                     </div>
 
-                    {/* Phải: Badge % + Nút Sửa / Xóa */}
                     <div className="flex items-center gap-2 shrink-0 ml-2">
                       <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusBadgeClass}`}>
                         {percent}%
@@ -522,7 +524,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                     </div>
                   </div>
 
-                  {/* Thanh Tiến Độ Đổi Màu 3 Cấp Độ */}
                   <div className="w-full h-2 rounded-full bg-slate-800 mt-3.5 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${statusColorClass}`}
@@ -530,7 +531,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                     />
                   </div>
 
-                  {/* Thông tin Chi tiêu an toàn & Cảnh báo */}
                   <div className="mt-2.5 flex justify-between items-center text-xs">
                     {isOver ? (
                       <span className="text-rose-400 font-semibold flex items-center gap-1">
@@ -555,17 +555,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
         )}
       </div>
 
-      {/* 5. MODAL THÊM / CHỈNH SỬA HẠN MỨC (BUDGET SHEET) */}
+      {/* 5. MODAL THÊM / CHỈNH SỬA HẠN MỨC */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end items-center"
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] border-t border-white/10 p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4 animate-slide-up"
+            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl border-t border-x md:border border-white/10 p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] flex flex-col gap-4 animate-slide-up shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header Modal */}
             <div className="flex justify-between items-center border-b border-white/8 pb-3">
               <div className="flex items-center gap-2">
                 <Target size={18} className="text-sky-400" />
@@ -582,10 +581,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
               </button>
             </div>
 
-            {/* Mục 1: Chọn Danh mục */}
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                Chọn danh mục áp dụng
+                Chọn danh mục hoặc nhóm áp dụng
               </label>
               <select
                 value={selectedCategoryId}
@@ -593,15 +591,25 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                 className="input-ios"
               >
                 <option value="">🎯 Hạn mức chung cho toàn bộ chi tiêu tháng</option>
-                {expenseCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {parentExpenseCategories.length > 0 && (
+                  <optgroup label="Nhóm Cha 50/30/20 (Tự động cộng gộp các mục con)">
+                    {parentExpenseCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        📁 {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Hạng mục chi tiết">
+                  {childExpenseCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      • {c.name}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 
-            {/* Mục 2: Nhập số tiền */}
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
                 Số tiền hạn mức (VNĐ)
@@ -618,7 +626,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
                 autoFocus
               />
 
-              {/* Các phím số gợi ý nhanh */}
               <div className="grid grid-cols-4 gap-2 mt-2">
                 {[
                   { label: '+500K', val: 500000 },
@@ -644,7 +651,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
               </div>
             )}
 
-            {/* Nút Lưu */}
             <button
               type="button"
               onClick={handleSaveBudget}

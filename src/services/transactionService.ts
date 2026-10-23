@@ -1,10 +1,19 @@
 // src/services/transactionService.ts
 import { db } from '../db';
-import type { Transaction } from '../types';
+import type { Transaction, RecurringFrequency } from '../types';
 import { generateUUID } from '../utils/uuid';
 import { recordDeletedEntity } from './syncService';
+import { getCurrentDate, getCurrentTime } from '../utils/formatters';
 
 export const SYSTEM_ADJUSTMENT_CATEGORY_ID = 'system_adjustment';
+
+function isOutflowType(type: Transaction['type']): boolean {
+  return type === 'EXPENSE' || type === 'LEND' || type === 'PAY_DEBT';
+}
+
+function isInflowType(type: Transaction['type']): boolean {
+  return type === 'INCOME' || type === 'BORROW' || type === 'COLLECT_DEBT';
+}
 
 /**
  * Thêm giao dịch mới và tự động cập nhật số dư ví trong 1 ACID Transaction.
@@ -19,14 +28,14 @@ export async function createTransaction(
 
   await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
     // 1. Cập nhật số dư ví
-    if (newTx.type === 'EXPENSE' || newTx.type === 'LEND') {
+    if (isOutflowType(newTx.type)) {
       const wallet = await db.wallets.get(newTx.walletId);
       if (!wallet) throw new Error(`Ví ${newTx.walletId} không tồn tại`);
       await db.wallets.update(newTx.walletId, {
         balance: wallet.balance - newTx.amount,
         updatedAt: createdAt
       });
-    } else if (newTx.type === 'INCOME' || newTx.type === 'BORROW') {
+    } else if (isInflowType(newTx.type)) {
       const wallet = await db.wallets.get(newTx.walletId);
       if (!wallet) throw new Error(`Ví ${newTx.walletId} không tồn tại`);
       await db.wallets.update(newTx.walletId, {
@@ -40,8 +49,9 @@ export async function createTransaction(
       if (!fromWallet) throw new Error(`Ví gửi ${newTx.walletId} không tồn tại`);
       if (!toWallet) throw new Error(`Ví nhận ${newTx.toWalletId} không tồn tại`);
 
+      const fee = newTx.transferFee || 0;
       await db.wallets.update(newTx.walletId, {
-        balance: fromWallet.balance - newTx.amount,
+        balance: fromWallet.balance - newTx.amount - fee,
         updatedAt: createdAt
       });
       await db.wallets.update(newTx.toWalletId, {
@@ -78,7 +88,7 @@ export async function updateTransaction(
     if (!oldTx) throw new Error(`Giao dịch ${id} không tồn tại`);
 
     // --- BƯỚC 1: HOÀN TÁC (REVERT) TÁC ĐỘNG CỦA GIAO DỊCH CŨ ---
-    if (oldTx.type === 'EXPENSE' || oldTx.type === 'LEND') {
+    if (isOutflowType(oldTx.type)) {
       const oldWallet = await db.wallets.get(oldTx.walletId);
       if (oldWallet) {
         await db.wallets.update(oldTx.walletId, {
@@ -86,7 +96,7 @@ export async function updateTransaction(
           updatedAt: now
         });
       }
-    } else if (oldTx.type === 'INCOME' || oldTx.type === 'BORROW') {
+    } else if (isInflowType(oldTx.type)) {
       const oldWallet = await db.wallets.get(oldTx.walletId);
       if (oldWallet) {
         await db.wallets.update(oldTx.walletId, {
@@ -97,9 +107,10 @@ export async function updateTransaction(
     } else if (oldTx.type === 'TRANSFER' && oldTx.toWalletId) {
       const oldFrom = await db.wallets.get(oldTx.walletId);
       const oldTo = await db.wallets.get(oldTx.toWalletId);
+      const oldFee = oldTx.transferFee || 0;
       if (oldFrom) {
         await db.wallets.update(oldTx.walletId, {
-          balance: oldFrom.balance + oldTx.amount, // Trả lại tiền cho ví gửi cũ
+          balance: oldFrom.balance + oldTx.amount + oldFee, // Trả lại tiền + phí cho ví gửi cũ
           updatedAt: now
         });
       }
@@ -118,14 +129,14 @@ export async function updateTransaction(
       updatedAt: now
     };
 
-    if (newTx.type === 'EXPENSE' || newTx.type === 'LEND') {
+    if (isOutflowType(newTx.type)) {
       const newWallet = await db.wallets.get(newTx.walletId);
       if (!newWallet) throw new Error(`Ví ${newTx.walletId} không tồn tại`);
       await db.wallets.update(newTx.walletId, {
         balance: newWallet.balance - newTx.amount,
         updatedAt: now
       });
-    } else if (newTx.type === 'INCOME' || newTx.type === 'BORROW') {
+    } else if (isInflowType(newTx.type)) {
       const newWallet = await db.wallets.get(newTx.walletId);
       if (!newWallet) throw new Error(`Ví ${newTx.walletId} không tồn tại`);
       await db.wallets.update(newTx.walletId, {
@@ -139,8 +150,9 @@ export async function updateTransaction(
       if (!newFrom) throw new Error(`Ví gửi ${newTx.walletId} không tồn tại`);
       if (!newTo) throw new Error(`Ví nhận ${newTx.toWalletId} không tồn tại`);
 
+      const newFee = newTx.transferFee || 0;
       await db.wallets.update(newTx.walletId, {
-        balance: newFrom.balance - newTx.amount,
+        balance: newFrom.balance - newTx.amount - newFee,
         updatedAt: now
       });
       await db.wallets.update(newTx.toWalletId, {
@@ -171,7 +183,7 @@ export async function deleteTransaction(id: string): Promise<void> {
     if (!tx) return;
 
     // Hoàn tác số dư
-    if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+    if (isOutflowType(tx.type)) {
       const wallet = await db.wallets.get(tx.walletId);
       if (wallet) {
         await db.wallets.update(tx.walletId, {
@@ -179,7 +191,7 @@ export async function deleteTransaction(id: string): Promise<void> {
           updatedAt: now
         });
       }
-    } else if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+    } else if (isInflowType(tx.type)) {
       const wallet = await db.wallets.get(tx.walletId);
       if (wallet) {
         await db.wallets.update(tx.walletId, {
@@ -190,9 +202,10 @@ export async function deleteTransaction(id: string): Promise<void> {
     } else if (tx.type === 'TRANSFER' && tx.toWalletId) {
       const fromWallet = await db.wallets.get(tx.walletId);
       const toWallet = await db.wallets.get(tx.toWalletId);
+      const fee = tx.transferFee || 0;
       if (fromWallet) {
         await db.wallets.update(tx.walletId, {
-          balance: fromWallet.balance + tx.amount,
+          balance: fromWallet.balance + tx.amount + fee,
           updatedAt: now
         });
       }
@@ -214,20 +227,20 @@ export async function deleteTransaction(id: string): Promise<void> {
 
 /**
  * Chuyển tiền nội bộ giữa 2 ví chuẩn ACID Atomic
- * - Giảm số dư ví gửi (fromWallet)
- * - Tăng số dư ví nhận (toWallet)
+ * - Giảm số dư ví gửi (fromWallet) = amount + transferFee
+ * - Tăng số dư ví nhận (toWallet) = amount
  * - Ghi nhận 1 bản ghi giao dịch loại TRANSFER
- * - Giao dịch TRANSFER tuyệt đối không ảnh hưởng đến tổng thu/chi của tháng
  */
 export async function transferFunds(params: {
   fromWalletId: string;
   toWalletId: string;
   amount: number;
+  transferFee?: number;
   date: string;
   time: string;
   note?: string;
 }): Promise<string> {
-  const { fromWalletId, toWalletId, amount, date, time, note } = params;
+  const { fromWalletId, toWalletId, amount, transferFee = 0, date, time, note } = params;
   if (!fromWalletId || !toWalletId) {
     throw new Error('Vui lòng chọn đầy đủ ví gửi và ví nhận');
   }
@@ -249,7 +262,7 @@ export async function transferFunds(params: {
 
     // Cập nhật số dư 2 ví
     await db.wallets.update(fromWalletId, {
-      balance: fromWallet.balance - amount,
+      balance: fromWallet.balance - amount - transferFee,
       updatedAt: now
     });
     await db.wallets.update(toWalletId, {
@@ -264,6 +277,7 @@ export async function transferFunds(params: {
       toWalletId,
       type: 'TRANSFER',
       amount,
+      transferFee: transferFee > 0 ? transferFee : undefined,
       date,
       time,
       note: note?.trim() || `Chuyển tiền từ ${fromWallet.name} sang ${toWallet.name}`,
@@ -347,4 +361,74 @@ export async function adjustWalletBalance(params: {
       });
     }
   });
+}
+
+/**
+ * Tính ngày chạy tiếp theo của giao dịch định kỳ
+ */
+export function computeNextRunDate(dateStr: string, frequency: RecurringFrequency): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (frequency === 'DAILY') {
+    dt.setDate(dt.getDate() + 1);
+  } else if (frequency === 'WEEKLY') {
+    dt.setDate(dt.getDate() + 7);
+  } else if (frequency === 'MONTHLY') {
+    dt.setMonth(dt.getMonth() + 1);
+  } else if (frequency === 'YEARLY') {
+    dt.setFullYear(dt.getFullYear() + 1);
+  }
+  const ny = dt.getFullYear();
+  const nm = String(dt.getMonth() + 1).padStart(2, '0');
+  const nd = String(dt.getDate()).padStart(2, '0');
+  return `${ny}-${nm}-${nd}`;
+}
+
+/**
+ * Tự động kiểm tra và thực thi các mẫu ghi chép định kỳ đã đến hạn (nextRunDate <= today)
+ */
+export async function processDueRecurringTransactions(): Promise<number> {
+  const today = getCurrentDate();
+  const nowTime = getCurrentTime();
+  const allRecurring = await db.recurringTransactions.toArray();
+  // Lọc trong TypeScript theo chuẩn không dùng boolean index
+  const dueList = allRecurring.filter((r) => r.isActive && r.nextRunDate <= today);
+  if (dueList.length === 0) return 0;
+
+  let executedCount = 0;
+
+  for (const item of dueList) {
+    let runDate = item.nextRunDate;
+    let safetyCounter = 0;
+    // Tạo các giao dịch đến hạn (tối đa 12 kỳ mỗi lần mở app để tránh vòng lặp vô tận nếu quá lâu)
+    while (runDate <= today && safetyCounter < 12) {
+      safetyCounter++;
+      try {
+        await createTransaction({
+          walletId: item.walletId,
+          toWalletId: item.toWalletId,
+          categoryId: item.categoryId,
+          type: item.type,
+          amount: item.amount,
+          date: runDate,
+          time: nowTime,
+          note: item.note ? `[Định kỳ] ${item.note}` : '[Ghi chép định kỳ]',
+          recurringId: item.id
+        });
+        executedCount++;
+      } catch (err) {
+        console.warn('[Recurring] Bỏ qua kỳ lỗi:', err);
+        break;
+      }
+      runDate = computeNextRunDate(runDate, item.frequency);
+    }
+
+    await db.recurringTransactions.update(item.id, {
+      lastRunDate: today,
+      nextRunDate: runDate,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  return executedCount;
 }

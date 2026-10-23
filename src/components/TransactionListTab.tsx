@@ -2,15 +2,21 @@
 import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import type { Transaction, Category, Wallet } from '../types';
-import { deleteTransaction, SYSTEM_ADJUSTMENT_CATEGORY_ID } from '../services/transactionService';
+import type { Transaction, Category, Wallet, EventTrip } from '../types';
+import {
+  createTransaction,
+  deleteTransaction,
+  SYSTEM_ADJUSTMENT_CATEGORY_ID
+} from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import {
   formatVND,
   formatFriendlyDate,
   formatMonthDisplay,
   getCurrentMonth,
-  getPreviousMonth
+  getPreviousMonth,
+  getCurrentDate,
+  getCurrentTime
 } from '../utils/formatters';
 import {
   ChevronLeft,
@@ -19,6 +25,7 @@ import {
   ArrowDownLeft,
   Trash2,
   Edit3,
+  Copy,
   Calendar,
   Wallet as WalletIcon,
   Search,
@@ -26,7 +33,10 @@ import {
   Filter,
   Clock,
   Tag,
-  SlidersHorizontal
+  SlidersHorizontal,
+  UserCheck,
+  Plane,
+  EyeOff
 } from 'lucide-react';
 
 interface TransactionListTabProps {
@@ -34,13 +44,21 @@ interface TransactionListTabProps {
   onOpenQuickAdd: () => void;
 }
 
-type TypeFilterOption = 'ALL' | 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LEND' | 'BORROW' | 'ADJUST';
+type TypeFilterOption =
+  | 'ALL'
+  | 'EXPENSE'
+  | 'INCOME'
+  | 'TRANSFER'
+  | 'LEND'
+  | 'BORROW'
+  | 'COLLECT_DEBT'
+  | 'PAY_DEBT'
+  | 'ADJUST';
 
 export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   onEditTransaction,
   onOpenQuickAdd
 }) => {
-  // 1. Quản lý trạng thái Tháng & Bộ lọc (Phase P4)
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<TypeFilterOption>('ALL');
@@ -48,20 +66,20 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState<boolean>(false);
   const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
+  const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
 
-  // 2. Tải dữ liệu phản ứng thời gian thực từ IndexedDB
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
+  const events = useLiveQuery(() => db.events.toArray()) || [];
 
-  // Lấy toàn bộ giao dịch trong tháng được chọn
-  const allMonthTransactions = useLiveQuery(async () => {
-    return await db.transactions
-      .filter((tx) => tx.date.startsWith(selectedMonth))
-      .reverse()
-      .sortBy('date');
-  }, [selectedMonth]) || [];
+  const allMonthTransactions =
+    useLiveQuery(async () => {
+      return await db.transactions
+        .filter((tx) => tx.date.startsWith(selectedMonth))
+        .reverse()
+        .sortBy('date');
+    }, [selectedMonth]) || [];
 
-  // Tạo map tra cứu nhanh danh mục và ví
   const categoryMap = useMemo(() => {
     return new Map<string, Category>(categories.map((c) => [c.id, c]));
   }, [categories]);
@@ -70,33 +88,38 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     return new Map<string, Wallet>(wallets.map((w) => [w.id, w]));
   }, [wallets]);
 
-  // Tính tổng tài sản khả dụng (Ví không loại trừ)
+  const eventMap = useMemo(() => {
+    return new Map<string, EventTrip>(events.map((ev) => [ev.id, ev]));
+  }, [events]);
+
   const totalBalance = useMemo(() => {
     return wallets
       .filter((w) => !w.isExcludedFromTotal)
       .reduce((sum, w) => sum + w.balance, 0);
   }, [wallets]);
 
-  // Tính tổng Thu & Chi nguyên bản của tháng đang chọn (không phụ thuộc vào bộ lọc tìm kiếm)
+  // Tính tổng Thu & Chi thuần của tháng đang chọn (Chuẩn MISA: Không gộp Vay/Nợ và không tính giao dịch excludeFromReport)
   const { monthIncome, monthExpense } = useMemo(() => {
     let inc = 0;
     let exp = 0;
     allMonthTransactions.forEach((tx) => {
-      if (tx.type === 'INCOME' || tx.type === 'BORROW') inc += tx.amount;
-      if (tx.type === 'EXPENSE' || tx.type === 'LEND') exp += tx.amount;
+      if (tx.excludeFromReport) return;
+      if (tx.type === 'INCOME') inc += tx.amount;
+      if (tx.type === 'EXPENSE') exp += tx.amount;
+      if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+        exp += tx.transferFee;
+      }
     });
     return { monthIncome: inc, monthExpense: exp };
   }, [allMonthTransactions]);
 
-  // 3. LOGIC LỌC ĐA NĂNG (MULTI-FILTER & SEARCH - P4)
+  // LOGIC LỌC ĐA NĂNG
   const filteredTransactions = useMemo(() => {
     return allMonthTransactions.filter((tx) => {
-      // Lọc theo Loại
       if (typeFilter !== 'ALL' && tx.type !== typeFilter) {
         return false;
       }
 
-      // Lọc theo Ví
       if (walletFilter !== 'ALL') {
         if (tx.type === 'TRANSFER') {
           if (tx.walletId !== walletFilter && tx.toWalletId !== walletFilter) {
@@ -107,14 +130,12 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         }
       }
 
-      // Lọc theo Danh mục
       if (categoryFilter !== 'ALL') {
         if (tx.categoryId !== categoryFilter) {
           return false;
         }
       }
 
-      // Tìm kiếm từ khóa (Ghi chú, Tên danh mục, Tên ví, Số tiền)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
@@ -122,21 +143,36 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
 
         const noteMatch = tx.note?.toLowerCase().includes(q) || false;
+        const contactMatch = tx.contactName?.toLowerCase().includes(q) || false;
         const catMatch = cat?.name.toLowerCase().includes(q) || false;
         const walletMatch = wallet?.name.toLowerCase().includes(q) || false;
         const toWalletMatch = toWallet?.name.toLowerCase().includes(q) || false;
         const amountMatch = tx.amount.toString().includes(q);
 
-        if (!noteMatch && !catMatch && !walletMatch && !toWalletMatch && !amountMatch) {
+        if (
+          !noteMatch &&
+          !contactMatch &&
+          !catMatch &&
+          !walletMatch &&
+          !toWalletMatch &&
+          !amountMatch
+        ) {
           return false;
         }
       }
 
       return true;
     });
-  }, [allMonthTransactions, typeFilter, walletFilter, categoryFilter, searchQuery, categoryMap, walletMap]);
+  }, [
+    allMonthTransactions,
+    typeFilter,
+    walletFilter,
+    categoryFilter,
+    searchQuery,
+    categoryMap,
+    walletMap
+  ]);
 
-  // Kiểm tra xem có bộ lọc nào đang được kích hoạt hay không
   const isFiltered =
     typeFilter !== 'ALL' ||
     walletFilter !== 'ALL' ||
@@ -146,18 +182,20 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const advancedFilterCount =
     (walletFilter !== 'ALL' ? 1 : 0) + (categoryFilter !== 'ALL' ? 1 : 0);
 
-  // Thống kê kết quả dòng tiền đang lọc
   const { filteredIncome, filteredExpense } = useMemo(() => {
     let inc = 0;
     let exp = 0;
     filteredTransactions.forEach((tx) => {
+      if (tx.excludeFromReport) return;
       if (tx.type === 'INCOME') inc += tx.amount;
       if (tx.type === 'EXPENSE') exp += tx.amount;
+      if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+        exp += tx.transferFee;
+      }
     });
     return { filteredIncome: inc, filteredExpense: exp };
   }, [filteredTransactions]);
 
-  // Đặt lại toàn bộ bộ lọc
   const handleResetFilters = () => {
     setSearchQuery('');
     setTypeFilter('ALL');
@@ -165,7 +203,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     setCategoryFilter('ALL');
   };
 
-  // Chuyển tháng trước / sau
   const handlePrevMonth = () => {
     setSelectedMonth((prev) => getPreviousMonth(prev));
   };
@@ -181,7 +218,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     setSelectedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
 
-  // Gom nhóm giao dịch theo ngày (dựa trên kết quả đã lọc)
   const groupedTransactions = useMemo(() => {
     const groups: Record<string, Transaction[]> = {};
     filteredTransactions.forEach((tx) => {
@@ -197,7 +233,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     return Object.keys(groupedTransactions).sort((a, b) => b.localeCompare(a));
   }, [groupedTransactions]);
 
-  // Xóa giao dịch kèm Hoàn tác số dư (Atomic Balance Revert)
   const handleDelete = async (id: string) => {
     if (
       window.confirm(
@@ -209,8 +244,41 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     }
   };
 
+  // Nhân bản giao dịch (Copy sang ngày hôm nay chỉ với 1 chạm)
+  const handleDuplicate = async (tx: Transaction) => {
+    try {
+      const today = getCurrentDate();
+      await createTransaction({
+        walletId: tx.walletId,
+        toWalletId: tx.toWalletId,
+        categoryId: tx.categoryId,
+        type: tx.type,
+        amount: tx.amount,
+        transferFee: tx.transferFee,
+        contactName: tx.contactName,
+        eventId: tx.eventId,
+        excludeFromReport: tx.excludeFromReport,
+        date: today,
+        time: getCurrentTime(),
+        note: tx.note
+      });
+      setSelectedTxForDetail(null);
+      setSelectedMonth(today.slice(0, 7));
+      setDuplicateFeedback(`Đã nhân bản giao dịch ${formatVND(tx.amount)} sang hôm nay!`);
+      setTimeout(() => setDuplicateFeedback(''), 2800);
+    } catch (err: any) {
+      alert(err?.message || 'Lỗi khi nhân bản giao dịch');
+    }
+  };
+
   return (
     <div className="pb-28">
+      {duplicateFeedback && (
+        <div className="mx-4 mt-3 p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center animate-fade-in">
+          {duplicateFeedback}
+        </div>
+      )}
+
       {/* 1. Header Card: Tổng số dư & Dòng tiền tháng */}
       <div className="mx-4 my-3 rounded-3xl p-5 bg-gradient-to-br from-slate-800/95 to-slate-900/98 border border-white/10 shadow-xl backdrop-blur-md">
         <div className="flex justify-between items-center">
@@ -229,26 +297,24 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
         {/* Khung Thu / Chi tháng */}
         <div className="grid grid-cols-2 gap-3 mt-4 pt-3.5 border-t border-white/10">
-          {/* Thu */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-[10px] bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
               <ArrowDownLeft size={18} />
             </div>
             <div className="min-w-0">
-              <div className="text-[11px] text-slate-400 truncate">Thu tháng này</div>
+              <div className="text-[11px] text-slate-400 truncate">Thu thuần tháng này</div>
               <div className="text-[13px] font-bold text-income truncate">
                 +{formatVND(monthIncome)}
               </div>
             </div>
           </div>
 
-          {/* Chi */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-[10px] bg-rose-500/15 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
               <ArrowUpRight size={18} />
             </div>
             <div className="min-w-0">
-              <div className="text-[11px] text-slate-400 truncate">Chi tháng này</div>
+              <div className="text-[11px] text-slate-400 truncate">Chi thuần tháng này</div>
               <div className="text-[13px] font-bold text-expense truncate">
                 -{formatVND(monthExpense)}
               </div>
@@ -285,9 +351,8 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         </button>
       </div>
 
-      {/* 3. P4 FEATURE: THANH TÌM KIẾM & BỘ LỌC ĐA NĂNG */}
+      {/* 3. THANH TÌM KIẾM & BỘ LỌC ĐA NĂNG */}
       <div className="mx-4 mt-2.5 mb-3 flex flex-col gap-2">
-        {/* Ô Tìm Kiếm + Nút Lọc Nâng Cao */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search
@@ -298,7 +363,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm ghi chú, danh mục, số tiền..."
+              placeholder="Tìm ghi chú, người vay/nợ, danh mục, số tiền..."
               className="input-ios pl-10 pr-9 py-2 rounded-xl bg-slate-850 border border-white/10 text-sm placeholder:text-slate-500 focus:border-sky-500/50"
             />
             {searchQuery && (
@@ -313,7 +378,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             )}
           </div>
 
-          {/* Nút mở Sheet Lọc Chi Tiết (Ví & Danh Mục) */}
           <button
             type="button"
             onClick={() => setIsFilterSheetOpen(true)}
@@ -407,9 +471,32 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
             Đi vay
           </button>
+          <button
+            type="button"
+            onClick={() => setTypeFilter('COLLECT_DEBT')}
+            className={`touch-btn px-3 py-1.5 rounded-full cursor-pointer whitespace-nowrap transition-colors flex items-center gap-1 ${
+              typeFilter === 'COLLECT_DEBT'
+                ? 'bg-teal-500 text-slate-950 font-bold shadow-md shadow-teal-500/25'
+                : 'bg-slate-800/70 text-slate-400 border border-white/5 hover:text-teal-400'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+            Thu nợ
+          </button>
+          <button
+            type="button"
+            onClick={() => setTypeFilter('PAY_DEBT')}
+            className={`touch-btn px-3 py-1.5 rounded-full cursor-pointer whitespace-nowrap transition-colors flex items-center gap-1 ${
+              typeFilter === 'PAY_DEBT'
+                ? 'bg-orange-500 text-white font-bold shadow-md shadow-orange-500/25'
+                : 'bg-slate-800/70 text-slate-400 border border-white/5 hover:text-orange-400'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+            Trả nợ
+          </button>
         </div>
 
-        {/* Thanh Tóm Tắt Khi Có Bộ Lọc Hoặc Tìm Kiếm Đang Bật */}
         {isFiltered && (
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-800/60 border border-sky-500/20 text-xs animate-fade-in">
             <div className="flex items-center gap-2 text-slate-300">
@@ -436,7 +523,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
       {/* 4. Danh Sách Giao Dịch Gom Nhóm Theo Ngày */}
       {allMonthTransactions.length === 0 ? (
-        // Trường hợp cả tháng chưa có giao dịch nào
         <div className="py-12 px-5 text-center text-slate-500">
           <div className="text-4xl mb-2.5">📝</div>
           <div className="text-[15px] font-semibold text-slate-400">
@@ -454,7 +540,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
           </button>
         </div>
       ) : filteredTransactions.length === 0 ? (
-        // Trường hợp có giao dịch nhưng không khớp bộ lọc tìm kiếm
         <div className="py-12 px-5 text-center text-slate-500 animate-fade-in">
           <div className="text-4xl mb-2.5">🔍</div>
           <div className="text-[15px] font-semibold text-slate-300">
@@ -478,8 +563,12 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             let dayIncome = 0;
             let dayExpense = 0;
             dayTxs.forEach((t) => {
+              if (t.excludeFromReport) return;
               if (t.type === 'INCOME') dayIncome += t.amount;
               if (t.type === 'EXPENSE') dayExpense += t.amount;
+              if (t.type === 'TRANSFER' && t.transferFee && t.transferFee > 0) {
+                dayExpense += t.transferFee;
+              }
             });
 
             return (
@@ -508,6 +597,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                     const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
                     const wallet = walletMap.get(tx.walletId);
                     const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
+                    const event = tx.eventId ? eventMap.get(tx.eventId) : undefined;
                     const isSystemAdj = tx.categoryId === SYSTEM_ADJUSTMENT_CATEGORY_ID;
 
                     return (
@@ -539,7 +629,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                           </div>
 
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-sm font-semibold text-slate-100 truncate">
                                 {tx.type === 'TRANSFER'
                                   ? 'Chuyển ví'
@@ -547,23 +637,38 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                                   ? 'Cho vay'
                                   : tx.type === 'BORROW'
                                   ? 'Đi vay'
+                                  : tx.type === 'COLLECT_DEBT'
+                                  ? 'Thu nợ'
+                                  : tx.type === 'PAY_DEBT'
+                                  ? 'Trả nợ'
                                   : tx.type === 'ADJUST'
                                   ? 'Điều chỉnh số dư'
                                   : cat?.name || 'Chưa phân loại'}
                               </span>
+                              {tx.contactName && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-0.5">
+                                  <UserCheck size={10} />
+                                  {tx.contactName}
+                                </span>
+                              )}
+                              {event && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium flex items-center gap-0.5">
+                                  <Plane size={10} />
+                                  {event.name}
+                                </span>
+                              )}
+                              {tx.excludeFromReport && (
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 font-medium flex items-center gap-0.5"
+                                  title="Không tính vào báo cáo Thu/Chi"
+                                >
+                                  <EyeOff size={10} />
+                                  Chi hộ
+                                </span>
+                              )}
                               {isSystemAdj && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
                                   Hệ thống
-                                </span>
-                              )}
-                              {tx.type === 'LEND' && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium">
-                                  Cho vay
-                                </span>
-                              )}
-                              {tx.type === 'BORROW' && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-medium">
-                                  Đi vay
                                 </span>
                               )}
                             </div>
@@ -574,7 +679,9 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                               ) : null}
                               <span>
                                 {tx.type === 'TRANSFER'
-                                  ? `${wallet?.name || 'Ví gửi'} ➔ ${toWallet?.name || 'Ví nhận'}`
+                                  ? `${wallet?.name || 'Ví gửi'} ➔ ${toWallet?.name || 'Ví nhận'}${
+                                      tx.transferFee ? ` (Phí: ${formatVND(tx.transferFee)})` : ''
+                                    }`
                                   : wallet?.name || 'Ví'}
                               </span>
                             </div>
@@ -585,9 +692,9 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                         <div className="text-right shrink-0 ml-3">
                           <div
                             className={`text-[15px] font-bold ${
-                              tx.type === 'EXPENSE'
+                              tx.type === 'EXPENSE' || tx.type === 'PAY_DEBT'
                                 ? 'text-expense'
-                                : tx.type === 'INCOME'
+                                : tx.type === 'INCOME' || tx.type === 'COLLECT_DEBT'
                                 ? 'text-income'
                                 : tx.type === 'LEND'
                                 ? 'text-amber-400'
@@ -598,9 +705,11 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                                 : 'text-slate-300'
                             }`}
                           >
-                            {tx.type === 'EXPENSE' || tx.type === 'LEND'
+                            {tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT'
                               ? `-${formatVND(tx.amount)}`
-                              : tx.type === 'INCOME' || tx.type === 'BORROW'
+                              : tx.type === 'INCOME' ||
+                                tx.type === 'BORROW' ||
+                                tx.type === 'COLLECT_DEBT'
                               ? `+${formatVND(tx.amount)}`
                               : formatVND(tx.amount)}
                           </div>
@@ -618,17 +727,16 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         </div>
       )}
 
-      {/* 5. P4 MODAL: BẢNG LỌC NÂNG CAO (VÍ & DANH MỤC) */}
+      {/* 5. MODAL: BẢNG LỌC NÂNG CAO (VÍ & DANH MỤC) */}
       {isFilterSheetOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end items-center"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
           onClick={() => setIsFilterSheetOpen(false)}
         >
           <div
-            className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-white/10 flex flex-col gap-4 animate-slide-up"
+            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-x md:border border-white/10 flex flex-col gap-4 animate-slide-up shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header Sheet */}
             <div className="flex items-center justify-between border-b border-white/8 pb-3">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={18} className="text-sky-400" />
@@ -645,7 +753,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               </button>
             </div>
 
-            {/* Mục 1: Lọc theo Ví */}
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
                 Lọc theo tài khoản / Ví
@@ -664,7 +771,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               </select>
             </div>
 
-            {/* Mục 2: Lọc theo Danh mục */}
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
                 Lọc theo danh mục
@@ -693,10 +799,18 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                       </option>
                     ))}
                 </optgroup>
+                <optgroup label="Sổ Nợ (DEBT)">
+                  {categories
+                    .filter((c) => c.type === 'DEBT')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
 
-            {/* Nút hành động */}
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
@@ -720,26 +834,25 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         </div>
       )}
 
-      {/* 6. P4 MODAL: CHI TIẾT GIAO DỊCH & ACTION SHEET HOÀN CHỈNH */}
+      {/* 6. MODAL: CHI TIẾT GIAO DỊCH & NHÂN BẢN 1 CHẠM */}
       {selectedTxForDetail && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end items-center"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex flex-col justify-end md:justify-center items-center p-0 md:p-4 animate-fade-in"
           onClick={() => setSelectedTxForDetail(null)}
         >
           <div
-            className="w-full max-w-[480px] bg-slate-900 rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-white/10 flex flex-col gap-4 animate-slide-up"
+            className="w-full max-w-[480px] md:max-w-lg bg-slate-900 rounded-t-[28px] md:rounded-3xl p-5 pb-[max(24px,env(safe-area-inset-bottom,0px))] border-t border-x md:border border-white/10 flex flex-col gap-4 animate-slide-up shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Thanh kéo nhỏ (Handle bar) */}
             <div className="w-10 h-1 rounded-full bg-slate-700 mx-auto -mt-1 mb-1" />
 
-            {/* Khung số tiền nổi bật */}
             <div className="text-center py-2">
               <div
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-2 ${
-                  selectedTxForDetail.type === 'EXPENSE'
+                  selectedTxForDetail.type === 'EXPENSE' || selectedTxForDetail.type === 'PAY_DEBT'
                     ? 'bg-rose-500/15 text-rose-400 border border-rose-500/25'
-                    : selectedTxForDetail.type === 'INCOME'
+                    : selectedTxForDetail.type === 'INCOME' ||
+                      selectedTxForDetail.type === 'COLLECT_DEBT'
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
                     : selectedTxForDetail.type === 'LEND'
                     ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
@@ -758,6 +871,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                   ? 'Khoản cho vay'
                   : selectedTxForDetail.type === 'BORROW'
                   ? 'Khoản đi vay'
+                  : selectedTxForDetail.type === 'COLLECT_DEBT'
+                  ? 'Khoản thu nợ'
+                  : selectedTxForDetail.type === 'PAY_DEBT'
+                  ? 'Khoản trả nợ'
                   : selectedTxForDetail.type === 'TRANSFER'
                   ? 'Chuyển ví nội bộ'
                   : 'Điều chỉnh số dư'}
@@ -765,9 +882,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
               <div
                 className={`font-heading text-3xl font-black ${
-                  selectedTxForDetail.type === 'EXPENSE'
+                  selectedTxForDetail.type === 'EXPENSE' || selectedTxForDetail.type === 'PAY_DEBT'
                     ? 'text-expense'
-                    : selectedTxForDetail.type === 'INCOME'
+                    : selectedTxForDetail.type === 'INCOME' ||
+                      selectedTxForDetail.type === 'COLLECT_DEBT'
                     ? 'text-income'
                     : selectedTxForDetail.type === 'LEND'
                     ? 'text-amber-400'
@@ -778,9 +896,13 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                     : 'text-slate-300'
                 }`}
               >
-                {selectedTxForDetail.type === 'EXPENSE' || selectedTxForDetail.type === 'LEND'
+                {selectedTxForDetail.type === 'EXPENSE' ||
+                selectedTxForDetail.type === 'LEND' ||
+                selectedTxForDetail.type === 'PAY_DEBT'
                   ? `-${formatVND(selectedTxForDetail.amount)}`
-                  : selectedTxForDetail.type === 'INCOME' || selectedTxForDetail.type === 'BORROW'
+                  : selectedTxForDetail.type === 'INCOME' ||
+                    selectedTxForDetail.type === 'BORROW' ||
+                    selectedTxForDetail.type === 'COLLECT_DEBT'
                   ? `+${formatVND(selectedTxForDetail.amount)}`
                   : formatVND(selectedTxForDetail.amount)}
               </div>
@@ -788,7 +910,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
             {/* Thông tin chi tiết */}
             <div className="rounded-2xl bg-slate-800/60 border border-white/6 p-3.5 flex flex-col gap-3 text-xs">
-              {/* Danh mục */}
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <Tag size={14} className="text-slate-400" />
@@ -804,7 +925,27 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 </span>
               </div>
 
-              {/* Tài khoản / Ví */}
+              {selectedTxForDetail.contactName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <UserCheck size={14} className="text-amber-400" />
+                    Người giao dịch
+                  </span>
+                  <span className="font-bold text-amber-300">
+                    {selectedTxForDetail.contactName}
+                  </span>
+                </div>
+              )}
+
+              {selectedTxForDetail.transferFee && selectedTxForDetail.transferFee > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Phí chuyển khoản</span>
+                  <span className="font-semibold text-rose-400">
+                    -{formatVND(selectedTxForDetail.transferFee)}
+                  </span>
+                </div>
+              ) : null}
+
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <WalletIcon size={14} className="text-slate-400" />
@@ -819,7 +960,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 </span>
               </div>
 
-              {/* Ngày giờ */}
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <Clock size={14} className="text-slate-400" />
@@ -830,7 +970,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 </span>
               </div>
 
-              {/* Ghi chú */}
               {selectedTxForDetail.note && (
                 <div className="pt-2 border-t border-white/6">
                   <span className="text-slate-400 block mb-1">Ghi chú:</span>
@@ -841,37 +980,46 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               )}
             </div>
 
-            {/* Các nút hành động */}
+            {/* Các nút hành động: Sửa + Nhân bản (1 chạm) + Xóa */}
             <div className="flex flex-col gap-2 pt-1">
-              {/* Nút Sửa */}
-              <button
-                type="button"
-                onClick={() => {
-                  const tx = selectedTxForDetail;
-                  setSelectedTxForDetail(null);
-                  onEditTransaction(tx);
-                }}
-                className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-sky-500/15 border border-sky-500/25 text-sky-400 text-sm font-bold cursor-pointer hover:bg-sky-500/20"
-              >
-                <Edit3 size={17} />
-                <span>Chỉnh sửa giao dịch</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tx = selectedTxForDetail;
+                    setSelectedTxForDetail(null);
+                    onEditTransaction(tx);
+                  }}
+                  className="touch-btn flex items-center justify-center gap-1.5 p-3.5 rounded-2xl bg-sky-500/15 border border-sky-500/25 text-sky-400 text-xs font-bold cursor-pointer hover:bg-sky-500/20"
+                >
+                  <Edit3 size={16} />
+                  <span>Chỉnh sửa</span>
+                </button>
 
-              {/* Nút Xóa (Kèm Hoàn tác số dư) */}
+                <button
+                  type="button"
+                  onClick={() => handleDuplicate(selectedTxForDetail)}
+                  className="touch-btn flex items-center justify-center gap-1.5 p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-bold cursor-pointer hover:bg-emerald-500/20"
+                  title="Tạo bản sao giao dịch này cho ngày hôm nay"
+                >
+                  <Copy size={16} />
+                  <span>Nhân bản (Hôm nay)</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => handleDelete(selectedTxForDetail.id)}
-                className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-rose-500/12 border border-rose-500/20 text-rose-400 text-sm font-semibold cursor-pointer hover:bg-rose-500/20"
+                className="touch-btn flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-rose-500/12 border border-rose-500/20 text-rose-400 text-xs font-semibold cursor-pointer hover:bg-rose-500/20"
               >
-                <Trash2 size={17} />
+                <Trash2 size={16} />
                 <span>Xóa giao dịch (Hoàn tác số dư)</span>
               </button>
 
-              {/* Nút Đóng */}
               <button
                 type="button"
                 onClick={() => setSelectedTxForDetail(null)}
-                className="touch-btn p-3 rounded-2xl bg-transparent text-slate-400 border-none text-sm font-medium cursor-pointer"
+                className="touch-btn p-2.5 rounded-2xl bg-transparent text-slate-400 border-none text-xs font-medium cursor-pointer"
               >
                 Đóng
               </button>

@@ -6,6 +6,8 @@ import type {
   Transaction,
   Budget,
   Setting,
+  RecurringTransaction,
+  EventTrip,
   SyncDataPayload,
   DeletedEntitiesTracking
 } from '../types';
@@ -74,17 +76,20 @@ export async function clearDeletedEntities(): Promise<void> {
  * Thu thập toàn bộ dữ liệu hiện tại của máy để chuẩn bị payload đồng bộ
  */
 export async function getLocalSyncPayload(): Promise<SyncDataPayload> {
-  const [wallets, categories, transactions, budgets, settings, deletedIds] = await Promise.all([
-    db.wallets.toArray(),
-    db.categories.toArray(),
-    db.transactions.toArray(),
-    db.budgets.toArray(),
-    db.settings.toArray(),
-    getDeletedEntities()
-  ]);
+  const [wallets, categories, transactions, budgets, settings, recurringTransactions, events, deletedIds] =
+    await Promise.all([
+      db.wallets.toArray(),
+      db.categories.toArray(),
+      db.transactions.toArray(),
+      db.budgets.toArray(),
+      db.settings.toArray(),
+      db.recurringTransactions.toArray(),
+      db.events.toArray(),
+      getDeletedEntities()
+    ]);
 
   return {
-    version: '2.0',
+    version: '3.0',
     appName: 'SoThuChi',
     syncedAt: new Date().toISOString(),
     data: {
@@ -92,7 +97,9 @@ export async function getLocalSyncPayload(): Promise<SyncDataPayload> {
       categories,
       transactions,
       budgets,
-      settings: settings.filter((s) => s.key !== 'google_access_token' && s.key !== DELETED_ENTITIES_SETTING_KEY)
+      settings: settings.filter((s) => s.key !== 'google_access_token' && s.key !== DELETED_ENTITIES_SETTING_KEY),
+      recurringTransactions,
+      events
     },
     deletedIds
   };
@@ -112,15 +119,16 @@ export function recalculateWalletBalances(
   });
 
   transactions.forEach((tx) => {
-    if (tx.type === 'EXPENSE' || tx.type === 'LEND') {
+    if (tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT') {
       const current = balanceMap.get(tx.walletId) ?? 0;
       balanceMap.set(tx.walletId, current - tx.amount);
-    } else if (tx.type === 'INCOME' || tx.type === 'BORROW') {
+    } else if (tx.type === 'INCOME' || tx.type === 'BORROW' || tx.type === 'COLLECT_DEBT') {
       const current = balanceMap.get(tx.walletId) ?? 0;
       balanceMap.set(tx.walletId, current + tx.amount);
     } else if (tx.type === 'TRANSFER' && tx.toWalletId) {
+      const fee = tx.transferFee || 0;
       const fromCurr = balanceMap.get(tx.walletId) ?? 0;
-      balanceMap.set(tx.walletId, fromCurr - tx.amount);
+      balanceMap.set(tx.walletId, fromCurr - tx.amount - fee);
 
       const toCurr = balanceMap.get(tx.toWalletId) ?? 0;
       balanceMap.set(tx.toWalletId, toCurr + tx.amount);
@@ -187,11 +195,9 @@ export function mergeTwoWayData(
 
     const localTx = localTxMap.get(id);
     if (!localTx) {
-      // Bản ghi mới từ thiết bị kia -> thêm vào
       mergedTxMap.set(id, remoteTx);
       addedTxCount++;
     } else {
-      // Có ở cả 2 bên: chọn bản ghi có updatedAt mới hơn
       const localTime = localTx.updatedAt || localTx.createdAt;
       const remoteTime = remoteTx.updatedAt || remoteTx.createdAt;
 
@@ -204,7 +210,6 @@ export function mergeTwoWayData(
     }
   }
 
-  // Duyệt các transaction từ Local mà Remote chưa có
   for (const [id, localTx] of localTxMap.entries()) {
     if (allDeletedTxIds.has(id)) {
       continue;
@@ -232,12 +237,10 @@ export function mergeTwoWayData(
       const remoteTime = remoteCat.updatedAt || remoteCat.createdAt;
       const chosen = remoteTime > localTime ? { ...remoteCat } : { ...localCat };
 
-      // Kết hợp ưu tiên gắn sao nếu một trong hai bên đã gắn sao
       if (localCat.isStarred || remoteCat.isStarred) {
         chosen.isStarred = true;
       }
 
-      // Hợp nhất Quick Tags
       const tags = new Set([...(localCat.quickTags || []), ...(remoteCat.quickTags || [])]);
       chosen.quickTags = Array.from(tags);
 
@@ -277,7 +280,6 @@ export function mergeTwoWayData(
     }
   }
 
-  // Tự động tính toán lại số dư ví chính xác theo các giao dịch đã hợp nhất
   const rawMergedWallets = Array.from(mergedWalletMap.values());
   const finalMergedWallets = recalculateWalletBalances(rawMergedWallets, mergedTransactions);
 
@@ -304,16 +306,32 @@ export function mergeTwoWayData(
 
   const mergedBudgets = Array.from(mergedBudgetMap.values());
 
-  // 6. HỢP NHẤT CÀI ĐẶT (Settings)
+  // 6. HỢP NHẤT GHI CHÉP ĐỊNH KỲ & SỰ KIỆN
+  const mergedRecurringMap = new Map<string, RecurringTransaction>();
+  (remotePayload.data.recurringTransactions || []).forEach((r) => mergedRecurringMap.set(r.id, r));
+  (localPayload.data.recurringTransactions || []).forEach((r) => {
+    const existing = mergedRecurringMap.get(r.id);
+    if (!existing || (r.updatedAt || r.createdAt) >= (existing.updatedAt || existing.createdAt)) {
+      mergedRecurringMap.set(r.id, r);
+    }
+  });
+
+  const mergedEventsMap = new Map<string, EventTrip>();
+  (remotePayload.data.events || []).forEach((ev) => mergedEventsMap.set(ev.id, ev));
+  (localPayload.data.events || []).forEach((ev) => {
+    const existing = mergedEventsMap.get(ev.id);
+    if (!existing || (ev.updatedAt || ev.createdAt) >= (existing.updatedAt || existing.createdAt)) {
+      mergedEventsMap.set(ev.id, ev);
+    }
+  });
+
+  // 7. HỢP NHẤT CÀI ĐẶT (Settings)
   const mergedSettingsMap = new Map<string, Setting>();
-  // Cài đặt từ Remote
   (remotePayload.data.settings || []).forEach((s) => {
-    // Không ghi đè google_client_id cục bộ nếu thiết bị hiện tại đã cấu hình
     if (s.key !== 'google_client_id' && s.key !== 'google_drive_user') {
       mergedSettingsMap.set(s.key, s);
     }
   });
-  // Cài đặt từ Local
   (localPayload.data.settings || []).forEach((s) => {
     mergedSettingsMap.set(s.key, s);
   });
@@ -323,7 +341,7 @@ export function mergeTwoWayData(
   const nowIso = new Date().toISOString();
 
   const mergedPayload: SyncDataPayload = {
-    version: '2.0',
+    version: '3.0',
     appName: 'SoThuChi',
     syncedAt: nowIso,
     data: {
@@ -331,7 +349,9 @@ export function mergeTwoWayData(
       categories: mergedCategories,
       transactions: mergedTransactions,
       budgets: mergedBudgets,
-      settings: mergedSettings
+      settings: mergedSettings,
+      recurringTransactions: Array.from(mergedRecurringMap.values()),
+      events: Array.from(mergedEventsMap.values())
     },
     deletedIds: {
       transactionIds: Array.from(allDeletedTxIds),
@@ -355,14 +375,29 @@ export function mergeTwoWayData(
  * Ghi toàn bộ dữ liệu đã hợp nhất vào IndexedDB trong 1 Transaction nguyên tử duy nhất (ACID)
  */
 export async function applyMergedDataToIndexedDB(mergedPayload: SyncDataPayload): Promise<void> {
-  const { wallets, categories, transactions, budgets, settings } = mergedPayload.data;
+  const {
+    wallets,
+    categories,
+    transactions,
+    budgets,
+    settings,
+    recurringTransactions = [],
+    events = []
+  } = mergedPayload.data;
   const deletedIds = mergedPayload.deletedIds;
 
   await db.transaction(
     'rw',
-    [db.wallets, db.categories, db.transactions, db.budgets, db.settings],
+    [
+      db.wallets,
+      db.categories,
+      db.transactions,
+      db.budgets,
+      db.settings,
+      db.recurringTransactions,
+      db.events
+    ],
     async () => {
-      // 1. Áp dụng xóa các entity bị đánh dấu tombstone
       if (deletedIds?.transactionIds?.length) {
         await db.transactions.bulkDelete(deletedIds.transactionIds);
       }
@@ -376,17 +411,17 @@ export async function applyMergedDataToIndexedDB(mergedPayload: SyncDataPayload)
         await db.budgets.bulkDelete(deletedIds.budgetIds);
       }
 
-      // 2. Cập nhật các entity hợp nhất (bulkPut cập nhật nếu tồn tại, thêm mới nếu chưa có)
       if (wallets.length > 0) await db.wallets.bulkPut(wallets);
       if (categories.length > 0) await db.categories.bulkPut(categories);
       if (transactions.length > 0) await db.transactions.bulkPut(transactions);
       if (budgets.length > 0) await db.budgets.bulkPut(budgets);
+      if (recurringTransactions.length > 0) await db.recurringTransactions.bulkPut(recurringTransactions);
+      if (events.length > 0) await db.events.bulkPut(events);
 
       for (const s of settings) {
         await db.settings.put(s);
       }
 
-      // Lưu lại danh sách deletedIds đã hợp nhất
       if (deletedIds) {
         await db.settings.put({
           key: DELETED_ENTITIES_SETTING_KEY,
