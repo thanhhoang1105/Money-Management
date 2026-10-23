@@ -65,9 +65,9 @@ export class MoneyDatabase extends Dexie {
       events: 'id, startDate, createdAt'
     });
 
-    // Tự động kích hoạt Persistent Storage khi DB sẵn sàng
+    // Tự động kích hoạt Persistent Storage khi DB sẵn sàng (không return Promise để tránh deadlock Dexie)
     this.on('ready', () => {
-      return requestPersistentStorage().catch((err) => {
+      void requestPersistentStorage().catch((err) => {
         console.warn('[DB] Persistent storage request on ready failed:', err);
       });
     });
@@ -96,14 +96,6 @@ export async function requestPersistentStorage(): Promise<boolean> {
       const isPersisted = await navigator.storage.persisted();
       if (isPersisted) {
         console.log('[Storage] IndexedDB đã ở chế độ Bền Vững (Persistent Storage Active).');
-        try {
-          await db.settings.put({
-            key: 'storage_persisted',
-            value: { persisted: true, updatedAt: new Date().toISOString() }
-          });
-        } catch {
-          // Bỏ qua nếu DB chưa mở xong
-        }
         return true;
       }
     }
@@ -111,14 +103,6 @@ export async function requestPersistentStorage(): Promise<boolean> {
     if (typeof navigator.storage.persist === 'function') {
       const granted = await navigator.storage.persist();
       console.log(`[Storage] Yêu cầu Persistent Storage: ${granted ? 'ĐƯỢC CHẤP THUẬN' : 'TỪ CHỐI'}`);
-      try {
-        await db.settings.put({
-          key: 'storage_persisted',
-          value: { persisted: granted, updatedAt: new Date().toISOString() }
-        });
-      } catch {
-        // Bỏ qua nếu DB chưa mở xong
-      }
       return granted;
     }
   } catch (err) {

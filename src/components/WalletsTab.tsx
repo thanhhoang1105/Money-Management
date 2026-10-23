@@ -478,7 +478,7 @@ export const WalletsTab: React.FC = () => {
       {/* 2. Header Danh sách & Nút Thêm Ví */}
       <div className="flex justify-between items-center mx-4 mt-4 mb-2.5 px-1">
         <h3 className="text-sm font-bold text-slate-200 m-0">
-          Danh sách Tài khoản & Ví ({wallets.length})
+          DS Tài khoản ({wallets.length})
         </h3>
         <button
           type="button"
@@ -486,7 +486,7 @@ export const WalletsTab: React.FC = () => {
           className="touch-btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-none py-2 px-3.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
         >
           <Plus size={16} strokeWidth={2.5} />
-          <span>Thêm Ngân hàng / Ví</span>
+          <span>Thêm Ví</span>
         </button>
       </div>
 
