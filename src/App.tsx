@@ -391,7 +391,7 @@ export function App() {
       )}
 
       {/* 3. TOÀN BỘ MÀN HÌNH ĐỀU LÀ MÀN HÌNH PHẲNG TRONG <main> (KHÔNG DÙNG POPUP OVERLAY) */}
-      <main className="app-scroll-container flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+      <main className="flex-1 w-full">
         <div className="w-full max-w-5xl mx-auto pb-24 md:pb-12">
           {isEditorOpen ? (
             <TransactionEditorScreen

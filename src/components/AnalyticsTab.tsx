@@ -38,6 +38,25 @@ interface AnalyticsTabProps {
 type ReportType = 'EXPENSE' | 'INCOME';
 type ExpenseGroupingMode = 'DETAIL' | 'PARENT';
 
+function formatCompactVND(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) {
+    const val = (abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '');
+    return `${sign}${val} tỷ`;
+  }
+  if (abs >= 1_000_000) {
+    const val = (abs / 1_000_000).toFixed(1).replace(/\.0$/, '');
+    return `${sign}${val} tr`;
+  }
+  if (abs >= 1_000) {
+    const val = (abs / 1_000).toFixed(abs >= 100_000 ? 0 : 1).replace(/\.0$/, '');
+    return `${sign}${val}k`;
+  }
+  if (abs === 0) return '0đ';
+  return `${sign}${abs}đ`;
+}
+
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
@@ -215,6 +234,21 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
       if (d.expense > max) max = d.expense;
     });
     return max > 0 ? max : 1;
+  }, [trendData]);
+
+  const selectedMonthTrend = useMemo(() => {
+    return trendData.find((d) => d.monthStr === selectedMonth) || trendData[trendData.length - 1];
+  }, [trendData, selectedMonth]);
+
+  const sixMonthSummary = useMemo(() => {
+    let totalIncome = 0;
+    let totalExpense = 0;
+    trendData.forEach((d) => {
+      totalIncome += d.income;
+      totalExpense += d.expense;
+    });
+    const totalNet = totalIncome - totalExpense;
+    return { totalIncome, totalExpense, totalNet };
   }, [trendData]);
 
   // Danh mục phân loại theo chế độ chọn (EXPENSE: Chi tiết / Nhóm Cha 50-30-20; hoặc INCOME)
@@ -544,66 +578,216 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
         </div>
       </div>
 
-      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG 6 THÁNG GẦN NHẤT */}
-      <div className="mx-4 my-3 rounded-3xl p-4 bg-slate-900/80 border border-white/10 shadow-lg">
+      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG DÒNG TIỀN 6 THÁNG GẦN NHẤT */}
+      <div className="mx-4 my-3 rounded-3xl p-4 bg-slate-900/85 border border-white/10 shadow-xl backdrop-blur-md">
+        {/* Header biểu đồ */}
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
-            <BarChart3 size={17} className="text-sky-400" />
-            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-              Xu hướng dòng tiền 6 tháng
-            </span>
+            <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-sky-400 shrink-0">
+              <BarChart3 size={17} />
+            </div>
+            <div>
+              <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider block">
+                Xu hướng dòng tiền 6 tháng
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {formatMonthDisplay(last6Months[0])} – {formatMonthDisplay(last6Months[last6Months.length - 1])}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2.5 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Thu
+
+          <div className="flex items-center gap-2.5 text-[11px] font-semibold text-slate-300 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-white/6 shadow-sm">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+              <span>Thu</span>
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              Chi
+            <span className="text-slate-600">|</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-400 shadow-sm shadow-rose-400/50" />
+              <span>Chi</span>
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-6 gap-2 pt-2 pb-1 border-b border-white/6 items-end h-28">
-          {trendData.map((d) => {
-            const isSelected = d.monthStr === selectedMonth;
-            const incomeHeight = d.income > 0 ? Math.max(6, Math.round((d.income / maxTrendValue) * 80)) : 0;
-            const expenseHeight = d.expense > 0 ? Math.max(6, Math.round((d.expense / maxTrendValue) * 80)) : 0;
+        {/* Khung Biểu đồ với Grid ngang và 6 cột tháng trực quan */}
+        <div className="relative pt-6 pb-2 px-1">
+          {/* Đường lưới mốc tham chiếu */}
+          <div className="absolute inset-x-1 top-6 bottom-9 pointer-events-none flex flex-col justify-between">
+            <div className="border-b border-dashed border-white/8 w-full flex justify-end">
+              <span className="text-[9px] text-slate-500 font-mono -mt-2 pr-1 bg-slate-900/80 px-1 rounded">
+                {formatCompactVND(maxTrendValue)}
+              </span>
+            </div>
+            <div className="border-b border-dashed border-white/5 w-full flex justify-end">
+              <span className="text-[9px] text-slate-600 font-mono -mt-2 pr-1 bg-slate-900/80 px-1 rounded">
+                {formatCompactVND(Math.round(maxTrendValue / 2))}
+              </span>
+            </div>
+            <div className="border-b border-white/10 w-full flex justify-end">
+              <span className="text-[9px] text-slate-600 font-mono -mt-2 pr-1 bg-slate-900/80 px-1 rounded">
+                0
+              </span>
+            </div>
+          </div>
 
-            return (
-              <div
-                key={d.monthStr}
-                onClick={() => setSelectedMonth(d.monthStr)}
-                className={`touch-btn flex flex-col items-center justify-end h-full cursor-pointer p-1 rounded-xl transition-all ${
-                  isSelected ? 'bg-white/8 border border-white/15' : 'hover:bg-white/4'
-                }`}
-                title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}`}
-              >
-                <div className="flex items-end gap-1 h-[80px] w-full justify-center">
-                  <div
-                    className="w-2.5 rounded-t-sm bg-emerald-500 transition-all duration-300"
-                    style={{ height: `${incomeHeight}px` }}
-                  />
-                  <div
-                    className="w-2.5 rounded-t-sm bg-rose-500 transition-all duration-300"
-                    style={{ height: `${expenseHeight}px` }}
-                  />
+          {/* 6 Cột Tháng */}
+          <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 items-end relative z-10">
+            {trendData.map((d) => {
+              const isSelected = d.monthStr === selectedMonth;
+              const hasData = d.income > 0 || d.expense > 0;
+              const incomeHeight = d.income > 0 ? Math.max(8, Math.round((d.income / maxTrendValue) * 85)) : 2;
+              const expenseHeight = d.expense > 0 ? Math.max(8, Math.round((d.expense / maxTrendValue) * 85)) : 2;
+
+              return (
+                <div
+                  key={d.monthStr}
+                  onClick={() => setSelectedMonth(d.monthStr)}
+                  className={`touch-btn flex flex-col items-center justify-end cursor-pointer p-1.5 sm:p-2 rounded-2xl transition-all ${
+                    isSelected
+                      ? 'bg-sky-500/15 border border-sky-500/40 shadow-lg shadow-sky-500/10'
+                      : 'bg-slate-800/35 hover:bg-slate-800/60 border border-white/4'
+                  }`}
+                  title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}, Ròng: ${d.net >= 0 ? '+' : ''}${formatVND(d.net)}`}
+                >
+                  {/* Nhãn số Dòng tiền ròng phía trên cột */}
+                  <div className="h-4 flex items-center justify-center mb-1 w-full">
+                    {!hasData ? (
+                      <span className="text-[10px] text-slate-600 font-mono">-</span>
+                    ) : (
+                      <span
+                        className={`text-[10px] sm:text-[11px] font-black tracking-tight leading-none truncate max-w-full ${
+                          d.net > 0
+                            ? 'text-emerald-400'
+                            : d.net < 0
+                            ? 'text-rose-400'
+                            : 'text-slate-300'
+                        }`}
+                      >
+                        {d.net > 0 ? '+' : ''}
+                        {formatCompactVND(d.net)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 2 Cột Thu & Chi song song */}
+                  <div className="flex items-end justify-center gap-1 sm:gap-1.5 h-[85px] w-full">
+                    {/* Cột Thu (Xanh) */}
+                    <div
+                      className={`w-3 sm:w-4 transition-all duration-300 ${
+                        d.income > 0
+                          ? 'rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-sm shadow-emerald-500/25'
+                          : 'rounded-full bg-slate-700/40'
+                      }`}
+                      style={{ height: `${incomeHeight}px` }}
+                      title={`Thu: ${formatVND(d.income)}`}
+                    />
+                    {/* Cột Chi (Đỏ) */}
+                    <div
+                      className={`w-3 sm:w-4 transition-all duration-300 ${
+                        d.expense > 0
+                          ? 'rounded-t-md bg-gradient-to-t from-rose-600 to-rose-400 shadow-sm shadow-rose-500/25'
+                          : 'rounded-full bg-slate-700/40'
+                      }`}
+                      style={{ height: `${expenseHeight}px` }}
+                      title={`Chi: ${formatVND(d.expense)}`}
+                    />
+                  </div>
+
+                  {/* Tên Tháng */}
+                  <div className="mt-2 flex flex-col items-center">
+                    <span
+                      className={`text-[11px] sm:text-xs tracking-tight transition-colors ${
+                        isSelected
+                          ? 'text-sky-400 font-black'
+                          : 'text-slate-400 font-semibold'
+                      }`}
+                    >
+                      {d.label}
+                    </span>
+                    {isSelected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mt-0.5 shadow-sm shadow-sky-400" />
+                    )}
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
 
+        {/* Khung Thông tin chi tiết tháng đang chọn */}
+        <div className="mt-3.5 p-3 rounded-2xl bg-slate-950/80 border border-white/8 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-sky-400 font-extrabold text-xs shrink-0 shadow-sm">
+              {selectedMonthTrend?.label}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-100 truncate">
+                  {formatMonthDisplay(selectedMonthTrend?.monthStr || selectedMonth)}
+                </span>
                 <span
-                  className={`text-[11px] font-bold mt-1.5 ${
-                    isSelected ? 'text-sky-400' : 'text-slate-400'
+                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
+                    (selectedMonthTrend?.net || 0) >= 0
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
                   }`}
                 >
-                  {d.label}
+                  {(selectedMonthTrend?.net || 0) >= 0 ? '✨ Dư' : '⚠️ Thâm hụt'}{' '}
+                  {formatCompactVND(Math.abs(selectedMonthTrend?.net || 0))}
                 </span>
               </div>
-            );
-          })}
+              <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>
+                  Thu: <strong className="text-income">+{formatVND(selectedMonthTrend?.income || 0)}</strong>
+                </span>
+                <span className="text-slate-600">•</span>
+                <span>
+                  Chi: <strong className="text-expense">-{formatVND(selectedMonthTrend?.expense || 0)}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 border-white/6 pt-2 sm:pt-0 shrink-0">
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+              Dòng tiền ròng
+            </span>
+            <span
+              className={`text-sm sm:text-base font-extrabold ${
+                (selectedMonthTrend?.net || 0) >= 0 ? 'text-income' : 'text-expense'
+              }`}
+            >
+              {(selectedMonthTrend?.net || 0) >= 0 ? '+' : ''}
+              {formatVND(selectedMonthTrend?.net || 0)}
+            </span>
+          </div>
         </div>
-        <div className="text-[10px] text-slate-500 text-center mt-2">
-          Chạm vào cột tháng bất kỳ để xem phân tích chi tiết của tháng đó
+
+        {/* Thanh Tóm Tắt Dòng Tiền 6 Tháng */}
+        <div className="mt-3 pt-3 border-t border-white/6 grid grid-cols-3 gap-2 text-center">
+          <div className="p-2 rounded-xl bg-slate-800/40 border border-white/4">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Tổng thu 6T</div>
+            <div className="text-xs sm:text-sm font-bold text-income mt-0.5 truncate">
+              +{formatCompactVND(sixMonthSummary.totalIncome)}
+            </div>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-800/40 border border-white/4">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Tổng chi 6T</div>
+            <div className="text-xs sm:text-sm font-bold text-expense mt-0.5 truncate">
+              -{formatCompactVND(sixMonthSummary.totalExpense)}
+            </div>
+          </div>
+          <div className="p-2 rounded-xl bg-slate-800/40 border border-white/4">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Dòng tiền ròng</div>
+            <div
+              className={`text-xs sm:text-sm font-bold mt-0.5 truncate ${
+                sixMonthSummary.totalNet >= 0 ? 'text-income' : 'text-expense'
+              }`}
+            >
+              {sixMonthSummary.totalNet >= 0 ? '+' : ''}
+              {formatCompactVND(sixMonthSummary.totalNet)}
+            </div>
+          </div>
         </div>
       </div>
 

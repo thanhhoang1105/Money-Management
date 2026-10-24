@@ -114,13 +114,10 @@
     font-family: var(--font-app);
   }
 
-  /* Scrollable Container (Main app views) */
-  main, .app-scroll-container {
+  /* Main Container */
+  main {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+    width: 100%;
   }
 
   button,
@@ -282,17 +279,25 @@
   }
 }
 
-/* Custom Scrollbar */
+/* Custom Scrollbar - Tối ưu cho Desktop & Mobile */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Keyframe Animations:
