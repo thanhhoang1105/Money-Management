@@ -95,12 +95,20 @@ export function App() {
     }
   });
 
-  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Đồng bộ khi thực sự có thay đổi ở Local
+  // Khởi tạo Seed Data, Chạy Giao dịch định kỳ đến hạn & Đồng bộ thông minh Supabase
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const triggerSyncIfDirty = async () => {
-      const sbRes = await checkAndRunSupabaseAutoSync();
+      const sbRes = await checkAndRunSupabaseAutoSync('DIRTY_ONLY');
+      if (sbRes.ran) {
+        setAutoBackupNotice(sbRes.message);
+        setTimeout(() => setAutoBackupNotice(null), 5000);
+      }
+    };
+
+    const triggerStartupCheck = async () => {
+      const sbRes = await checkAndRunSupabaseAutoSync('STARTUP');
       if (sbRes.ran) {
         setAutoBackupNotice(sbRes.message);
         setTimeout(() => setAutoBackupNotice(null), 5000);
@@ -116,14 +124,22 @@ export function App() {
           setTimeout(() => setAutoBackupNotice(null), 6000);
         }
 
-        // Chỉ đồng bộ nếu local đã lưu mã kết nối VÀ đang có thay đổi chưa đồng bộ
-        await triggerSyncIfDirty();
+        // Khi vừa mở app: Tự động kiểm tra và kéo ngay dữ liệu mới nhất nếu Cloud có bản cập nhật mới
+        await triggerStartupCheck();
       })
       .catch((err) => {
         console.error('Lỗi khởi tạo dữ liệu seed:', err);
       });
 
-    // Chỉ kích hoạt đồng bộ sau 3 giây kể từ khi người dùng thực sự thêm/sửa/xóa dữ liệu ở local
+    // Khi người dùng quay lại tab (chuyển từ tab khác hoặc mở khóa màn hình)
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        await triggerStartupCheck();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Chỉ kích hoạt đồng bộ đẩy lên Cloud sau 3 giây kể từ khi người dùng thực sự thêm/sửa/xóa dữ liệu ở local
     const handleLocalDataChanged = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -135,6 +151,7 @@ export function App() {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('local-data-changed', handleLocalDataChanged);
     };
   }, []);

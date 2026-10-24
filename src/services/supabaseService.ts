@@ -423,13 +423,20 @@ export async function performSupabaseSmartSync(): Promise<{
   };
 }
 
+let lastStartupCheckTimestamp = 0;
+
 /**
  * Tự động đồng bộ ngầm với Supabase:
- * - CHỈ chạy khi thiết bị đã kết nối và lưu Mã Đồng Bộ (syncKey) dưới local
- * - CHỈ chạy khi có thay đổi dữ liệu thực sự dưới local (hasLocalDataChanged() === true)
- * - Tuyệt đối không đồng bộ liên tục khi không có thay đổi ở local
+ * - Khi mở app hoặc quay lại tab (trigger === 'STARTUP'):
+ *   + Nếu local có thay đổi chưa đồng bộ -> Hợp nhất và đẩy lên Cloud ngay.
+ *   + Nếu Cloud có bản cập nhật mới hơn (do thiết bị khác vừa ghi chép) -> Tự động kéo về máy ngay lập tức!
+ * - Khi đang dùng app (trigger === 'DIRTY_ONLY'):
+ *   + CHỈ chạy khi thực sự có thay đổi mới ở local (hasLocalDataChanged() === true).
+ *   + Tuyệt đối không spam mạng liên tục khi không có thay đổi.
  */
-export async function checkAndRunSupabaseAutoSync(): Promise<{
+export async function checkAndRunSupabaseAutoSync(
+  trigger: 'STARTUP' | 'DIRTY_ONLY' = 'DIRTY_ONLY'
+): Promise<{
   ran: boolean;
   message: string;
 }> {
@@ -455,6 +462,58 @@ export async function checkAndRunSupabaseAutoSync(): Promise<{
       // ignore
     }
 
+    // TRƯỜNG HỢP 1: KHI MỞ APP HOẶC QUAY LẠI TAB (STARTUP)
+    if (trigger === 'STARTUP') {
+      const nowMs = Date.now();
+      if (nowMs - lastStartupCheckTimestamp < 15000) {
+        return { ran: false, message: 'Vừa mới kiểm tra đồng bộ gần đây' };
+      }
+      lastStartupCheckTimestamp = nowMs;
+
+      // 1A. Nếu dưới local đang có thay đổi chưa đẩy -> Chạy đồng bộ 2 chiều đầy đủ ngay
+      if (hasLocalDataChanged()) {
+        const res = await performSupabaseSmartSync();
+        return { ran: res.success, message: res.message };
+      }
+
+      // 1B. Nếu dưới local chưa có thay đổi gì, kiểm tra xem trên Cloud có bản mới từ thiết bị khác không
+      const remoteRecord = await getBackupFromSupabase();
+      if (!remoteRecord) {
+        return { ran: false, message: 'Chưa có bản sao lưu trên Supabase' };
+      }
+
+      const lastSyncSetting = await db.settings.get('last_supabase_sync_time');
+      const localSyncTime =
+        typeof lastSyncSetting?.value === 'string'
+          ? new Date(lastSyncSetting.value).getTime()
+          : 0;
+      const remoteTime = new Date(remoteRecord.updatedAt).getTime();
+
+      // Nếu Cloud có bản cập nhật mới hơn thời điểm đồng bộ trước của máy này:
+      // Tải và nạp ngay dữ liệu mới nhất vào IndexedDB
+      if (remoteTime > localSyncTime) {
+        const localPayload = await getLocalSyncPayload();
+        const mergedResult = mergeTwoWayData(localPayload, remoteRecord.payload);
+        await applyMergedDataToIndexedDB(mergedResult.mergedPayload);
+
+        const today = getCurrentDate();
+        await db.settings.put({ key: 'last_supabase_backup_date', value: today });
+        await db.settings.put({ key: 'last_supabase_sync_time', value: remoteRecord.updatedAt });
+        clearLocalDataChanged();
+
+        const addedCount = mergedResult.changes.addedTransactions;
+        const msg =
+          addedCount > 0
+            ? `Đã tự động cập nhật ${addedCount} giao dịch mới nhất từ Cloud!`
+            : 'Đã cập nhật dữ liệu mới nhất từ Supabase Cloud!';
+
+        return { ran: true, message: msg };
+      }
+
+      return { ran: false, message: 'Dữ liệu đã ở bản mới nhất' };
+    }
+
+    // TRƯỜNG HỢP 2: KHI ĐANG DÙNG APP (DIRTY_ONLY)
     // CHỈ đồng bộ khi thực sự có thay đổi dữ liệu dưới local
     if (!hasLocalDataChanged()) {
       return { ran: false, message: 'Không có thay đổi dữ liệu mới dưới local' };
