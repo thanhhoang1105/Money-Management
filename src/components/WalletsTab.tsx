@@ -16,6 +16,7 @@ import {
   BankBrandAccordionPicker
 } from './BankLogo';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
+import { CustomSelect } from './ui/CustomSelect';
 import {
   Plus,
   Edit3,
@@ -197,20 +198,20 @@ export const WalletsTab: React.FC = () => {
   if (viewMode === 'CREATE' || viewMode === 'EDIT') {
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        {/* Header điều hướng phẳng */}
+        {/* Header điều hướng phẳng cân đối */}
         <div className="flex items-center justify-between border-b border-white/8 pb-3">
           <button
             type="button"
             onClick={() => setViewMode('LIST')}
-            className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            <ArrowLeft size={17} />
-            <span>Quay lại ví</span>
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
             {viewMode === 'CREATE' ? 'Thêm tài khoản / ví mới' : 'Chỉnh sửa tài khoản / ví'}
           </span>
-          <div className="w-8" />
+          <div className="w-9" />
         </div>
 
         <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-4 sm:p-5 flex flex-col gap-4 shadow-xl">
@@ -244,16 +245,17 @@ export const WalletsTab: React.FC = () => {
               <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
                 Loại tài khoản
               </label>
-              <select
+              <CustomSelect
                 value={walletType}
-                onChange={(e) => setWalletType(e.target.value as WalletType)}
-                className="input-ios cursor-pointer"
-              >
-                <option value="BANK">🏦 Tài khoản Ngân hàng</option>
-                <option value="E_WALLET">📱 Ví điện tử (MoMo, ZaloPay...)</option>
-                <option value="CASH">💵 Tiền mặt</option>
-                <option value="CREDIT">💳 Thẻ tín dụng / Quốc tế</option>
-              </select>
+                onChange={(val) => setWalletType(val as WalletType)}
+                options={[
+                  { value: 'BANK', label: '🏦 Tài khoản Ngân hàng' },
+                  { value: 'E_WALLET', label: '📱 Ví điện tử (MoMo, ZaloPay...)' },
+                  { value: 'CASH', label: '💵 Tiền mặt' },
+                  { value: 'CREDIT', label: '💳 Thẻ tín dụng / Quốc tế' }
+                ]}
+                triggerClassName="bg-slate-800 font-medium"
+              />
             </div>
           </div>
 
@@ -355,15 +357,15 @@ export const WalletsTab: React.FC = () => {
           <button
             type="button"
             onClick={() => setViewMode('LIST')}
-            className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            <ArrowLeft size={17} />
-            <span>Quay lại ví</span>
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
             Điều chỉnh số dư thực tế
           </span>
-          <div className="w-12" />
+          <div className="w-9" />
         </div>
 
         <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">

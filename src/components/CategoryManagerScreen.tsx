@@ -9,6 +9,7 @@ import {
 } from '../db/seed';
 import type { Category, CategoryType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
+import { CustomSelect } from './ui/CustomSelect';
 import { generateUUID } from '../utils/uuid';
 import {
   ArrowLeft,
@@ -295,15 +296,15 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           <button
             type="button"
             onClick={() => setIsEditing(false)}
-            className="touch-btn flex items-center gap-1.5 text-sky-400 font-bold text-xs cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            <ArrowLeft size={17} />
-            <span>Quay lại</span>
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
             {editingCat ? 'Chỉnh sửa hạng mục' : 'Thêm hạng mục mới'}
           </span>
-          <div className="w-12" />
+          <div className="w-9" />
         </div>
 
         <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">
@@ -338,24 +339,21 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
               <label className="text-xs font-semibold text-slate-300 block">
                 Thuộc nhóm Khoản Chi *
               </label>
-              <select
+              <CustomSelect
                 value={formParentId}
-                onChange={(e) => {
-                  const nextId = e.target.value;
+                onChange={(nextId) => {
                   setFormParentId(nextId);
                   const foundP = expenseParents.find((p) => p.id === nextId);
                   if (foundP && !editingCat) {
                     setFormColor(foundP.color);
                   }
                 }}
-                className="input-ios w-full bg-slate-800 rounded-xl px-3 py-2.5 text-white border border-white/10 font-bold text-xs cursor-pointer"
-              >
-                {expenseParents.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                options={expenseParents.map((p) => ({
+                  value: p.id,
+                  label: p.name
+                }))}
+                triggerClassName="bg-slate-800 text-xs font-bold"
+              />
             </div>
           )}
 
@@ -400,17 +398,15 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                   <label className="text-[11px] text-slate-400 block mb-1">
                     Trực thuộc khoản thu:
                   </label>
-                  <select
+                  <CustomSelect
                     value={formParentId}
-                    onChange={(e) => setFormParentId(e.target.value)}
-                    className="input-ios w-full bg-slate-800 rounded-xl px-3 py-2 text-white border border-white/10 text-xs font-bold cursor-pointer"
-                  >
-                    {incomeParents.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setFormParentId}
+                    options={incomeParents.map((p) => ({
+                      value: p.id,
+                      label: p.name
+                    }))}
+                    triggerClassName="bg-slate-800 text-xs font-bold"
+                  />
                 </div>
               )}
             </div>
@@ -603,33 +599,37 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   // ==========================================
   return (
     <div className="w-full flex flex-col min-h-full animate-fade-in font-body text-slate-100 pb-24">
-      {/* 1. Header Bar phẳng */}
-      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onClose}
-          className="touch-btn flex items-center gap-1 text-sky-400 font-semibold text-sm cursor-pointer border-none bg-transparent py-1 px-1 -ml-1"
-        >
-          <ArrowLeft size={19} />
-          <span>Quay lại</span>
-        </button>
+      {/* 1. Header Bar phẳng cân đối */}
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3">
+        <div className="w-9 shrink-0 flex items-center justify-start">
+          <button
+            type="button"
+            onClick={onClose}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        </div>
 
-        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
+        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider text-center flex-1 truncate m-0">
           {onSelectCategory ? 'Chọn & Quản lý hạng mục' : 'Quản lý hạng mục'}
         </h2>
 
-        {activeTab !== 'DEBT' ? (
-          <button
-            type="button"
-            onClick={() => handleOpenAdd()}
-            className="touch-btn flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none"
-          >
-            <Plus size={15} strokeWidth={2.5} />
-            <span>Thêm mới</span>
-          </button>
-        ) : (
-          <div className="w-16" />
-        )}
+        <div className="shrink-0 flex items-center justify-end">
+          {activeTab !== 'DEBT' ? (
+            <button
+              type="button"
+              onClick={() => handleOpenAdd()}
+              className="touch-btn flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span>Thêm mới</span>
+            </button>
+          ) : (
+            <div className="w-9 h-9" />
+          )}
+        </div>
       </div>
 
       {/* 2. 3 TAB LỚN: KHOẢN CHI, KHOẢN THU, VAY NỢ */}

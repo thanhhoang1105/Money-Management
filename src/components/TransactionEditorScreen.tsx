@@ -11,9 +11,11 @@ import {
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
+import { TransactionHistoryView } from './TransactionHistoryView';
 import { NumpadBottomSheet } from './NumpadBottomSheet';
 import { DatePicker } from './ui/DatePicker';
 import { WalletSelect } from './ui/WalletSelect';
+import { CustomSelect } from './ui/CustomSelect';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import {
   ArrowLeft,
@@ -37,7 +39,8 @@ import {
   Plane,
   EyeOff,
   PlusCircle,
-  Edit2
+  Edit2,
+  History
 } from 'lucide-react';
 
 const EMPTY_CATEGORIES: Category[] = [];
@@ -49,6 +52,7 @@ interface TransactionEditorScreenProps {
   isOpen: boolean;
   onClose: () => void;
   editingTransaction?: Transaction | null;
+  onSelectTransactionToEdit?: (tx: Transaction) => void;
 }
 
 /**
@@ -102,15 +106,11 @@ function isDebtTransactionType(t: TransactionType): boolean {
   return t === 'LEND' || t === 'BORROW' || t === 'COLLECT_DEBT' || t === 'PAY_DEBT';
 }
 
-function isMobileViewport(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.innerWidth < 768;
-}
-
 export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = ({
   isOpen,
   onClose,
-  editingTransaction
+  editingTransaction,
+  onSelectTransactionToEdit
 }) => {
   const rawCategories = useLiveQuery(() => db.categories.toArray());
   const rawWallets = useLiveQuery(() => db.wallets.toArray());
@@ -142,6 +142,22 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   // Trạng thái hiển thị Popup Numpad đẩy từ dưới lên (CHỈ DÙNG TRÊN ĐIỆN THOẠI < 768px)
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
+
+  // Mở màn hình Lịch sử ghi chép (dạng màn hình phẳng)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [editingFromHistory, setEditingFromHistory] = useState(false);
+
+  const handleCloseOrReturnToHistory = () => {
+    if (editingFromHistory) {
+      setEditingFromHistory(false);
+      if (onSelectTransactionToEdit) {
+        onSelectTransactionToEdit(null as any);
+      }
+      setIsHistoryOpen(true);
+      return;
+    }
+    onClose();
+  };
 
   // Mở màn hình Chọn & Quản lý Hạng mục (dạng màn hình phẳng)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
@@ -351,8 +367,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       setToastMsg('');
       setIsAddingTag(false);
       setNewTagInput('');
-      // Chỉ bật Numpad Popup trên màn hình điện thoại (< 768px), trên Web PC bỏ luôn
-      setIsNumpadOpen(isMobileViewport());
+      // Bàn phím numpad lúc mới vào không tự mở, chỉ khi user bấm vào số tiền để điền thì mới mở lên
+      setIsNumpadOpen(false);
 
       if (wallets.length > 0) {
         const lastId = lastWalletSetting?.value;
@@ -543,7 +559,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           date,
           time: getCurrentTime()
         });
-        onClose();
+        handleCloseOrReturnToHistory();
         return;
       } catch (err: any) {
         setErrorMsg(err?.message || 'Có lỗi khi điều chỉnh số dư');
@@ -589,7 +605,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           time: editingTransaction.time || getCurrentTime(),
           note: note.trim()
         });
-        onClose();
+        handleCloseOrReturnToHistory();
       } else {
         await createTransaction({
           walletId: selectedWalletId,
@@ -611,11 +627,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           setNote('');
           setTransferFeeStr('0');
           setExcludeFromReport(false);
-          setIsNumpadOpen(isMobileViewport());
+          setIsNumpadOpen(false);
           setToastMsg(`Đã lưu ${formatVND(finalAmount)}! Mời nhập khoản tiếp theo...`);
           setTimeout(() => setToastMsg(''), 2500);
         } else {
-          onClose();
+          handleCloseOrReturnToHistory();
         }
       }
     } catch (err: any) {
@@ -632,7 +648,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     ) {
       try {
         await deleteTransaction(editingTransaction.id);
-        onClose();
+        handleCloseOrReturnToHistory();
       } catch (err: any) {
         setErrorMsg(err?.message || 'Lỗi khi xóa giao dịch');
       }
@@ -640,6 +656,22 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   };
 
   if (!isOpen) return null;
+
+  // Nếu đang mở màn hình Lịch sử ghi chép -> hiển thị dạng phẳng toàn màn hình
+  if (isHistoryOpen) {
+    return (
+      <TransactionHistoryView
+        onClose={() => setIsHistoryOpen(false)}
+        onEditTransaction={(tx) => {
+          setIsHistoryOpen(false);
+          setEditingFromHistory(true);
+          if (onSelectTransactionToEdit) {
+            onSelectTransactionToEdit(tx);
+          }
+        }}
+      />
+    );
+  }
 
   // Nếu đang mở màn hình Chọn & Quản lý Hạng mục -> hiển thị thẳng trên màn hình phẳng (không bật Popup)
   if (isCategoryManagerOpen) {
@@ -668,32 +700,47 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   return (
     <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
-      {/* 1. Header Bar phẳng */}
-      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onClose}
-          className="touch-btn flex items-center gap-1 text-sky-400 font-semibold text-sm cursor-pointer border-none bg-transparent py-1 px-1 -ml-1 hover:text-sky-300"
-        >
-          <ArrowLeft size={19} />
-          <span>Quay lại</span>
-        </button>
+      {/* 1. Header Bar phẳng cân đối */}
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-2">
+        {/* Nút quay lại chỉ hiện icon kèm border */}
+        <div className="w-20 shrink-0 flex items-center justify-start">
+          <button
+            type="button"
+            onClick={handleCloseOrReturnToHistory}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        </div>
 
-        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-          {editingTransaction ? 'Chỉnh sửa giao dịch' : 'Ghi giao dịch'}
-        </h2>
+        {/* Tiêu đề chính giữa cân đối */}
+        <div className="flex-1 text-center min-w-0">
+          <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider truncate m-0">
+            {editingTransaction ? 'Chỉnh sửa giao dịch' : 'Ghi giao dịch'}
+          </h2>
+        </div>
 
-        <div className="flex items-center gap-1">
+        {/* Cột phải cân xứng: Icon Lịch sử ghi chép đối xứng nút Quay lại (kèm nút xóa nếu đang sửa) */}
+        <div className="w-20 shrink-0 flex items-center justify-end gap-1.5">
           {editingTransaction && (
             <button
               type="button"
               onClick={handleDelete}
-              className="touch-btn text-rose-400 p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer border-none"
+              className="touch-btn w-9 h-9 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 flex items-center justify-center cursor-pointer transition-colors"
               title="Xóa giao dịch"
             >
               <Trash2 size={17} />
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setIsHistoryOpen(true)}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-sky-400 hover:text-sky-300 flex items-center justify-center cursor-pointer transition-colors"
+            title="Lịch sử ghi chép"
+          >
+            <History size={18} />
+          </button>
         </div>
       </div>
 
@@ -1518,18 +1565,19 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                     <Plane size={14} className="text-sky-400" />
                     <span>Sự kiện / Chuyến đi</span>
                   </span>
-                  <select
+                  <CustomSelect
                     value={eventId}
-                    onChange={(e) => setEventId(e.target.value)}
-                    className="input-ios py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-slate-200 max-w-[200px]"
-                  >
-                    <option value="">-- Không gắn sự kiện --</option>
-                    {activeEvents.map((ev) => (
-                      <option key={ev.id} value={ev.id}>
-                        {ev.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setEventId}
+                    options={[
+                      { value: '', label: '-- Không gắn sự kiện --' },
+                      ...activeEvents.map((ev) => ({
+                        value: ev.id,
+                        label: ev.name
+                      }))
+                    ]}
+                    className="max-w-[200px]"
+                    triggerClassName="py-1 px-2.5 text-xs rounded-xl bg-slate-800 border-white/10"
+                  />
                 </div>
               )}
 

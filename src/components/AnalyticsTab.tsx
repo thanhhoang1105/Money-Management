@@ -27,7 +27,8 @@ import {
   RotateCw,
   Check,
   Layers,
-  ListTree
+  ListTree,
+  ArrowLeft
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -325,14 +326,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction })
           <button
             type="button"
             onClick={() => setDrillDownCategory(null)}
-            className="touch-btn text-sky-400 font-bold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            ← Quay lại Báo cáo
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
             Chi tiết: {drillDownCategory.name}
           </span>
-          <div className="w-12" />
+          <div className="w-9" />
         </div>
 
         <div className="p-4 rounded-2xl bg-slate-900/90 border border-white/10 flex items-center justify-between">

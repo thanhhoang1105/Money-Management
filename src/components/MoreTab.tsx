@@ -18,6 +18,8 @@ import {
 import { formatVND, getCurrentDate, getCurrentTime, formatFriendlyDate } from '../utils/formatters';
 import { generateUUID } from '../utils/uuid';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
+import { DatePicker } from './ui/DatePicker';
+import { CustomSelect } from './ui/CustomSelect';
 import type { AppStartupTab, RecurringFrequency, Transaction } from '../types';
 import {
   Target,
@@ -41,7 +43,8 @@ import {
   Calendar,
   Play,
   CheckCircle2,
-  Edit2
+  Edit2,
+  ArrowLeft
 } from 'lucide-react';
 
 interface MoreTabProps {
@@ -418,16 +421,19 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-          <button
-            type="button"
-            onClick={() => setSubView('MAIN')}
-            className="text-sky-400 font-semibold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
-          >
-            ← Quay lại mục Khác
-          </button>
-          <span className="text-xs font-bold text-slate-100 uppercase">
-            Sổ Nợ (Thêm / Sửa / Xóa Người Nợ)
+        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+          <div className="w-9 shrink-0 flex items-center justify-start">
+            <button
+              type="button"
+              onClick={() => setSubView('MAIN')}
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              title="Quay lại"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          </div>
+          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
+            Sổ Nợ (Quản lý Người Nợ)
           </span>
           <button
             type="button"
@@ -435,7 +441,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               setNewDebtWalletId(wallets[0]?.id || '');
               setIsAddingDebtTx(!isAddingDebtTx);
             }}
-            className="text-xs font-extrabold text-slate-950 flex items-center gap-1 cursor-pointer bg-amber-400 px-3 py-1.5 rounded-xl border-none"
+            className="text-xs font-extrabold text-slate-950 flex items-center gap-1 cursor-pointer bg-amber-400 px-3 py-1.5 rounded-xl border-none shrink-0"
           >
             <Plus size={14} strokeWidth={2.5} />
             <span>Ghi nợ mới</span>
@@ -525,17 +531,15 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Tài khoản / Ví
                 </label>
-                <select
-                  value={newDebtWalletId}
-                  onChange={(e) => setNewDebtWalletId(e.target.value)}
-                  className="input-ios"
-                >
-                  {wallets.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({formatVND(w.balance)})
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect
+                  value={newDebtWalletId || (wallets[0]?.id ?? '')}
+                  onChange={setNewDebtWalletId}
+                  options={wallets.map((w) => ({
+                    value: w.id,
+                    label: `${w.name} (${formatVND(w.balance)})`
+                  }))}
+                  triggerClassName="bg-slate-800"
+                />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
@@ -787,17 +791,15 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                           className="input-ios text-sm font-extrabold text-emerald-400"
                         />
 
-                        <select
-                          value={settleWalletId}
-                          onChange={(e) => setSettleWalletId(e.target.value)}
-                          className="input-ios text-xs"
-                        >
-                          {wallets.map((w) => (
-                            <option key={w.id} value={w.id}>
-                              {w.name} ({formatVND(w.balance)})
-                            </option>
-                          ))}
-                        </select>
+                        <CustomSelect
+                          value={settleWalletId || (wallets[0]?.id ?? '')}
+                          onChange={setSettleWalletId}
+                          options={wallets.map((w) => ({
+                            value: w.id,
+                            label: `${w.name} (${formatVND(w.balance)})`
+                          }))}
+                          triggerClassName="text-xs bg-slate-800"
+                        />
                       </div>
 
                       <button
@@ -935,15 +937,20 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-          <button
-            type="button"
-            onClick={() => setSubView('MAIN')}
-            className="text-sky-400 font-semibold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
-          >
-            ← Quay lại mục Khác
-          </button>
-          <span className="text-xs font-bold text-slate-100 uppercase">Ghi chép định kỳ</span>
+        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+          <div className="w-9 shrink-0 flex items-center justify-start">
+            <button
+              type="button"
+              onClick={() => setSubView('MAIN')}
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              title="Quay lại"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          </div>
+          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
+            Ghi chép định kỳ
+          </span>
           <button
             type="button"
             onClick={() => {
@@ -953,7 +960,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               );
               setIsAddingRecurring(!isAddingRecurring);
             }}
-            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30"
+            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1.5 rounded-xl border border-emerald-500/30 shrink-0"
           >
             <Plus size={14} /> Thêm
           </button>
@@ -1045,75 +1052,68 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Chu kỳ lặp lại
                 </label>
-                <select
+                <CustomSelect
                   value={recFrequency}
-                  onChange={(e) => setRecFrequency(e.target.value as RecurringFrequency)}
-                  className="input-ios"
-                >
-                  <option value="DAILY">Hàng ngày</option>
-                  <option value="WEEKLY">Hàng tuần</option>
-                  <option value="MONTHLY">Hàng tháng</option>
-                  <option value="YEARLY">Hàng năm</option>
-                </select>
+                  onChange={(val) => setRecFrequency(val as RecurringFrequency)}
+                  options={[
+                    { value: 'DAILY', label: 'Hàng ngày' },
+                    { value: 'WEEKLY', label: 'Hàng tuần' },
+                    { value: 'MONTHLY', label: 'Hàng tháng' },
+                    { value: 'YEARLY', label: 'Hàng năm' }
+                  ]}
+                  triggerClassName="bg-slate-800"
+                />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Ngày chạy tiếp theo
-                </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={recStartDate}
-                  onChange={(e) => setRecStartDate(e.target.value)}
-                  className="input-ios"
+                  onChange={setRecStartDate}
+                  label="Ngày chạy tiếp theo"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Hạng mục
                 </label>
-                <select
+                <CustomSelect
                   value={recCategoryId}
-                  onChange={(e) => setRecCategoryId(e.target.value)}
-                  className="input-ios"
-                >
-                  {categories
+                  onChange={setRecCategoryId}
+                  options={categories
                     .filter((c) =>
                       recType === 'EXPENSE'
                         ? c.type === 'EXPENSE' && !!c.parentId
                         : c.type === 'INCOME'
                     )
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </select>
+                    .map((c) => ({
+                      value: c.id,
+                      label: c.name
+                    }))}
+                  triggerClassName="bg-slate-800"
+                />
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Tài khoản / Ví
                 </label>
-                <select
-                  value={recWalletId}
-                  onChange={(e) => setRecWalletId(e.target.value)}
-                  className="input-ios"
-                >
-                  {wallets.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect
+                  value={recWalletId || (wallets[0]?.id ?? '')}
+                  onChange={setRecWalletId}
+                  options={wallets.map((w) => ({
+                    value: w.id,
+                    label: `${w.name} (${formatVND(w.balance)})`
+                  }))}
+                  triggerClassName="bg-slate-800"
+                />
               </div>
             </div>
 
@@ -1241,21 +1241,24 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-          <button
-            type="button"
-            onClick={() => setSubView('MAIN')}
-            className="text-sky-400 font-semibold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
-          >
-            ← Quay lại mục Khác
-          </button>
-          <span className="text-xs font-bold text-slate-100 uppercase">
+        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+          <div className="w-9 shrink-0 flex items-center justify-start">
+            <button
+              type="button"
+              onClick={() => setSubView('MAIN')}
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              title="Quay lại"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          </div>
+          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
             Sự kiện & Chuyến đi
           </span>
           <button
             type="button"
             onClick={() => setIsAddingEvent(!isAddingEvent)}
-            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30"
+            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1.5 rounded-xl border border-emerald-500/30 shrink-0"
           >
             <Plus size={14} /> Tạo mới
           </button>
@@ -1316,14 +1319,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-1">
-                  Ngày bắt đầu
-                </label>
-                <input
-                  type="date"
+                <DatePicker
                   value={evStartDate}
-                  onChange={(e) => setEvStartDate(e.target.value)}
-                  className="input-ios"
+                  onChange={setEvStartDate}
+                  label="Ngày bắt đầu"
                 />
               </div>
             </div>
@@ -1607,21 +1606,21 @@ export const MoreTab: React.FC<MoreTabProps> = ({
             </div>
 
             <div className="pt-1">
-              <select
+              <CustomSelect
                 value={defaultInitialTab}
-                onChange={(e) => {
-                  const selectedId = e.target.value as AppStartupTab;
-                  onChangeDefaultTab(selectedId);
+                onChange={(val) => {
+                  onChangeDefaultTab(val as AppStartupTab);
                   showToast('Đã lưu màn hình khởi động mặc định!');
                 }}
-                className="input-ios cursor-pointer text-xs font-bold"
-              >
-                <option value="overview">📊 Tổng quan (Sổ giao dịch)</option>
-                <option value="editor">➕ Ghi giao dịch mới</option>
-                <option value="wallets">🏦 Tài khoản & Ví tiền</option>
-                <option value="analytics">📈 Báo cáo phân tích</option>
-                <option value="more">⚙️ Tiện ích khác</option>
-              </select>
+                options={[
+                  { value: 'overview', label: '📊 Tổng quan (Sổ giao dịch)' },
+                  { value: 'editor', label: '➕ Ghi giao dịch mới' },
+                  { value: 'wallets', label: '🏦 Tài khoản & Ví tiền' },
+                  { value: 'analytics', label: '📈 Báo cáo phân tích' },
+                  { value: 'more', label: '⚙️ Tiện ích khác' }
+                ]}
+                triggerClassName="text-xs font-bold bg-slate-800"
+              />
             </div>
           </div>
         </div>

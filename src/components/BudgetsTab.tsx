@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Category, Budget } from '../types';
 import { CategoryIcon } from './CategoryIcon';
+import { CustomSelect } from './ui/CustomSelect';
 import {
   formatVND,
   formatMonthDisplay,
@@ -22,7 +23,8 @@ import {
   X,
   Calendar,
   ShieldCheck,
-  Check
+  Check,
+  ArrowLeft
 } from 'lucide-react';
 
 interface BudgetsTabProps {
@@ -271,14 +273,15 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
           <button
             type="button"
             onClick={() => setIsModalOpen(false)}
-            className="touch-btn text-sky-400 font-bold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            ← Quay lại hạn mức
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
             {editingBudget ? 'Chỉnh sửa hạn mức' : 'Thiết lập hạn mức mới'}
           </span>
-          <div className="w-12" />
+          <div className="w-9" />
         </div>
 
         <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">
@@ -286,29 +289,37 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
               Chọn danh mục hoặc nhóm áp dụng
             </label>
-            <select
+            <CustomSelect
               value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              className="input-ios"
-            >
-              <option value="">🎯 Hạn mức chung cho toàn bộ chi tiêu tháng</option>
-              {parentExpenseCategories.length > 0 && (
-                <optgroup label="Nhóm Cha 50/30/20 (Tự động cộng gộp các mục con)">
-                  {parentExpenseCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      📁 {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="Hạng mục chi tiết">
-                {childExpenseCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    • {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+              onChange={setSelectedCategoryId}
+              groups={[
+                {
+                  label: '',
+                  options: [
+                    { value: '', label: '🎯 Hạn mức chung cho toàn bộ chi tiêu tháng' }
+                  ]
+                },
+                ...(parentExpenseCategories.length > 0
+                  ? [
+                      {
+                        label: 'Nhóm Cha 50/30/20 (Tự động cộng gộp các mục con)',
+                        options: parentExpenseCategories.map((c) => ({
+                          value: c.id,
+                          label: `📁 ${c.name}`
+                        }))
+                      }
+                    ]
+                  : []),
+                {
+                  label: 'Hạng mục chi tiết',
+                  options: childExpenseCategories.map((c) => ({
+                    value: c.id,
+                    label: `• ${c.name}`
+                  }))
+                }
+              ]}
+              triggerClassName="bg-slate-800 font-medium"
+            />
           </div>
 
           <div>
@@ -376,16 +387,17 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
   return (
     <div className="pb-28">
       {onBack && (
-        <div className="px-4 pt-3 pb-1 flex items-center justify-between border-b border-white/8 mb-2">
+        <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-white/8 mb-2">
           <button
             type="button"
             onClick={onBack}
-            className="text-sky-400 font-semibold text-xs flex items-center gap-1 cursor-pointer bg-transparent border-none p-1"
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
           >
-            ← Quay lại mục Khác
+            <ArrowLeft size={18} />
           </button>
-          <span className="text-xs font-bold text-slate-100 uppercase">Hạn mức chi tiêu</span>
-          <div className="w-12" />
+          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-2">Hạn mức chi tiêu</span>
+          <div className="w-9" />
         </div>
       )}
 

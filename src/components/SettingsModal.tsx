@@ -20,6 +20,7 @@ import {
   performSupabaseSmartSync
 } from '../services/supabaseService';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
+import { CustomSelect } from './ui/CustomSelect';
 import {
   ArrowLeft,
   Clock,
@@ -431,22 +432,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
-      {/* Header Màn hình phẳng */}
-      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onClose}
-          className="touch-btn flex items-center gap-1.5 text-sky-400 font-semibold text-sm cursor-pointer border-none bg-transparent py-1 px-1 -ml-1"
-        >
-          <ArrowLeft size={19} />
-          <span>Quay lại</span>
-        </button>
+      {/* Header Màn hình phẳng cân đối */}
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3">
+        <div className="w-9 shrink-0 flex items-center justify-start">
+          <button
+            type="button"
+            onClick={onClose}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        </div>
 
-        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
+        <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider text-center flex-1 truncate m-0">
           Đồng bộ Supabase & Sao lưu
         </h2>
 
-        <div className="w-12" />
+        <div className="w-9 shrink-0" />
       </div>
 
       {/* Thông báo trạng thái */}
@@ -797,17 +800,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
 
           <div className="pt-1">
-            <select
+            <CustomSelect
               value={defaultStartTab}
-              onChange={(e) => handleSelectDefaultStartTab(e.target.value)}
-              className="input-ios cursor-pointer text-xs font-bold"
-            >
-              <option value="overview">📊 Tổng quan (Sổ giao dịch)</option>
-              <option value="editor">➕ Ghi giao dịch mới</option>
-              <option value="wallets">🏦 Tài khoản & Ví tiền</option>
-              <option value="analytics">📈 Báo cáo phân tích</option>
-              <option value="more">⚙️ Tiện ích khác</option>
-            </select>
+              onChange={handleSelectDefaultStartTab}
+              options={[
+                { value: 'overview', label: '📊 Tổng quan (Sổ giao dịch)' },
+                { value: 'editor', label: '➕ Ghi giao dịch mới' },
+                { value: 'wallets', label: '🏦 Tài khoản & Ví tiền' },
+                { value: 'analytics', label: '📈 Báo cáo phân tích' },
+                { value: 'more', label: '⚙️ Tiện ích khác' }
+              ]}
+              triggerClassName="text-xs font-bold bg-slate-800"
+            />
           </div>
         </div>
 
@@ -882,14 +886,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             <div className="flex items-center justify-between pt-2 border-t border-white/5">
               <span className="text-xs text-slate-400 font-medium">Phạm vi:</span>
-              <select
+              <CustomSelect
                 value={excelScope}
-                onChange={(e) => setExcelScope(e.target.value)}
-                className="input-ios bg-slate-900 text-slate-200 border border-white/10 rounded-xl px-2.5 py-1 text-xs outline-none cursor-pointer"
-              >
-                <option value="all">Toàn bộ lịch sử ({txCount} GD)</option>
-                <option value={getCurrentMonth()}>Tháng hiện tại ({getCurrentMonth()})</option>
-              </select>
+                onChange={setExcelScope}
+                options={[
+                  { value: 'all', label: `Toàn bộ lịch sử (${txCount} GD)` },
+                  { value: getCurrentMonth(), label: `Tháng hiện tại (${getCurrentMonth()})` }
+                ]}
+                className="max-w-[220px]"
+                triggerClassName="text-xs py-1.5 px-2.5 bg-slate-800"
+              />
             </div>
 
             <button

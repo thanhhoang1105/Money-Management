@@ -212,6 +212,7 @@
     height: 44px;
     border-radius: 14px;
     flex-shrink: 0;
+    overflow: hidden;
     transition: transform 0.2s ease;
   }
 

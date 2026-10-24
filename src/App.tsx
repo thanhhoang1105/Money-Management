@@ -401,6 +401,9 @@ export function App() {
                 setEditingTransaction(null);
               }}
               editingTransaction={editingTransaction}
+              onSelectTransactionToEdit={(tx) => {
+                setEditingTransaction(tx);
+              }}
             />
           ) : isSettingsOpen ? (
             <SettingsModal

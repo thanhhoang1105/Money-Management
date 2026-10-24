@@ -383,9 +383,30 @@ interface BankLogoProps {
  */
 export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className = '' }) => {
   const [imgFailed, setImgFailed] = useState(false);
+  const isSmall = size <= 20;
 
   // 1. Render Vector Logo chuẩn thương hiệu cho Ví điện tử, Thẻ quốc tế & Tiền mặt
   if (brand.code === 'MOMO') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #D82D8B 0%, #A50064 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-white leading-none tracking-tighter"
+            style={{ fontSize: Math.round(size * 0.6) }}
+          >
+            M
+          </span>
+        </div>
+      );
+    }
     return (
       <div
         className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
@@ -413,6 +434,22 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'ZALOPAY') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden bg-white ${className}`}
+          style={{ width: size, height: size }}
+          title={brand.name}
+        >
+          <span
+            className="font-black leading-none tracking-tight"
+            style={{ color: '#0068FF', fontSize: Math.round(size * 0.6) }}
+          >
+            Z
+          </span>
+        </div>
+      );
+    }
     return (
       <div
         className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden bg-white p-0.5 ${className}`}
@@ -439,9 +476,25 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'VNPAY') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm bg-white overflow-hidden ${className}`}
+          style={{ width: size, height: size }}
+          title={brand.name}
+        >
+          <span
+            className="font-black tracking-tighter leading-none"
+            style={{ fontSize: Math.round(size * 0.6), color: '#E30613' }}
+          >
+            V
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex items-center justify-center shrink-0 select-none shadow-sm bg-white px-1 ${className}`}
+        className={`rounded-xl flex items-center justify-center shrink-0 select-none shadow-sm bg-white px-1 overflow-hidden ${className}`}
         style={{ width: size, height: size }}
         title={brand.name}
       >
@@ -457,9 +510,29 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'VIETTEL') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #EE0033 0%, #B80028 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-white leading-none tracking-tight"
+            style={{ fontSize: Math.round(size * 0.6) }}
+          >
+            V
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm ${className}`}
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
         style={{
           width: size,
           height: size,
@@ -484,9 +557,29 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'SHOPEEPAY') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #FF7337 0%, #EE4D2D 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-white leading-none"
+            style={{ fontSize: Math.round(size * 0.6) }}
+          >
+            S
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm ${className}`}
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
         style={{
           width: size,
           height: size,
@@ -513,7 +606,9 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   if (brand.code === 'MASTERCARD') {
     return (
       <div
-        className={`rounded-xl flex items-center justify-center shrink-0 select-none shadow-sm bg-slate-950 border border-white/10 ${className}`}
+        className={`${
+          isSmall ? 'rounded-md' : 'rounded-xl'
+        } flex items-center justify-center shrink-0 select-none shadow-sm bg-slate-950 border border-white/10 overflow-hidden ${className}`}
         style={{ width: size, height: size }}
         title={brand.name}
       >
@@ -526,9 +621,25 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'VISA') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm bg-white overflow-hidden ${className}`}
+          style={{ width: size, height: size }}
+          title={brand.name}
+        >
+          <span
+            className="font-black italic tracking-tighter leading-none"
+            style={{ color: '#1A1F71', fontSize: Math.round(size * 0.55) }}
+          >
+            V
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex items-center justify-center shrink-0 select-none shadow-sm bg-white px-1 ${className}`}
+        className={`rounded-xl flex items-center justify-center shrink-0 select-none shadow-sm bg-white px-1 overflow-hidden ${className}`}
         style={{ width: size, height: size }}
         title={brand.name}
       >
@@ -543,9 +654,29 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'CASH') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #10B981 0%, #047857 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-white leading-none"
+            style={{ fontSize: Math.round(size * 0.65) }}
+          >
+            ₫
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm ${className}`}
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
         style={{
           width: size,
           height: size,
@@ -570,9 +701,29 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   }
 
   if (brand.code === 'SJC') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #FBBF24 0%, #D97706 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-slate-950 leading-none tracking-tight"
+            style={{ fontSize: Math.round(size * 0.55) }}
+          >
+            Au
+          </span>
+        </div>
+      );
+    }
     return (
       <div
-        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm ${className}`}
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
         style={{
           width: size,
           height: size,
@@ -600,7 +751,9 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   if (brand.logoUrl && !imgFailed) {
     return (
       <div
-        className={`rounded-xl bg-white flex items-center justify-center shrink-0 p-1 shadow-sm overflow-hidden border border-white/20 ${className}`}
+        className={`${
+          isSmall ? 'rounded-md p-0.5' : 'rounded-xl p-1'
+        } bg-white flex items-center justify-center shrink-0 shadow-sm overflow-hidden border border-white/20 ${className}`}
         style={{ width: size, height: size }}
         title={brand.name}
       >
@@ -618,7 +771,9 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
   // Fallback Vector Badge mang màu sắc chuẩn của Ngân hàng khi hoàn toàn offline
   return (
     <div
-      className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm px-1 ${className}`}
+      className={`${
+        isSmall ? 'rounded-md px-0.5' : 'rounded-xl px-1'
+      } flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
       style={{
         width: size,
         height: size,
@@ -628,9 +783,13 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
     >
       <span
         className="font-black text-white leading-none tracking-tighter uppercase"
-        style={{ fontSize: Math.max(9, Math.round(size * 0.28)) }}
+        style={{
+          fontSize: isSmall
+            ? Math.max(7, Math.round(size * 0.45))
+            : Math.max(9, Math.round(size * 0.28))
+        }}
       >
-        {brand.code}
+        {isSmall ? brand.code.slice(0, 3) : brand.code}
       </span>
     </div>
   );
