@@ -436,7 +436,15 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   const currentComputedAmount = evaluateExpression(amountStr);
   const hasOperator = /[+\-*/]/.test(amountStr);
-  const activeTags = getNoteTags(note);
+  const activeTags = useMemo(() => getNoteTags(note), [note]);
+
+  // Kết hợp cả tag của danh mục và các tag đang có trong note để không bao giờ bị ẩn tag người dùng đã nhập
+  const allCategoryTags = useMemo(() => {
+    const catTags = selectedCategory?.quickTags || [];
+    const set = new Set([...catTags, ...activeTags]);
+    return Array.from(set);
+  }, [selectedCategory?.quickTags, activeTags]);
+
   const adjustDiff = currentWallet ? currentComputedAmount - currentWallet.balance : 0;
 
   const handleKeyPress = (key: string) => {
@@ -503,31 +511,47 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     }
   };
 
-  const handleSaveNewTag = async () => {
-    const trimmed = newTagInput.trim();
-    if (!trimmed || !selectedCategory) {
+  const commitNewTag = async (rawInput?: string): Promise<string> => {
+    const text = (rawInput !== undefined ? rawInput : newTagInput).trim();
+    if (!text) {
       setIsAddingTag(false);
       setNewTagInput('');
-      return;
+      return note.trim();
     }
 
-    try {
-      const currentQuickTags = selectedCategory.quickTags || [];
-      if (!currentQuickTags.includes(trimmed)) {
-        await db.categories.update(selectedCategory.id, {
-          quickTags: [...currentQuickTags, trimmed]
-        });
-      }
-      const current = getNoteTags(note);
-      if (!current.includes(trimmed)) {
-        setNote([...current, trimmed].join(', '));
-      }
+    const newTags = text
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    if (newTags.length === 0) {
+      setIsAddingTag(false);
       setNewTagInput('');
-      setIsAddingTag(false);
-    } catch (err: any) {
-      console.error('Lỗi thêm quick tag:', err);
-      setIsAddingTag(false);
+      return note.trim();
     }
+
+    // 1. Cập nhật vào note
+    const currentTags = getNoteTags(note);
+    const mergedTags = Array.from(new Set([...currentTags, ...newTags]));
+    const updatedNote = mergedTags.join(', ');
+    setNote(updatedNote);
+
+    // 2. Cập nhật vào danh mục (nếu có danh mục đang chọn)
+    if (selectedCategory) {
+      try {
+        const currentQuickTags = selectedCategory.quickTags || [];
+        const updatedQuickTags = Array.from(new Set([...currentQuickTags, ...newTags]));
+        await db.categories.update(selectedCategory.id, {
+          quickTags: updatedQuickTags
+        });
+      } catch (err: any) {
+        console.error('Lỗi lưu quick tag vào danh mục:', err);
+      }
+    }
+
+    setNewTagInput('');
+    setIsAddingTag(false);
+    return updatedNote;
   };
 
   const handleSave = async (keepOpenForNext = false) => {
@@ -542,6 +566,12 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     if (!selectedWalletId) {
       setErrorMsg('Vui lòng chọn tài khoản / ví');
       return;
+    }
+
+    // Tự động lưu tag đang gõ dở (nếu có) trước khi tạo/cập nhật giao dịch
+    let finalNote = note.trim();
+    if (newTagInput.trim()) {
+      finalNote = await commitNewTag(newTagInput);
     }
 
     if (type === 'TRANSFER') {
@@ -606,7 +636,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           excludeFromReport: chosenExclude,
           date,
           time: editingTransaction.time || getCurrentTime(),
-          note: note.trim()
+          note: finalNote
         });
         handleCloseOrReturnToHistory();
       } else {
@@ -622,12 +652,14 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           excludeFromReport: chosenExclude,
           date,
           time: getCurrentTime(),
-          note: note.trim()
+          note: finalNote
         });
 
         if (keepOpenForNext) {
           setAmountStr('0');
           setNote('');
+          setNewTagInput('');
+          setIsAddingTag(false);
           setTransferFeeStr('0');
           setExcludeFromReport(false);
           setIsNumpadOpen(false);
@@ -1273,7 +1305,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   )}
                 </div>
                 <div className="flex gap-1.5 overflow-x-auto items-center pb-1 scrollbar-none">
-                  {(selectedCategory.quickTags || []).map((tag) => {
+                  {allCategoryTags.map((tag) => {
                     const isActive = activeTags.includes(tag);
                     return (
                       <button
@@ -1282,7 +1314,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                         onClick={() => handleToggleTag(tag)}
                         className={`touch-btn px-3 py-1 rounded-full text-xs whitespace-nowrap cursor-pointer flex items-center gap-1 transition-all ${
                           isActive
-                            ? 'bg-sky-500 text-white border border-sky-400 font-bold'
+                            ? 'bg-sky-500 text-white border border-sky-400 font-bold shadow-sm'
                             : 'bg-slate-800 text-slate-400 border border-white/8 hover:text-slate-200'
                         }`}
                       >
@@ -1293,35 +1325,68 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   })}
 
                   {isAddingTag ? (
-                    <div className="flex items-center gap-1 shrink-0 bg-slate-800 rounded-full px-2 py-0.5 border border-sky-400">
+                    <div className="flex items-center gap-1.5 shrink-0 bg-slate-800 rounded-full pl-3 pr-1 py-0.5 border border-sky-400 shadow-md animate-fade-in">
                       <input
                         type="text"
                         value={newTagInput}
-                        onChange={(e) => setNewTagInput(e.target.value)}
-                        placeholder="Tag mới..."
-                        className="bg-transparent border-none text-white text-xs outline-none w-20 py-0.5"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveNewTag();
-                          if (e.key === 'Escape') setIsAddingTag(false);
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val.includes(',')) {
+                            commitNewTag(val);
+                          } else {
+                            setNewTagInput(val);
+                          }
                         }}
+                        onBlur={() => {
+                          if (newTagInput.trim()) {
+                            commitNewTag();
+                          } else {
+                            setIsAddingTag(false);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitNewTag();
+                          } else if (e.key === 'Escape') {
+                            setIsAddingTag(false);
+                            setNewTagInput('');
+                          }
+                        }}
+                        placeholder="Nhập tag..."
+                        className="bg-transparent border-none text-white text-xs outline-none min-w-[90px] max-w-[150px] py-0.5"
+                        autoFocus
                       />
                       <button
                         type="button"
-                        onClick={handleSaveNewTag}
-                        className="text-sky-400 p-1 hover:text-sky-300"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => commitNewTag()}
+                        className="touch-btn text-slate-950 bg-sky-400 hover:bg-sky-300 w-6 h-6 rounded-full cursor-pointer border-none flex items-center justify-center shrink-0"
+                        title="Thêm tag"
                       >
-                        <Check size={13} strokeWidth={3} />
+                        <Check size={12} strokeWidth={3} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setIsAddingTag(false);
+                          setNewTagInput('');
+                        }}
+                        className="touch-btn text-slate-400 hover:text-white w-5 h-5 rounded-full cursor-pointer border-none flex items-center justify-center shrink-0"
+                        title="Hủy"
+                      >
+                        <X size={12} />
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setIsAddingTag(true)}
-                      className="touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-dashed border-white/20 flex items-center gap-1 cursor-pointer"
+                      className="touch-btn px-2.5 py-1 rounded-full text-xs whitespace-nowrap bg-slate-800/80 hover:bg-slate-800 text-sky-400 hover:text-sky-300 border border-dashed border-sky-400/40 flex items-center gap-1 cursor-pointer transition-colors"
                     >
-                      <Plus size={12} />
-                      <span>Thêm</span>
+                      <Plus size={12} strokeWidth={2.5} />
+                      <span>Thêm tag</span>
                     </button>
                   )}
                 </div>

@@ -10,7 +10,9 @@ import {
   CreditCard,
   Banknote,
   ArrowRightLeft,
-  Sparkles
+  Sparkles,
+  Gift,
+  RefreshCw
 } from 'lucide-react';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import { DatePicker } from './ui/DatePicker';
@@ -19,7 +21,8 @@ import {
   getGrabWalletsConfig,
   saveGrabWalletsConfig,
   createDefaultGrabWallets,
-  recordGrabTrip
+  recordGrabTrip,
+  migrateLegacyGrabTransactions
 } from '../services/grabService';
 import { transferFunds } from '../services/transactionService';
 
@@ -44,6 +47,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
   // Input states
   const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
   const [netIncomeInput, setNetIncomeInput] = useState<string>('');
+  const [tipAmountInput, setTipAmountInput] = useState<string>('');
+  const [tipType, setTipType] = useState<'CASH' | 'IN_APP'>('CASH');
   const [date, setDate] = useState<string>(getCurrentDate());
   const [time, setTime] = useState<string>(getCurrentTime());
   const [note, setNote] = useState<string>('');
@@ -63,10 +68,15 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Load configuration
+  // Load configuration & tự động chuẩn hóa cuốc Grab cũ về Vốn lưu động
   useEffect(() => {
     if (!isOpen) return;
     (async () => {
+      try {
+        await migrateLegacyGrabTransactions();
+      } catch {
+        // Im lặng nếu đã được chuẩn hóa trước đó
+      }
       const config = await getGrabWalletsConfig();
       setCreditWalletId(config.creditWalletId);
       setGrabCashWalletId(config.grabCashWalletId);
@@ -96,16 +106,28 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     return Number.isFinite(raw) ? raw : 0;
   }, [netIncomeInput]);
 
+  const tipAmount = useMemo(() => {
+    const raw = Number(tipAmountInput.replace(/\D/g, ''));
+    return Number.isFinite(raw) ? raw : 0;
+  }, [tipAmountInput]);
+
   const transferAmount = useMemo(() => {
     const raw = Number(transferAmountInput.replace(/\D/g, ''));
     return Number.isFinite(raw) ? raw : 0;
   }, [transferAmountInput]);
 
-  // Phí Grab tính tự động cho cuốc tiền mặt: Cước khách trả - Thu nhập ròng
-  const grabFee = useMemo(() => {
+  // Vốn lưu động Grab khấu trừ từ ví tín dụng (bù bằng tiền mặt khách đưa)
+  const workingCapital = useMemo(() => {
     if (mode !== 'CASH') return 0;
-    return Math.max(0, cashReceived - netIncome);
-  }, [mode, cashReceived, netIncome]);
+    const isCashTip = tipAmount > 0 && tipType === 'CASH';
+    const tripFare = isCashTip ? Math.max(0, cashReceived - tipAmount) : cashReceived;
+    return Math.max(0, tripFare - netIncome);
+  }, [mode, cashReceived, netIncome, tipAmount, tipType]);
+
+  // Thu nhập thực tế tài xế giữ được từ cuốc xe
+  const totalEarned = useMemo(() => {
+    return netIncome + tipAmount;
+  }, [netIncome, tipAmount]);
 
   // Thông tin ví đang dùng
   const creditWallet = wallets.find((w) => w.id === creditWalletId);
@@ -150,21 +172,41 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     setTimeout(() => setFeedback(''), 2500);
   };
 
+  // Nút chạy chuẩn hóa cuốc cũ thủ công
+  const handleManualMigrate = async () => {
+    try {
+      const count = await migrateLegacyGrabTransactions();
+      if (count > 0) {
+        setFeedback(`Đã chuẩn hóa ${count} cuốc Grab cũ về Vốn lưu động & Thu nhập ròng!`);
+      } else {
+        setFeedback('Dữ liệu các cuốc Grab đã chuẩn 100%!');
+      }
+      setTimeout(() => setFeedback(''), 3000);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi chuẩn hóa');
+    }
+  };
+
   // Cộng nhanh tiền vào ô đang chọn
-  const handleQuickAddAmount = (add: number, target: 'CASH_RECEIVED' | 'NET_INCOME') => {
+  const handleQuickAddAmount = (add: number, target: 'CASH_RECEIVED' | 'NET_INCOME' | 'TIP') => {
     if (target === 'CASH_RECEIVED') {
       const next = cashReceived + add;
       setCashReceivedInput(new Intl.NumberFormat('vi-VN').format(next));
-    } else {
+    } else if (target === 'NET_INCOME') {
       const next = netIncome + add;
       setNetIncomeInput(new Intl.NumberFormat('vi-VN').format(next));
+    } else {
+      const next = tipAmount + add;
+      setTipAmountInput(new Intl.NumberFormat('vi-VN').format(next));
     }
   };
 
   // Áp dụng ước tính nhanh tỷ lệ % thu nhập ròng thông dụng của Grab (chiết khấu ~25-28%)
   const handleQuickEstimateNet = (percent: number) => {
     if (cashReceived <= 0) return;
-    const estimated = Math.round((cashReceived * percent) / 1000) * 1000;
+    const isCashTip = tipAmount > 0 && tipType === 'CASH';
+    const tripFare = isCashTip ? Math.max(0, cashReceived - tipAmount) : cashReceived;
+    const estimated = Math.round((tripFare * percent) / 1000) * 1000;
     setNetIncomeInput(new Intl.NumberFormat('vi-VN').format(estimated));
   };
 
@@ -200,6 +242,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
         paymentMethod: mode as 'CASH' | 'CARD',
         cashReceived,
         netIncome,
+        tipAmount,
+        tipType,
         creditWalletId,
         grabCashWalletId,
         physicalCashWalletId,
@@ -210,8 +254,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
       const successText =
         mode === 'CASH'
-          ? `Đã ghi cuốc Grab tiền mặt: +${formatVND(res.netIncome)} ròng (Phí: ${formatVND(res.grabFee)})`
-          : `Đã ghi cuốc Grab thẻ: +${formatVND(res.netIncome)} vào ví tiền mặt Grab`;
+          ? `Đã ghi cuốc Grab tiền mặt: +${formatVND(res.totalEarned)} thu nhập thực nhận (Vốn luân chuyển: ${formatVND(res.workingCapital)})`
+          : `Đã ghi cuốc Grab thẻ: +${formatVND(res.totalEarned)} vào Ví Tiền Mặt Grab`;
 
       if (onSuccess) onSuccess(successText);
 
@@ -219,6 +263,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
         // Reset form để tài xế nhập tiếp cuốc sau
         setCashReceivedInput('');
         setNetIncomeInput('');
+        setTipAmountInput('');
         setNote('');
         setTime(getCurrentTime());
         setFeedback(successText);
@@ -420,21 +465,32 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-1 border-t border-white/6">
+              <div className="flex justify-between items-center gap-2 pt-2 border-t border-white/6">
                 <button
                   type="button"
-                  onClick={() => setIsConfigOpen(false)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 font-semibold cursor-pointer border-none"
+                  onClick={handleManualMigrate}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-semibold cursor-pointer border border-sky-500/20 text-xs flex items-center gap-1.5"
+                  title="Chuyển đổi toàn bộ cuốc Grab cũ sang chuẩn Vốn lưu động & Thu nhập ròng"
                 >
-                  Đóng
+                  <RefreshCw size={13} />
+                  Chuẩn hóa cuốc cũ
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSaveConfig}
-                  className="px-4 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold cursor-pointer border-none"
-                >
-                  Lưu cấu hình ví
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigOpen(false)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 font-semibold cursor-pointer border-none"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveConfig}
+                    className="px-4 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold cursor-pointer border-none"
+                  >
+                    Lưu cấu hình ví
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -555,8 +611,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-emerald-500/30 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-emerald-300 uppercase tracking-wide flex items-center gap-1">
-                    <span>✨ Thu nhập ròng trên Grab</span>
-                    <span className="text-[10px] text-slate-400 normal-case">(Lợi nhuận bạn giữ)</span>
+                    <span>✨ Thu nhập ròng cuốc xe</span>
+                    <span className="text-[10px] text-slate-400 normal-case">(Hiển thị trên app Grab)</span>
                   </label>
                   {netIncome > 0 && (
                     <button
@@ -610,42 +666,147 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 )}
               </div>
 
-              {/* KHUNG TÓM TẮT PHÂN BỔ DÒNG TIỀN TRỰC QUAN */}
+              {/* Ô 3: TIỀN TIP (TIỀN BO) */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-purple-500/30 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Gift size={15} className="text-purple-400" />
+                    <label className="text-xs font-bold text-purple-300 uppercase tracking-wide">
+                      Tiền Tip (Khách bo thêm)
+                    </label>
+                    <span className="text-[10px] text-purple-400/80 font-medium">
+                      (Grab 100% không thu phí)
+                    </span>
+                  </div>
+                  {tipAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTipAmountInput('')}
+                      className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={tipAmountInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setTipAmountInput(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
+                  }}
+                  placeholder="0 ₫ (nếu có khách bo thêm)"
+                  className="input-ios text-xl font-bold font-heading text-purple-400 py-1 bg-transparent border-none outline-none"
+                />
+
+                {/* Các nút bấm tip nhanh */}
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-white/6">
+                  {[5000, 10000, 20000, 50000].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleQuickAddAmount(val, 'TIP')}
+                      className="touch-btn text-[11px] font-bold py-1 px-2.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 cursor-pointer"
+                    >
+                      +{val >= 1000 ? `${val / 1000}k` : val}
+                    </button>
+                  ))}
+                </div>
+
+                {tipAmount > 0 && (
+                  <div className="flex flex-col gap-1.5 pt-1.5 border-t border-white/6">
+                    <span className="text-[11px] text-slate-300 font-semibold">Khách đưa tip bằng cách nào?</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTipType('CASH')}
+                        className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                          tipType === 'CASH'
+                            ? 'bg-purple-500/20 border-purple-400 text-purple-200 font-bold'
+                            : 'bg-slate-900 border-white/6 text-slate-400'
+                        }`}
+                      >
+                        <div className="text-xs">💵 Khỏi thối / Đưa thêm</div>
+                        <div className="text-[10px] text-slate-400">Đã gộp trong tiền mặt khách đưa</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTipType('IN_APP')}
+                        className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                          tipType === 'IN_APP'
+                            ? 'bg-purple-500/20 border-purple-400 text-purple-200 font-bold'
+                            : 'bg-slate-900 border-white/6 text-slate-400'
+                        }`}
+                      >
+                        <div className="text-xs">📱 Khách tip qua app</div>
+                        <div className="text-[10px] text-slate-400">Grab cộng vào Ví TM Grab</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* KHUNG TÓM TẮT PHÂN BỔ DÒNG TIỀN THỰC TẾ */}
               {(cashReceived > 0 || netIncome > 0) && (
-                <div className="p-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-white/10 flex flex-col gap-1.5 text-xs">
-                  <div className="font-extrabold text-slate-200 flex items-center justify-between pb-1 border-b border-white/6">
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-white/10 flex flex-col gap-2 text-xs">
+                  <div className="font-extrabold text-slate-200 flex items-center justify-between pb-1.5 border-b border-white/6">
                     <span className="flex items-center gap-1.5">
                       <Sparkles size={14} className="text-emerald-400" />
-                      Phân bổ dòng tiền tự động:
+                      Phân bổ dòng tiền thực tế:
                     </span>
-                    <span className="text-[11px] text-emerald-400 font-bold">Chuẩn 100%</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                      Chuẩn kế toán
+                    </span>
                   </div>
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
                     <span className="text-slate-400">💵 Tiền mặt bỏ vào túi:</span>
-                    <span className="font-extrabold text-amber-400">+{formatVND(cashReceived)}</span>
+                    <span className="font-extrabold text-amber-400 text-sm">+{formatVND(cashReceived)}</span>
                   </div>
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
-                    <span className="text-slate-400">📉 Phí Grab trừ Ví Tín Dụng:</span>
-                    <span className="font-extrabold text-rose-400">
-                      {grabFee > 0 ? `-${formatVND(grabFee)}` : '0 ₫'}
+                    <div className="flex flex-col">
+                      <span className="text-slate-400">💼 Vốn lưu động luân chuyển:</span>
+                      <span className="text-[10px] text-slate-500">
+                        (Grab trừ Ví Tín Dụng ➔ Bù tiền mặt vào túi, KHÔNG tính chi tiêu)
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-sky-400 text-sm">
+                      {workingCapital > 0 ? formatVND(workingCapital) : '0 ₫'}
                     </span>
                   </div>
 
+                  {tipAmount > 0 && (
+                    <div className="flex justify-between items-center text-slate-300 py-0.5">
+                      <span className="text-purple-300">
+                        🎁 Tiền tip ({tipType === 'CASH' ? 'tiền mặt' : 'trên app'}):
+                      </span>
+                      <span className="font-extrabold text-purple-400">
+                        +{formatVND(tipAmount)}
+                      </span>
+                    </div>
+                  )}
+
                   {cashReceived < netIncome && cashReceived > 0 && (
                     <div className="flex justify-between items-center text-slate-300 py-0.5">
-                      <span className="text-slate-400">🎁 Grab trợ giá khuyến mãi:</span>
+                      <span className="text-slate-400">🎁 Grab trợ giá voucher vào ví app:</span>
                       <span className="font-extrabold text-sky-400">
                         +{formatVND(netIncome - cashReceived)}
                       </span>
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center pt-1.5 mt-0.5 border-t border-white/6 font-extrabold">
-                    <span className="text-slate-200">✨ Lợi nhuận ròng bạn kiếm được:</span>
-                    <span className="text-sm font-heading font-black text-income">
-                      +{formatVND(netIncome)}
+                  <div className="flex justify-between items-center pt-2 mt-0.5 border-t border-white/8 font-extrabold">
+                    <div className="flex flex-col">
+                      <span className="text-slate-100 text-xs">✨ Thu nhập thực nhận (Ghi nhận Thu):</span>
+                      <span className="text-[10px] text-emerald-400/80 font-normal">
+                        Chỉ tính khoản dư ra kiếm được từ Grab
+                      </span>
+                    </div>
+                    <span className="text-base font-heading font-black text-income">
+                      +{formatVND(totalEarned)}
                     </span>
                   </div>
                 </div>
@@ -699,20 +860,80 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 </div>
               </div>
 
+              {/* Ô TIP APP CHO CUỐC THẺ */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-purple-500/30 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Gift size={15} className="text-purple-400" />
+                    <label className="text-xs font-bold text-purple-300 uppercase tracking-wide">
+                      Tiền Tip trên App (nếu có)
+                    </label>
+                    <span className="text-[10px] text-purple-400/80 font-medium">
+                      (100% về ví app)
+                    </span>
+                  </div>
+                  {tipAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTipAmountInput('')}
+                      className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={tipAmountInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setTipAmountInput(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
+                  }}
+                  placeholder="0 ₫ (Grab không thu phí tip)"
+                  className="input-ios text-xl font-bold font-heading text-purple-400 py-1 bg-transparent border-none outline-none"
+                />
+
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-white/6">
+                  {[5000, 10000, 20000, 50000].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleQuickAddAmount(val, 'TIP')}
+                      className="touch-btn text-[11px] font-bold py-1 px-2.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 cursor-pointer"
+                    >
+                      +{val >= 1000 ? `${val / 1000}k` : val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {netIncome > 0 && (
-                <div className="p-3 rounded-2xl bg-slate-950 border border-white/10 flex flex-col gap-1.5 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-white/10 flex flex-col gap-2 text-xs">
                   <div className="flex justify-between items-center text-slate-300">
-                    <span className="text-slate-400">📱 Ví Tiền Mặt Grab (app):</span>
+                    <span className="text-slate-400">📱 Thu nhập cuốc thẻ:</span>
                     <span className="font-extrabold text-emerald-400">+{formatVND(netIncome)}</span>
                   </div>
+                  {tipAmount > 0 && (
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-purple-300">🎁 Tiền tip trên app (100%):</span>
+                      <span className="font-extrabold text-purple-400">+{formatVND(tipAmount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center text-slate-300">
                     <span className="text-slate-400">💵 Tiền mặt bỏ túi:</span>
                     <span className="font-medium text-slate-400">0 ₫ (khách trả thẻ)</span>
                   </div>
-                  <div className="flex justify-between items-center pt-1 border-t border-white/6 font-extrabold">
-                    <span className="text-slate-200">✨ Lợi nhuận ròng:</span>
-                    <span className="text-sm font-heading font-black text-income">
-                      +{formatVND(netIncome)}
+                  <div className="flex justify-between items-center pt-2 mt-0.5 border-t border-white/8 font-extrabold">
+                    <div className="flex flex-col">
+                      <span className="text-slate-100 text-xs">✨ Tổng tiền vào Ví Tiền Mặt Grab:</span>
+                      <span className="text-[10px] text-emerald-400/80 font-normal">
+                        Có thể rút về tài khoản ngân hàng bất cứ lúc nào
+                      </span>
+                    </div>
+                    <span className="text-base font-heading font-black text-income">
+                      +{formatVND(totalEarned)}
                     </span>
                   </div>
                 </div>

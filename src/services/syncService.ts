@@ -4,7 +4,8 @@ import {
   SEED_CATEGORIES,
   PARENT_MUST_HAVE_ID,
   PARENT_NICE_TO_HAVE_ID,
-  PARENT_WASTED_ID
+  PARENT_WASTED_ID,
+  GRAB_FEE_CAT_ID
 } from '../db/seed';
 import { generateUUID } from '../utils/uuid';
 import type {
@@ -470,7 +471,8 @@ export function deduplicateSyncPayload(payload: SyncDataPayload): SyncDataPayloa
     PARENT_MUST_HAVE_ID,
     PARENT_NICE_TO_HAVE_ID,
     PARENT_WASTED_ID,
-    'system_adjustment'
+    'system_adjustment',
+    GRAB_FEE_CAT_ID
   ]);
 
   const categoryIdMap = new Map<string, string>();

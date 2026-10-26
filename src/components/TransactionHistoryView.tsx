@@ -738,13 +738,29 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
                                   </span>
                                 </span>
 
-                                {/* Ghi chú xuất hiện ở phía sau */}
+                                {/* Ghi chú & Thẻ tag xuất hiện ở phía sau */}
                                 {tx.note ? (
                                   <>
                                     <span className="text-slate-600 shrink-0">•</span>
-                                    <span className="text-slate-400 truncate min-w-0 flex-1">
-                                      {tx.note}
-                                    </span>
+                                    <div className="flex items-center gap-1.5 truncate min-w-0 flex-1">
+                                      {tx.note.split(',').map((part, idx) => {
+                                        const cleanTag = part.trim();
+                                        if (!cleanTag) return null;
+                                        const isShortTag = cleanTag.length <= 25 && !cleanTag.startsWith('[');
+                                        return (
+                                          <span
+                                            key={idx}
+                                            className={`inline-flex items-center text-[10px] truncate shrink-0 max-w-[150px] ${
+                                              isShortTag
+                                                ? 'font-medium px-1.5 py-0.5 rounded-md bg-slate-800 text-sky-300 border border-white/8'
+                                                : 'text-slate-400'
+                                            }`}
+                                          >
+                                            {isShortTag ? `#${cleanTag}` : cleanTag}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
                                   </>
                                 ) : null}
                               </div>

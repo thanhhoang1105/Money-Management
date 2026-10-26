@@ -2,11 +2,16 @@
 import { db, requestPersistentStorage, runWithoutDirtyTracking } from './index';
 import type { Wallet } from '../types';
 import { generateUUID } from '../utils/uuid';
+import { ensureGrabCategories, migrateLegacyGrabTransactions } from '../services/grabService';
 
 // 3 HẠNG MỤC CHA MẶC ĐỊNH CỦA KHOẢN CHI (EXPENSE)
 export const PARENT_MUST_HAVE_ID = 'cat_parent_must_have';
 export const PARENT_NICE_TO_HAVE_ID = 'cat_parent_nice_to_have';
 export const PARENT_WASTED_ID = 'cat_parent_wasted';
+
+// HẠNG MỤC CHO NGHIỆP VỤ TÀI XẾ GRAB
+export const GRAB_INCOME_CAT_ID = 'cat_income_grab';
+export const GRAB_FEE_CAT_ID = 'cat_expense_grab_fee';
 
 export interface SeedCategoryItem {
   id?: string;
@@ -219,12 +224,13 @@ export async function ensureHierarchicalCategories(): Promise<void> {
   await db.transaction('rw', [db.categories, db.settings], async () => {
     const allCats = await db.categories.toArray();
 
-    // 1. Xóa các hạng mục con EXPENSE mặc định cũ (chỉ giữ lại 3 cha Must have, Nice to have, Wasted, system_adjustment và các mục do user tự tạo isDefault === false)
+    // 1. Xóa các hạng mục con EXPENSE mặc định cũ (chỉ giữ lại 3 cha Must have, Nice to have, Wasted, system_adjustment, phí grab và các mục do user tự tạo isDefault === false)
     const expenseParentIds = new Set([
       PARENT_MUST_HAVE_ID,
       PARENT_NICE_TO_HAVE_ID,
       PARENT_WASTED_ID,
-      'system_adjustment'
+      'system_adjustment',
+      GRAB_FEE_CAT_ID
     ]);
 
     for (const cat of allCats) {
@@ -337,6 +343,8 @@ export async function initializeSeedData(): Promise<void> {
     await ensureDefaultSettings();
     await ensureDefaultWallets();
     await ensureHierarchicalCategories();
+    await ensureGrabCategories();
+    await migrateLegacyGrabTransactions();
 
     const isInitialized = await db.settings.get('has_seeded_v3');
     if (isInitialized?.value) {
