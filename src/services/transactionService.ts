@@ -8,6 +8,65 @@ import { getCurrentDate, getCurrentTime } from '../utils/formatters';
 export const SYSTEM_ADJUSTMENT_CATEGORY_ID = 'system_adjustment';
 
 /**
+ * Sắp xếp danh sách ví theo thứ tự `order` tùy chỉnh của người dùng
+ */
+export function sortWallets(wallets: Wallet[]): Wallet[] {
+  return [...wallets].sort((a, b) => {
+    const orderA = typeof a.order === 'number' ? a.order : 999999;
+    const orderB = typeof b.order === 'number' ? b.order : 999999;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+}
+
+/**
+ * Cập nhật thứ tự sắp xếp của toàn bộ danh sách ví vào IndexedDB
+ */
+export async function reorderWallets(walletIds: string[]): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction('rw', db.wallets, async () => {
+    for (let i = 0; i < walletIds.length; i++) {
+      await db.wallets.update(walletIds[i], {
+        order: i,
+        updatedAt: now
+      });
+    }
+  });
+}
+
+/**
+ * Di chuyển vị trí của 1 ví (Lên, Xuống, hoặc Đưa lên đầu danh sách)
+ */
+export async function moveWalletPosition(
+  walletId: string,
+  direction: 'UP' | 'DOWN' | 'TOP'
+): Promise<void> {
+  const allWallets = await db.wallets.toArray();
+  const sorted = sortWallets(allWallets);
+  const currentIndex = sorted.findIndex((w) => w.id === walletId);
+  if (currentIndex === -1) return;
+
+  const newSorted = [...sorted];
+  if (direction === 'TOP') {
+    if (currentIndex === 0) return;
+    const [target] = newSorted.splice(currentIndex, 1);
+    newSorted.unshift(target);
+  } else if (direction === 'UP') {
+    if (currentIndex === 0) return;
+    const temp = newSorted[currentIndex];
+    newSorted[currentIndex] = newSorted[currentIndex - 1];
+    newSorted[currentIndex - 1] = temp;
+  } else if (direction === 'DOWN') {
+    if (currentIndex >= newSorted.length - 1) return;
+    const temp = newSorted[currentIndex];
+    newSorted[currentIndex] = newSorted[currentIndex + 1];
+    newSorted[currentIndex + 1] = temp;
+  }
+
+  await reorderWallets(newSorted.map((w) => w.id));
+}
+
+/**
  * Tạo tài khoản / ví mới và lưu vào IndexedDB
  */
 export async function createWallet(params: {
@@ -17,8 +76,10 @@ export async function createWallet(params: {
   icon: string;
   color: string;
   isExcludedFromTotal?: boolean;
+  order?: number;
 }): Promise<Wallet> {
   const now = new Date().toISOString();
+  const count = await db.wallets.count();
   const newWallet: Wallet = {
     id: generateUUID(),
     name: params.name.trim(),
@@ -29,6 +90,7 @@ export async function createWallet(params: {
     icon: params.icon || 'Wallet',
     color: params.color || '#10B981',
     isExcludedFromTotal: Boolean(params.isExcludedFromTotal),
+    order: typeof params.order === 'number' ? params.order : count,
     createdAt: now,
     updatedAt: now
   };

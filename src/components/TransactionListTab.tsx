@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Transaction } from '../types';
-import { createTransaction } from '../services/transactionService';
+import { createTransaction, sortWallets } from '../services/transactionService';
 import { TransactionHistoryView } from './TransactionHistoryView';
 import { CustomSelect } from './ui/CustomSelect';
 import {
@@ -81,7 +81,8 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     }
   }, [resetSignal]);
 
-  const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const rawWallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const wallets = useMemo(() => sortWallets(rawWallets), [rawWallets]);
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const savedContactsSetting = useLiveQuery(() => db.settings.get('saved_debt_contacts'));
   const lastWalletSetting = useLiveQuery(() => db.settings.get('last_used_wallet_id'));

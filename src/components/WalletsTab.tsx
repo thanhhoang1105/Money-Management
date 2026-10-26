@@ -1,12 +1,15 @@
 // src/components/WalletsTab.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Wallet, WalletType } from '../types';
 import {
   createWallet,
   adjustWalletBalance,
-  deleteWallet
+  deleteWallet,
+  sortWallets,
+  moveWalletPosition,
+  reorderWallets
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import {
@@ -25,7 +28,12 @@ import {
   Check,
   SlidersHorizontal,
   ShieldAlert,
-  ArrowLeft
+  ArrowLeft,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUp,
+  GripVertical
 } from 'lucide-react';
 
 const WALLET_COLORS = [
@@ -47,15 +55,19 @@ interface WalletsTabProps {
 
 export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const sortedWallets = useMemo(() => sortWallets(wallets), [wallets]);
 
   const [viewMode, setViewMode] = useState<'LIST' | 'CREATE' | 'EDIT' | 'ADJUST'>('LIST');
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
+  const [draggedWalletId, setDraggedWalletId] = useState<string | null>(null);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về danh sách ví chính
   React.useEffect(() => {
     if (resetSignal !== undefined && resetSignal > 0) {
       setViewMode('LIST');
       setSelectedWallet(null);
+      setIsReordering(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [resetSignal]);
@@ -145,7 +157,8 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
         initialBalance: initBal,
         icon,
         color,
-        isExcludedFromTotal: isExcluded
+        isExcludedFromTotal: isExcluded,
+        order: wallets.length
       });
       setViewMode('LIST');
     } catch (err: any) {
@@ -490,32 +503,134 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
         )}
       </div>
 
-      {/* 2. Header Danh sách & Nút Thêm Ví */}
+      {/* 2. Header Danh sách, Nút Sắp Xếp & Nút Thêm Ví */}
       <div className="flex justify-between items-center mx-4 mt-4 mb-2.5 px-1">
-        <h3 className="text-sm font-bold text-slate-200 m-0">
-          DS Tài khoản ({wallets.length})
-        </h3>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="touch-btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-none py-2 px-3.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
-        >
-          <Plus size={16} strokeWidth={2.5} />
-          <span>Thêm Ví</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {isReordering ? (
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <h3 className="text-sm font-bold text-emerald-400 m-0">
+                Sắp xếp ví ({sortedWallets.length})
+              </h3>
+            </div>
+          ) : (
+            <h3 className="text-sm font-bold text-slate-200 m-0">
+              DS Tài khoản ({sortedWallets.length})
+            </h3>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {sortedWallets.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setIsReordering(!isReordering)}
+              className={`touch-btn py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                isReordering
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10'
+              }`}
+              title={isReordering ? 'Hoàn tất sắp xếp' : 'Thay đổi vị trí các ví'}
+            >
+              {isReordering ? (
+                <>
+                  <Check size={14} strokeWidth={3} />
+                  <span>Xong</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpDown size={14} className="text-emerald-400" />
+                  <span>Sắp xếp</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {!isReordering && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="touch-btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-none py-2 px-3.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span>Thêm Ví</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Banner hướng dẫn khi đang ở chế độ Sắp xếp */}
+      {isReordering && (
+        <div className="mx-4 mb-3 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between gap-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <GripVertical size={16} className="text-emerald-400 shrink-0" />
+            <span>
+              Bấm <strong className="text-white">↑ Lên</strong> / <strong className="text-white">↓ Xuống</strong> hoặc nút <strong className="text-white">⇈ Lên đầu</strong> để gom ví hay dùng lên trước.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReordering(false)}
+            className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-lg text-[11px] cursor-pointer border-none shrink-0"
+          >
+            Lưu
+          </button>
+        </div>
+      )}
 
       {/* 3. Danh sách các Ví kèm Logo Ngân hàng / Ví điện tử chính thức */}
       <div className="flex flex-col gap-3 px-4">
-        {wallets.map((w) => {
+        {sortedWallets.map((w, index) => {
           const detectedBrand = detectBankBrand(w.icon, w.name);
           return (
             <div
               key={w.id}
-              className="rounded-2xl p-4 bg-slate-900/80 border border-white/8 shadow-sm hover:border-white/15 transition-colors"
+              draggable={isReordering}
+              onDragStart={(e) => {
+                if (!isReordering) return;
+                e.dataTransfer.setData('text/plain', w.id);
+                setDraggedWalletId(w.id);
+              }}
+              onDragOver={(e) => {
+                if (!isReordering) return;
+                e.preventDefault();
+              }}
+              onDrop={async (e) => {
+                if (!isReordering) return;
+                e.preventDefault();
+                const sourceId = e.dataTransfer.getData('text/plain') || draggedWalletId;
+                if (!sourceId || sourceId === w.id) return;
+                const currentIds = sortedWallets.map((x) => x.id);
+                const fromIdx = currentIds.indexOf(sourceId);
+                const toIdx = currentIds.indexOf(w.id);
+                if (fromIdx !== -1 && toIdx !== -1) {
+                  currentIds.splice(fromIdx, 1);
+                  currentIds.splice(toIdx, 0, sourceId);
+                  await reorderWallets(currentIds);
+                }
+                setDraggedWalletId(null);
+              }}
+              onDragEnd={() => setDraggedWalletId(null)}
+              className={`rounded-2xl p-4 bg-slate-900/80 border transition-all ${
+                isReordering
+                  ? draggedWalletId === w.id
+                    ? 'border-emerald-400/60 bg-emerald-500/10 scale-[0.98]'
+                    : 'border-white/12 hover:border-emerald-500/40 cursor-grab active:cursor-grabbing'
+                  : 'border-white/8 shadow-sm hover:border-white/15'
+              }`}
             >
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3 min-w-0">
+                  {/* Số thứ tự & Tay nắm kéo khi ở chế độ sắp xếp */}
+                  {isReordering && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <GripVertical size={16} className="text-slate-500 shrink-0" />
+                      <span className="text-[11px] font-black text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-lg border border-emerald-500/25">
+                        #{index + 1}
+                      </span>
+                    </div>
+                  )}
+
                   {detectedBrand ? (
                     <BankLogo brand={detectedBrand} size={44} />
                   ) : (
@@ -560,35 +675,70 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                   </div>
                 </div>
 
-                {/* Các nút hành động: Điều chỉnh số dư, Sửa, Xóa */}
-                <div className="flex gap-1.5 shrink-0 ml-2">
-                  <button
-                    type="button"
-                    onClick={() => openAdjustModal(w)}
-                    title="Điều chỉnh số dư"
-                    className="touch-btn w-9 h-9 rounded-[10px] bg-sky-400/12 border border-sky-400/25 text-sky-400 flex items-center justify-center cursor-pointer hover:bg-sky-400/20"
-                  >
-                    <SlidersHorizontal size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(w)}
-                    title="Chỉnh sửa ví & đổi logo ngân hàng"
-                    className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  {wallets.length > 1 && (
+                {/* Các nút hành động: Khi đang sắp xếp vs Khi ở chế độ thường */}
+                {isReordering ? (
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {/* Nút Đưa lên đầu */}
                     <button
                       type="button"
-                      onClick={() => handleDeleteWallet(w)}
-                      title="Xóa ví"
-                      className="touch-btn w-9 h-9 rounded-[10px] bg-rose-500/12 border border-rose-500/25 text-rose-400 flex items-center justify-center cursor-pointer hover:bg-rose-500/20"
+                      onClick={() => void moveWalletPosition(w.id, 'TOP')}
+                      disabled={index === 0}
+                      title="Đưa lên đầu tiên"
+                      className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-emerald-400 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
                     >
-                      <Trash2 size={16} />
+                      <ChevronsUp size={16} />
                     </button>
-                  )}
-                </div>
+                    {/* Nút Lên 1 nấc */}
+                    <button
+                      type="button"
+                      onClick={() => void moveWalletPosition(w.id, 'UP')}
+                      disabled={index === 0}
+                      title="Di chuyển lên trên"
+                      className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                    {/* Nút Xuống 1 nấc */}
+                    <button
+                      type="button"
+                      onClick={() => void moveWalletPosition(w.id, 'DOWN')}
+                      disabled={index === sortedWallets.length - 1}
+                      title="Di chuyển xuống dưới"
+                      className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => openAdjustModal(w)}
+                      title="Điều chỉnh số dư"
+                      className="touch-btn w-9 h-9 rounded-[10px] bg-sky-400/12 border border-sky-400/25 text-sky-400 flex items-center justify-center cursor-pointer hover:bg-sky-400/20"
+                    >
+                      <SlidersHorizontal size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(w)}
+                      title="Chỉnh sửa ví & đổi logo ngân hàng"
+                      className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    {sortedWallets.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWallet(w)}
+                        title="Xóa ví"
+                        className="touch-btn w-9 h-9 rounded-[10px] bg-rose-500/12 border border-rose-500/25 text-rose-400 flex items-center justify-center cursor-pointer hover:bg-rose-500/20"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -599,10 +749,8 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
       <div className="mx-4 mt-4 p-3.5 rounded-2xl bg-sky-400/8 border border-sky-400/20 flex gap-2.5 items-start">
         <ShieldAlert size={18} className="text-sky-400 shrink-0 mt-0.5" />
         <div className="text-xs text-slate-400 leading-relaxed">
-          <strong className="text-slate-200">Mẹo khớp tiền thực tế:</strong> Bấm vào biểu tượng{' '}
-          <SlidersHorizontal size={12} className="inline align-middle text-sky-400" /> bên cạnh mỗi
-          ví để <strong>Điều chỉnh số dư</strong> bất cứ khi nào số tiền thực tế trong ngân hàng / ví
-          lệch so với sổ.
+          <strong className="text-slate-200">Mẹo sắp xếp:</strong> Bạn có thể bấm nút{' '}
+          <strong className="text-emerald-400">Sắp xếp</strong> ở góc phải để đưa các ví thường xuyên giao dịch (như Tiền mặt, Grab, MoMo) lên đầu trang, giúp việc chọn ví khi ghi chép nhanh hơn.
         </div>
       </div>
     </div>

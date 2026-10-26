@@ -10,7 +10,7 @@ import {
   type BankBrandInfo
 } from '../BankLogo';
 import { formatVND } from '../../utils/formatters';
-import { createWallet } from '../../services/transactionService';
+import { createWallet, sortWallets } from '../../services/transactionService';
 
 interface WalletSelectProps {
   wallets: Wallet[];
@@ -37,9 +37,10 @@ export const WalletSelect: React.FC<WalletSelectProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const sortedWallets = sortWallets(wallets);
   const availableWallets = excludeWalletId
-    ? wallets.filter((w) => w.id !== excludeWalletId)
-    : wallets;
+    ? sortedWallets.filter((w) => w.id !== excludeWalletId)
+    : sortedWallets;
 
   const selectedWallet =
     availableWallets.find((w) => w.id === selectedWalletId) || availableWallets[0];

@@ -63,6 +63,7 @@ export function App() {
     analytics: 0,
     more: 0
   });
+  const [editorResetSignal, setEditorResetSignal] = useState(0);
   // Nếu màn mặc định là 'editor' (Ghi giao dịch), mở thẳng màn hình phẳng Ghi Giao Dịch
   const [isEditorOpen, setIsEditorOpen] = useState(defaultInitialTab === 'editor');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -177,6 +178,7 @@ export function App() {
     setEditingTransaction(null);
     setIsSettingsOpen(false);
     setIsEditorOpen(true);
+    setEditorResetSignal((prev) => prev + 1);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
@@ -405,6 +407,7 @@ export function App() {
               onSelectTransactionToEdit={(tx) => {
                 setEditingTransaction(tx);
               }}
+              resetSignal={editorResetSignal}
             />
           ) : isSettingsOpen ? (
             <SettingsModal

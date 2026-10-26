@@ -12,6 +12,7 @@ export interface Wallet {
   icon: string;             // Lucide icon name
   color: string;            // Mã màu HEX
   isExcludedFromTotal: boolean; // true: không tính vào tổng tài sản
+  order?: number;           // Thứ tự hiển thị tùy chỉnh của ví
   createdAt: string;        // ISO 8601
   updatedAt: string;
 }

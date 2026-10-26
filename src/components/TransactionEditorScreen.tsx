@@ -7,7 +7,8 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
-  adjustWalletBalance
+  adjustWalletBalance,
+  sortWallets
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
@@ -55,6 +56,7 @@ interface TransactionEditorScreenProps {
   onClose: () => void;
   editingTransaction?: Transaction | null;
   onSelectTransactionToEdit?: (tx: Transaction) => void;
+  resetSignal?: number;
 }
 
 /**
@@ -112,7 +114,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   isOpen,
   onClose,
   editingTransaction,
-  onSelectTransactionToEdit
+  onSelectTransactionToEdit,
+  resetSignal
 }) => {
   const rawCategories = useLiveQuery(() => db.categories.toArray());
   const rawWallets = useLiveQuery(() => db.wallets.toArray());
@@ -123,7 +126,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const rawEvents = useLiveQuery(() => db.events.toArray());
 
   const categories = rawCategories ?? EMPTY_CATEGORIES;
-  const wallets = rawWallets ?? EMPTY_WALLETS;
+  const wallets = useMemo(() => sortWallets(rawWallets ?? EMPTY_WALLETS), [rawWallets]);
   const transactions = rawTransactions ?? EMPTY_TRANSACTIONS;
   const events = rawEvents ?? EMPTY_EVENTS;
   const activeEvents = useMemo(() => events.filter((ev) => !ev.isCompleted), [events]);
@@ -147,20 +150,55 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   // Mở màn hình Lịch sử ghi chép (dạng màn hình phẳng)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [editingFromHistory, setEditingFromHistory] = useState(false);
   const [isGrabTripModalOpen, setIsGrabTripModalOpen] = useState(false);
 
   const handleCloseOrReturnToHistory = () => {
-    if (editingFromHistory) {
-      setEditingFromHistory(false);
-      if (onSelectTransactionToEdit) {
-        onSelectTransactionToEdit(null as any);
-      }
-      setIsHistoryOpen(true);
-      return;
+    if (onSelectTransactionToEdit) {
+      onSelectTransactionToEdit(null as any);
     }
     onClose();
   };
+
+  // Lắng nghe tín hiệu từ nút [+] Ghi giao dịch ở BottomNav & DesktopNav để quay về màn ghi giao dịch gốc
+  useEffect(() => {
+    if (resetSignal !== undefined && resetSignal > 0) {
+      setIsHistoryOpen(false);
+      setIsCategoryManagerOpen(false);
+      setIsGrabTripModalOpen(false);
+      setIsNumpadOpen(false);
+
+      if (!editingTransaction) {
+        setType('EXPENSE');
+        setAmountStr('0');
+        setSelectedCategoryId('');
+        setTransferFeeStr('0');
+        setContactName('');
+        setEventId('');
+        setExcludeFromReport(false);
+        setDate(getCurrentDate());
+        setNote('');
+        setErrorMsg('');
+        setToastMsg('');
+        setIsAddingTag(false);
+        setNewTagInput('');
+
+        if (wallets.length > 0) {
+          const lastId = lastWalletSetting?.value;
+          const foundLast = lastId ? wallets.find((w) => w.id === lastId) : null;
+          if (foundLast) {
+            setSelectedWalletId(foundLast.id);
+          } else {
+            const cashWallet = wallets.find((w) =>
+              w.name.toLowerCase().includes('tiền mặt')
+            );
+            setSelectedWalletId(cashWallet ? cashWallet.id : wallets[0].id);
+          }
+        }
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [resetSignal, editingTransaction, lastWalletSetting?.value, wallets]);
 
   // Mở màn hình Chọn & Quản lý Hạng mục (dạng màn hình phẳng)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
@@ -699,7 +737,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         onClose={() => setIsHistoryOpen(false)}
         onEditTransaction={(tx) => {
           setIsHistoryOpen(false);
-          setEditingFromHistory(true);
           if (onSelectTransactionToEdit) {
             onSelectTransactionToEdit(tx);
           }

@@ -35,7 +35,7 @@ import {
   recordGrabTrip,
   migrateLegacyGrabTransactions
 } from '../services/grabService';
-import { transferFunds } from '../services/transactionService';
+import { transferFunds, sortWallets } from '../services/transactionService';
 
 interface GrabTripModalProps {
   isOpen: boolean;
@@ -51,7 +51,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
   onClose,
   onSuccess
 }) => {
-  const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const rawWallets = useLiveQuery(() => db.wallets.toArray()) || [];
+  const wallets = useMemo(() => sortWallets(rawWallets), [rawWallets]);
 
   const [mode, setMode] = useState<GrabMode>('CASH');
 
