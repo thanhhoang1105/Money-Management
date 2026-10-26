@@ -1,6 +1,14 @@
 // src/db/index.ts
 import Dexie, { type Table } from 'dexie';
-import type { Wallet, Category, Transaction, Budget, Setting } from '../types';
+import type {
+  Wallet,
+  Category,
+  Transaction,
+  Budget,
+  Setting,
+  RecurringTransaction,
+  EventTrip
+} from '../types';
 
 export class MoneyDatabase extends Dexie {
   wallets!: Table<Wallet, string>;
@@ -8,6 +16,8 @@ export class MoneyDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   budgets!: Table<Budget, string>;
   settings!: Table<Setting, string>;
+  recurringTransactions!: Table<RecurringTransaction, string>;
+  events!: Table<EventTrip, string>;
 
   constructor() {
     super('MoneyTrackerDB');
@@ -43,12 +53,107 @@ export class MoneyDatabase extends Dexie {
       settings: 'key'
     });
 
-    // Tự động kích hoạt Persistent Storage khi DB sẵn sàng
+    // Schema Version 4 (V3.0: Thêm Ghi chép định kỳ, Sự kiện/Chuyến đi, Sổ Nợ contactName/eventId)
+    // Tuyệt đối KHÔNG đánh index trường boolean (isActive, isCompleted, excludeFromReport)
+    this.version(4).stores({
+      wallets: 'id, name, type, createdAt, updatedAt',
+      categories: 'id, name, type, createdAt',
+      transactions: 'id, walletId, toWalletId, categoryId, type, contactName, eventId, date, createdAt, [walletId+date], [categoryId+date], [type+date]',
+      budgets: 'id, categoryId, month, [categoryId+month]',
+      settings: 'key',
+      recurringTransactions: 'id, walletId, type, nextRunDate, createdAt',
+      events: 'id, startDate, createdAt'
+    });
+
+    // Tự động kích hoạt Persistent Storage khi DB sẵn sàng (không return Promise để tránh deadlock Dexie)
     this.on('ready', () => {
-      return requestPersistentStorage().catch((err) => {
+      void requestPersistentStorage().catch((err) => {
         console.warn('[DB] Persistent storage request on ready failed:', err);
       });
     });
+
+    // Theo dõi mọi thay đổi dữ liệu thực tế từ người dùng để bật cờ đồng bộ (tránh đồng bộ liên tục khi không có thay đổi)
+    const userTables = [
+      this.wallets,
+      this.categories,
+      this.transactions,
+      this.budgets,
+      this.recurringTransactions,
+      this.events
+    ];
+
+    for (const table of userTables) {
+      table.hook('creating', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+      table.hook('updating', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+      table.hook('deleting', () => {
+        if (!isInternalSystemWrite) {
+          markLocalDataChanged();
+        }
+      });
+    }
+  }
+}
+
+export const LOCAL_CONNECTED_SYNC_KEY = 'supabase_connected_sync_key';
+export const LOCAL_DIRTY_FLAG_KEY = 'supabase_has_local_changes';
+
+let isInternalSystemWrite = false;
+
+/**
+ * Chạy các tác vụ hệ thống (như khởi tạo Seed mặc định hoặc áp dụng dữ liệu tải từ Cloud về)
+ * mà KHÔNG đánh dấu là dữ liệu local bị người dùng thay đổi.
+ */
+export async function runWithoutDirtyTracking<T>(fn: () => Promise<T>): Promise<T> {
+  isInternalSystemWrite = true;
+  try {
+    return await fn();
+  } finally {
+    isInternalSystemWrite = false;
+  }
+}
+
+/**
+ * Đánh dấu dữ liệu dưới Local vừa có thay đổi mới do người dùng thao tác
+ */
+export function markLocalDataChanged(): void {
+  if (typeof window === 'undefined' || isInternalSystemWrite) return;
+  try {
+    localStorage.setItem(LOCAL_DIRTY_FLAG_KEY, 'true');
+    window.dispatchEvent(new CustomEvent('local-data-changed'));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Xóa cờ thay đổi dưới Local sau khi đã đồng bộ lên Supabase thành công
+ */
+export function clearLocalDataChanged(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_DIRTY_FLAG_KEY, 'false');
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Kiểm tra xem dưới Local có thay đổi dữ liệu nào chưa được đẩy lên Supabase không
+ */
+export function hasLocalDataChanged(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(LOCAL_DIRTY_FLAG_KEY) === 'true';
+  } catch {
+    return false;
   }
 }
 
@@ -74,14 +179,6 @@ export async function requestPersistentStorage(): Promise<boolean> {
       const isPersisted = await navigator.storage.persisted();
       if (isPersisted) {
         console.log('[Storage] IndexedDB đã ở chế độ Bền Vững (Persistent Storage Active).');
-        try {
-          await db.settings.put({
-            key: 'storage_persisted',
-            value: { persisted: true, updatedAt: new Date().toISOString() }
-          });
-        } catch {
-          // Bỏ qua nếu DB chưa mở xong
-        }
         return true;
       }
     }
@@ -89,14 +186,6 @@ export async function requestPersistentStorage(): Promise<boolean> {
     if (typeof navigator.storage.persist === 'function') {
       const granted = await navigator.storage.persist();
       console.log(`[Storage] Yêu cầu Persistent Storage: ${granted ? 'ĐƯỢC CHẤP THUẬN' : 'TỪ CHỐI'}`);
-      try {
-        await db.settings.put({
-          key: 'storage_persisted',
-          value: { persisted: granted, updatedAt: new Date().toISOString() }
-        });
-      } catch {
-        // Bỏ qua nếu DB chưa mở xong
-      }
       return granted;
     }
   } catch (err) {

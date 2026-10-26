@@ -2,10 +2,8 @@
 
 /* ==========================================================================
    GLOBAL DESIGN TOKENS (TAILWIND CSS V4 THEME CONFIG)
-   Dùng trực tiếp bằng các utility class của Tailwind:
-   - Màu sắc: bg-app-bg, bg-app-card, text-income, text-expense, text-transfer, text-main, text-muted...
-   - Phông chữ: font-heading, font-body
-   - Bo góc & Độ bóng chuẩn iOS
+   Toàn bộ ứng dụng chỉ dùng DUY NHẤT 1 họ phông chữ chuẩn tiếng Việt:
+   'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
    ========================================================================== */
 @theme {
   /* Màu nền & Lớp giao diện (Layering) */
@@ -28,9 +26,11 @@
   --color-text-muted: #94a3b8;
   --color-text-sub: #64748b;
 
-  /* Họ phông chữ (Typography) */
-  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Họ phông chữ duy nhất đồng bộ toàn hệ thống (Unified Single Font) */
+  --font-sans: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Cỡ chữ số tiền chuyên dụng */
   --text-money-hero: 2.25rem;
@@ -38,12 +38,12 @@
   --text-money-item: 0.9375rem;
 
   /* Animation */
-  --animate-slide-up: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-fade-in: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-up: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ==========================================================================
-   CSS CUSTOM PROPERTIES CHO TƯƠNG THÍCH NGƯỢC
+   CSS CUSTOM PROPERTIES
    ========================================================================== */
 :root {
   --bg-primary: #090d16;
@@ -65,35 +65,38 @@
   --accent-amber: #f59e0b;
   --accent-purple: #8b5cf6;
 
-  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-app: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: var(--font-app);
+  --font-body: var(--font-app);
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ==========================================================================
-   BASE LAYER - Cấu hình Viewport, Nền & Reset không đè bẹp Tailwind classes
+   BASE LAYER - Đồng bộ 1 Font duy nhất trên mọi thẻ HTML
    ========================================================================== */
 @layer base {
   * {
     -webkit-tap-highlight-color: transparent;
+    font-family: var(--font-app);
   }
 
   html {
     width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
-    background-color: #090d16;
+    background-color: var(--bg-primary);
+    font-family: var(--font-app);
   }
 
   body {
     width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
-    background-color: #090d16;
-    color: #f8fafc;
-    font-family: var(--font-body);
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    font-family: var(--font-app);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-y: none;
@@ -102,24 +105,30 @@
 
   #root {
     width: 100%;
-    max-width: 480px; /* Khung chuẩn cho màn hình iPhone / Mobile */
     min-height: 100vh;
     min-height: 100dvh;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
     position: relative;
-    background-color: #090d16;
-    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+    background-color: var(--bg-primary);
+    font-family: var(--font-app);
   }
 
-  /* Scrollable Container (Main app views) */
-  main, .app-scroll-container {
+  /* Main Container */
+  main {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+    width: 100%;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  optgroup,
+  option,
+  pre,
+  code {
+    font-family: var(--font-app);
   }
 
   button {
@@ -136,7 +145,7 @@
   select,
   textarea {
     font-size: 16px !important;
-    font-family: inherit;
+    font-family: var(--font-app);
     user-select: text;
     -webkit-user-select: text;
   }
@@ -173,6 +182,69 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
+  /* Chuẩn thông báo kính mờ Glassmorphism (Glass Toasts & Notifications) */
+  .glass-toast {
+    background-color: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.2),
+      0 20px 45px -10px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-toast-success {
+    background: linear-gradient(135deg, rgba(6, 78, 59, 0.55) 0%, rgba(15, 23, 42, 0.78) 100%);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+      0 20px 45px -10px rgba(0, 0, 0, 0.75),
+      0 0 35px -5px rgba(16, 185, 129, 0.35);
+  }
+
+  .glass-toast-error {
+    background: linear-gradient(135deg, rgba(136, 19, 55, 0.55) 0%, rgba(15, 23, 42, 0.78) 100%);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(251, 113, 133, 0.45);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+      0 20px 45px -10px rgba(0, 0, 0, 0.75),
+      0 0 35px -5px rgba(244, 63, 94, 0.35);
+  }
+
+  .glass-toast-info {
+    background: linear-gradient(135deg, rgba(12, 74, 110, 0.55) 0%, rgba(15, 23, 42, 0.78) 100%);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+      0 20px 45px -10px rgba(0, 0, 0, 0.75),
+      0 0 35px -5px rgba(56, 189, 248, 0.35);
+  }
+
+  .glass-toast-warning {
+    background: linear-gradient(135deg, rgba(120, 53, 15, 0.55) 0%, rgba(15, 23, 42, 0.78) 100%);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+      0 20px 45px -10px rgba(0, 0, 0, 0.75),
+      0 0 35px -5px rgba(245, 158, 11, 0.35);
+  }
+
+  .toast-message {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
   /* Phản hồi cảm ứng (Touch Feedback) */
   .touch-btn {
     transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
@@ -200,6 +272,7 @@
     height: 44px;
     border-radius: 14px;
     flex-shrink: 0;
+    overflow: hidden;
     transition: transform 0.2s ease;
   }
 
@@ -212,6 +285,7 @@
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 16px !important;
+    font-family: var(--font-app);
     outline: none;
     transition: border-color 0.15s ease;
   }
@@ -243,12 +317,11 @@
    UTILITIES LAYER
    ========================================================================== */
 @layer utilities {
-  .font-heading {
-    font-family: var(--font-heading);
-  }
-
-  .font-body {
-    font-family: var(--font-body);
+  .font-heading,
+  .font-body,
+  .font-mono,
+  .font-sans {
+    font-family: var(--font-app);
   }
 
   .selectable-text {
@@ -269,34 +342,463 @@
   }
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+/* ==========================================================================
+   ẨN HOÀN TOÀN THANH CUỘN (SCROLLBAR) - VẪN CUỘN MƯỢT MÀ 100%
+   Áp dụng đồng bộ cho mọi trình duyệt (Chrome, Safari, Edge, Firefox)
+   ========================================================================== */
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 999px;
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
-/* Keyframe Animations */
+/* Keyframe Animations:
+   QUAN TRỌNG: Không giữ transform trên fadeIn/slideUp sau khi hoàn tất (dùng transform: none)
+   để tránh lỗi iOS Safari biến thẻ cha thành containing block làm nhảy vị trí position: fixed!
+*/
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
   from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  to { transform: none; }
+}
+
+@keyframes toastSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toastPop {
+  0% {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.95);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(3px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-slide {
+  animation: toastSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-pop {
+  animation: toastPop 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ==========================================================================
+   CHẾ ĐỘ SÁNG (LIGHT MODE) - ĐỘ TƯƠNG PHẢN CAO & RÕ NÉT (HIGH CONTRAST)
+   ========================================================================== */
+html.theme-light {
+  color-scheme: light;
+  --bg-primary: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-focus: rgba(16, 185, 129, 0.5);
+
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-sub: #64748b;
+
+  --color-app-bg: #f8fafc;
+  --color-app-card: #ffffff;
+  --color-app-card-hover: #f1f5f9;
+  --color-app-elevated: #ffffff;
+  --color-app-border: rgba(15, 23, 42, 0.08);
+
+  --color-text-main: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-sub: #64748b;
+
+  /* Màu dòng tiền tương phản cao chuẩn WCAG AAA trên nền trắng */
+  --color-income: #059669; /* Emerald 600 */
+  --color-income-glow: rgba(5, 150, 105, 0.15);
+  --color-expense: #e11d48; /* Rose 600 */
+  --color-expense-glow: rgba(225, 29, 72, 0.15);
+  --color-transfer: #0284c7; /* Sky 600 */
+  --color-transfer-glow: rgba(2, 132, 199, 0.15);
+}
+
+html.theme-light,
+html.theme-light body,
+html.theme-light #root {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* 1. CHUYỂN TOÀN BỘ CÁC THẺ HERO GRADIENT TỐI SANG THẺ TRẮNG CAO CẤP */
+html.theme-light [class*="from-slate-800"][class*="to-slate-900"],
+html.theme-light [class*="from-slate-900"][class*="to-slate-950"],
+html.theme-light [class*="from-emerald-500"][class*="to-slate-900"] {
+  background-image: none !important;
+  background-color: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 1px 3px 0 rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Banner Grab Driver sang phong cách ngọc bích sáng */
+html.theme-light [class*="from-emerald-950"] {
+  background-image: linear-gradient(135deg, rgba(236, 253, 245, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  box-shadow: 0 4px 15px -2px rgba(16, 185, 129, 0.08) !important;
+}
+
+/* 2. CÁC LỚP BỀ MẶT THẺ VÀ PANEL MÀU SÁNG */
+html.theme-light .bg-slate-900,
+html.theme-light .bg-slate-900\/98,
+html.theme-light .bg-slate-900\/95,
+html.theme-light .bg-slate-900\/90,
+html.theme-light .bg-slate-900\/80,
+html.theme-light .bg-slate-900\/70,
+html.theme-light .bg-slate-900\/60,
+html.theme-light .bg-slate-900\/50,
+html.theme-light .bg-slate-900\/40 {
+  background-color: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 2px 10px -2px rgba(15, 23, 42, 0.04);
+}
+
+html.theme-light .bg-slate-950,
+html.theme-light .bg-slate-950\/90,
+html.theme-light .bg-slate-950\/80,
+html.theme-light .bg-slate-950\/70,
+html.theme-light .bg-slate-950\/60,
+html.theme-light .bg-slate-950\/40 {
+  background-color: #f1f5f9 !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html.theme-light .bg-slate-800,
+html.theme-light .bg-slate-800\/90,
+html.theme-light .bg-slate-800\/80,
+html.theme-light .bg-slate-800\/75,
+html.theme-light .bg-slate-800\/70,
+html.theme-light .bg-slate-800\/60,
+html.theme-light .bg-slate-800\/50 {
+  background-color: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html.theme-light .bg-slate-700,
+html.theme-light .bg-slate-700\/80 {
+  background-color: #e2e8f0 !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+/* 3. VIỀN VÀ ĐƯỜNG PHÂN CÁCH NÉT MẢNH (HAIRLINE DIVIDERS) */
+html.theme-light .border-white\/4,
+html.theme-light .border-white\/5,
+html.theme-light .border-white\/6,
+html.theme-light .border-white\/8,
+html.theme-light .border-white\/10,
+html.theme-light .border-white\/12,
+html.theme-light .border-white\/15,
+html.theme-light .border-white\/20,
+html.theme-light [class*="divide-white"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+/* 4. CHUẨN MÀU CHỮ ĐẬM RÕ NÉT TRONG LIGHT MODE (CHỐNG MỜ / CHỐNG CHÓI) */
+html.theme-light .text-slate-100,
+html.theme-light .text-slate-200 {
+  color: #0f172a !important; /* Đen than Slate 900 */
+}
+
+html.theme-light .text-slate-300 {
+  color: #334155 !important; /* Xám đậm Slate 700 */
+}
+
+html.theme-light .text-slate-400 {
+  color: #475569 !important; /* Xám phụ đề rõ nét Slate 600 */
+}
+
+html.theme-light .text-slate-500 {
+  color: #64748b !important; /* Xám nhạt Slate 500 */
+}
+
+/* Màu Vàng / Hổ Phách trong Light Mode: Chuyển từ vàng neon chói sang Nâu Vàng Mật Ong Đậm */
+html.theme-light .text-amber-400,
+html.theme-light .text-amber-300,
+html.theme-light .text-yellow-400,
+html.theme-light .text-yellow-300,
+html.theme-light .text-yellow-500 {
+  color: #b45309 !important; /* Amber 700 - độ tương phản 5.2:1 */
+}
+
+html.theme-light .fill-amber-400 {
+  fill: #b45309 !important;
+}
+
+/* Màu Chuyển ví / Xanh Dương trong Light Mode: Chuyển sang Xanh Lam Đậm (Deep Azure) */
+html.theme-light .text-sky-400,
+html.theme-light .text-sky-300 {
+  color: #0284c7 !important; /* Sky 600 - độ tương phản 5.2:1 */
+}
+
+/* Màu Thu nhập / Xanh lá trong Light Mode: Xanh Ngọc Bích Đậm */
+html.theme-light .text-emerald-400,
+html.theme-light .text-emerald-300 {
+  color: #047857 !important; /* Emerald 700 - độ tương phản 5.8:1 */
+}
+
+html.theme-light .text-teal-400,
+html.theme-light .text-teal-300 {
+  color: #0f766e !important; /* Teal 700 */
+}
+
+/* Màu Chi tiêu / Đỏ trong Light Mode: Đỏ Hoa Hồng Đậm */
+html.theme-light .text-rose-400,
+html.theme-light .text-rose-300 {
+  color: #be123c !important; /* Rose 700 - độ tương phản 5.5:1 */
+}
+
+/* Màu Tím Đi Vay trong Light Mode */
+html.theme-light .text-purple-400,
+html.theme-light .text-purple-300 {
+  color: #6b21a8 !important; /* Purple 800 - độ tương phản 6.2:1 */
+}
+
+html.theme-light .text-indigo-400,
+html.theme-light .text-indigo-300 {
+  color: #4338ca !important;
+}
+
+html.theme-light .text-orange-400,
+html.theme-light .text-orange-300 {
+  color: #c2410c !important;
+}
+
+/* 5. CÁC NÚT BẤM VÀ THẺ CÓ NỀN TÔ MÀU NHẸ (PASTEL TINTS) */
+/* Nút chọn loại giao dịch "Chi tiền" */
+html.theme-light .bg-rose-500\/25,
+html.theme-light .bg-rose-500\/20 {
+  background-color: #ffe4e6 !important;
+  border-color: #f43f5e !important;
+  color: #9f1239 !important; /* Đỏ ruby đậm */
+}
+
+/* Nút chọn loại giao dịch "Thu tiền" */
+html.theme-light .bg-emerald-500\/25,
+html.theme-light .bg-emerald-500\/20 {
+  background-color: #d1fae5 !important;
+  border-color: #10b981 !important;
+  color: #065f46 !important; /* Xanh thông đậm */
+}
+
+/* Thẻ & Nút Chuyển ví / Tiện ích Xanh */
+html.theme-light .bg-sky-500\/25,
+html.theme-light .bg-sky-500\/20,
+html.theme-light .bg-sky-500\/15 {
+  background-color: #e0f2fe !important;
+  border-color: #38bdf8 !important;
+  color: #0369a1 !important;
+}
+
+/* Thẻ & Nút Cho vay / Tiền mặt Hổ Phách */
+html.theme-light .bg-amber-500\/25,
+html.theme-light .bg-amber-500\/20,
+html.theme-light .bg-amber-500\/15,
+html.theme-light .bg-amber-500\/8 {
+  background-color: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+}
+
+/* Thẻ & Nút Đi vay Tím */
+html.theme-light .bg-purple-500\/25,
+html.theme-light .bg-purple-500\/20,
+html.theme-light .bg-purple-500\/15 {
+  background-color: #f3e8ff !important;
+  border-color: #c084fc !important;
+  color: #6b21a8 !important;
+}
+
+/* Nút bấm trạng thái chữ đen sắc nét trên nền đặc neon */
+html.theme-light .text-slate-950,
+html.theme-light .bg-emerald-500 .text-slate-950,
+html.theme-light .bg-amber-500 .text-slate-950,
+html.theme-light .bg-sky-500 .text-slate-950 {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+/* Nút bấm nền solid giữ chữ trắng tinh */
+html.theme-light .bg-rose-500,
+html.theme-light .bg-rose-600,
+html.theme-light .bg-emerald-600,
+html.theme-light .bg-sky-600,
+html.theme-light .bg-indigo-600,
+html.theme-light [class*="from-rose"],
+html.theme-light .cat-badge,
+html.theme-light .keep-white,
+html.theme-light .keep-white * {
+  color: #ffffff !important;
+}
+
+/* Segmented Tabs (Ví dụ: "Theo Danh mục" trong Báo cáo) */
+html.theme-light .bg-sky-500 {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+}
+
+/* 6. HIỆU ỨNG KÍNH MỜ CHO LIGHT MODE */
+html.theme-light .glass-panel {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+}
+
+html.theme-light .glass-nav {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-top: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 -4px 20px -2px rgba(15, 23, 42, 0.05);
+}
+
+html.theme-light .glass-card {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 15px -2px rgba(15, 23, 42, 0.04);
+}
+
+html.theme-light .input-ios {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+}
+
+html.theme-light .input-ios:focus {
+  border-color: rgba(16, 185, 129, 0.6) !important;
+}
+
+html.theme-light .numpad-key {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+html.theme-light .numpad-key:active {
+  background-color: #f1f5f9 !important;
+}
+
+/* Hiệu ứng rê chuột trên các dòng lịch sử */
+html.theme-light .hover\:bg-white\/3:hover {
+  background-color: rgba(15, 23, 42, 0.03) !important;
+}
+
+/* Thẻ Tag (#tag) */
+html.theme-light .text-sky-300.bg-slate-800 {
+  background-color: #e0f2fe !important;
+  color: #0369a1 !important;
+  border-color: #bae6fd !important;
+}
+
+/* Thông báo Glassmorphism trong Light Mode */
+html.theme-light .glass-toast {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 
+    0 10px 30px -5px rgba(15, 23, 42, 0.12),
+    0 4px 6px -2px rgba(15, 23, 42, 0.04) !important;
+}
+html.theme-light .glass-toast .toast-message {
+  color: #0f172a !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html.theme-light .glass-toast-success {
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.98) 0%, rgba(255, 255, 255, 0.99) 100%) !important;
+  border: 1.5px solid rgba(16, 185, 129, 0.45) !important;
+  color: #064e3b !important;
+  box-shadow: 0 10px 30px -5px rgba(16, 185, 129, 0.18), 0 4px 6px -2px rgba(15, 23, 42, 0.05) !important;
+}
+html.theme-light .glass-toast-success .toast-message {
+  color: #064e3b !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.theme-light .glass-toast-success button {
+  color: #064e3b !important;
+}
+
+html.theme-light .glass-toast-error {
+  background: linear-gradient(135deg, rgba(255, 241, 242, 0.98) 0%, rgba(255, 255, 255, 0.99) 100%) !important;
+  border: 1.5px solid rgba(244, 63, 94, 0.45) !important;
+  color: #881337 !important;
+  box-shadow: 0 10px 30px -5px rgba(244, 63, 94, 0.18), 0 4px 6px -2px rgba(15, 23, 42, 0.05) !important;
+}
+html.theme-light .glass-toast-error .toast-message {
+  color: #881337 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.theme-light .glass-toast-error button {
+  color: #881337 !important;
+}
+
+html.theme-light .glass-toast-info {
+  background: linear-gradient(135deg, rgba(240, 249, 255, 0.98) 0%, rgba(255, 255, 255, 0.99) 100%) !important;
+  border: 1.5px solid rgba(56, 189, 248, 0.45) !important;
+  color: #0c4a6e !important;
+  box-shadow: 0 10px 30px -5px rgba(56, 189, 248, 0.18), 0 4px 6px -2px rgba(15, 23, 42, 0.05) !important;
+}
+html.theme-light .glass-toast-info .toast-message {
+  color: #0c4a6e !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.theme-light .glass-toast-info button {
+  color: #0c4a6e !important;
+}
+
+html.theme-light .glass-toast-warning {
+  background: linear-gradient(135deg, rgba(254, 252, 232, 0.98) 0%, rgba(255, 255, 255, 0.99) 100%) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.45) !important;
+  color: #78350f !important;
+  box-shadow: 0 10px 30px -5px rgba(245, 158, 11, 0.18), 0 4px 6px -2px rgba(15, 23, 42, 0.05) !important;
+}
+html.theme-light .glass-toast-warning .toast-message {
+  color: #78350f !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.theme-light .glass-toast-warning button {
+  color: #78350f !important;
 }

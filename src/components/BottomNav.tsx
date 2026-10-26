@@ -18,7 +18,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   isEditorOpen = false
 }) => {
   return (
-    <nav className="glass-nav fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] pt-2 safe-nav-bottom flex items-center justify-around z-50 bg-[#0f172a] border-t border-white/8">
+    <nav className="glass-nav fixed inset-x-0 bottom-0 mx-auto w-full max-w-lg pt-2 safe-nav-bottom flex items-center justify-around z-40 md:hidden">
       {/* Tab 1: Tổng quan (trước là Sổ thu chi) */}
       <button
         type="button"

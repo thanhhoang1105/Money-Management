@@ -3,12 +3,17 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register';
 import './index.css';
 import App from './App.tsx';
+import { applyTheme } from './services/themeService';
 
-// Đăng ký Service Worker cho PWA (Offline-First 100%)
-registerSW({
+// Áp dụng chủ đề giao diện ngay trước khi render để chống chớp nháy (Zero FOUC)
+applyTheme();
+
+// Đăng ký Service Worker cho PWA (Offline-First 100%, tự động làm mới khi có phiên bản mới)
+const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    console.log('[PWA] Phiên bản mới đã sẵn sàng. Tự động cập nhật...');
+    console.log('[PWA] Phiên bản mới đã sẵn sàng. Tự động tải lại...');
+    updateSW(true);
   },
   onOfflineReady() {
     console.log('[PWA] Ứng dụng đã sẵn sàng chạy Offline 100%.');

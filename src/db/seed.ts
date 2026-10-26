@@ -1,14 +1,17 @@
 // src/db/seed.ts
-import { db, requestPersistentStorage } from './index';
+import { db, requestPersistentStorage, runWithoutDirtyTracking } from './index';
 import type { Wallet } from '../types';
 import { generateUUID } from '../utils/uuid';
+import { ensureGrabCategories, migrateLegacyGrabTransactions } from '../services/grabService';
 
-// CÁC HẠNG MỤC CHA MẶC ĐỊNH
+// 3 HẠNG MỤC CHA MẶC ĐỊNH CỦA KHOẢN CHI (EXPENSE)
 export const PARENT_MUST_HAVE_ID = 'cat_parent_must_have';
 export const PARENT_NICE_TO_HAVE_ID = 'cat_parent_nice_to_have';
 export const PARENT_WASTED_ID = 'cat_parent_wasted';
-export const PARENT_INCOME_ID = 'cat_parent_income';
-export const PARENT_DEBT_ID = 'cat_parent_debt';
+
+// HẠNG MỤC CHO NGHIỆP VỤ TÀI XẾ GRAB
+export const GRAB_INCOME_CAT_ID = 'cat_income_grab';
+export const GRAB_FEE_CAT_ID = 'cat_expense_grab_fee';
 
 export interface SeedCategoryItem {
   id?: string;
@@ -24,7 +27,8 @@ export interface SeedCategoryItem {
 
 export const SEED_CATEGORIES: SeedCategoryItem[] = [
   // ==========================================
-  // 1. CHI TIÊU (EXPENSE) - 3 HẠNG MỤC CHA
+  // 1. KHOẢN CHI (EXPENSE) - CHỈ CÓ 3 HẠNG MỤC CHA MẶC ĐỊNH
+  // (Người dùng tự thêm các mục con vào bên dưới từng nhóm)
   // ==========================================
   {
     id: PARENT_MUST_HAVE_ID,
@@ -51,242 +55,81 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     isDefault: true
   },
 
-  // --- CÁC MỤC CON THUỘC "MUST HAVE" (Thiết yếu - Bản chất bắt buộc) ---
-  {
-    name: 'Đi chợ & Nấu ăn',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Soup',
-    color: '#10B981',
-    quickTags: ['Đi chợ', 'Siêu thị', 'Tự nấu ăn', 'Thịt cá rau', 'Gia vị', 'Gạo & Thực phẩm khô'],
-    isDefault: true,
-    isStarred: true
-  },
-  {
-    name: 'Nhà cửa & Tiện ích',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Home',
-    color: '#EAB308',
-    quickTags: ['Tiền nhà', 'Tiền điện', 'Tiền nước', 'Internet', 'Phí chung cư', 'Đổi gas'],
-    isDefault: true
-  },
-  {
-    name: 'Đi lại & Xăng xe cơ bản',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Fuel',
-    color: '#3B82F6',
-    quickTags: ['Đổ xăng', 'Gửi xe', 'Vé xe bus/tàu', 'Bảo dưỡng xe', 'Cầu đường'],
-    isDefault: true,
-    isStarred: true
-  },
-  {
-    name: 'Y tế & Sức khỏe',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'HeartPulse',
-    color: '#EF4444',
-    quickTags: ['Thuốc men', 'Khám bệnh', 'Nha khoa', 'Bảo hiểm y tế', 'Vitamin'],
-    isDefault: true
-  },
-  {
-    name: 'Giáo dục & Con cái',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'GraduationCap',
-    color: '#06B6D4',
-    quickTags: ['Học phí', 'Sách vở', 'Khóa học', 'Đồ dùng học tập', 'Sữa cho con'],
-    isDefault: true
-  },
-  {
-    name: 'Đồ sinh hoạt thiết yếu',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Package',
-    color: '#14B8A6',
-    quickTags: ['Bột giặt / Nước xả', 'Nước rửa chén', 'Giấy vệ sinh', 'Kem đánh răng', 'Đồ gia dụng nhỏ'],
-    isDefault: true
-  },
-
-  // --- CÁC MỤC CON THUỘC "NICE TO HAVE" (Hưởng thụ / Nâng cao) ---
-  {
-    name: 'Ăn ngoài & Đặt món',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'UtensilsCrossed',
-    color: '#F97316',
-    quickTags: ['Ăn sáng', 'Ăn trưa công sở', 'Ăn tối ngoài', 'GrabFood / ShopeeFood', 'Nhà hàng', 'Ăn vặt / Tráng miệng'],
-    isDefault: true,
-    isStarred: true
-  },
-  {
-    name: 'Cà phê & Trà sữa',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'Coffee',
-    color: '#8B5CF6',
-    quickTags: ['Cà phê sáng', 'Trà sữa', 'Gặp gỡ bạn bè', 'Hẹn hò', 'Trà chanh / Sinh tố'],
-    isDefault: true,
-    isStarred: true
-  },
-  {
-    name: 'Mua sắm & Làm đẹp',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'ShoppingBag',
-    color: '#EC4899',
-    quickTags: ['Quần áo', 'Giày dép', 'Mỹ phẩm / Skincare', 'Cắt tóc / Spa', 'Phụ kiện thời trang'],
-    isDefault: true
-  },
-  {
-    name: 'Du lịch & Nghỉ dưỡng',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'Plane',
-    color: '#0EA5E9',
-    quickTags: ['Vé máy bay / Tàu', 'Khách sạn / Homestay', 'Ăn chơi du lịch', 'Mua quà đặc sản'],
-    isDefault: true
-  },
-  {
-    name: 'Thể thao & Rèn luyện',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'Dumbbell',
-    color: '#10B981',
-    quickTags: ['Tập Gym', 'Yoga / Pilates', 'Cầu lông / Bóng đá', 'Thực phẩm bổ sung'],
-    isDefault: true
-  },
-  {
-    name: 'Hiếu hỉ & Quà tặng',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'Gift',
-    color: '#F43F5E',
-    quickTags: ['Đám cưới', 'Sinh nhật', 'Biếu bố mẹ', 'Lễ Tết / Lì xì', 'Quà mừng'],
-    isDefault: true
-  },
-  {
-    name: 'Giải trí & Phim ảnh',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'Clapperboard',
-    color: '#6366F1',
-    quickTags: ['Xem phim rạp', 'Netflix / Spotify', 'Hát Karaoke', 'Game', 'Sách truyện'],
-    isDefault: true
-  },
-
-  // --- CÁC MỤC CON THUỘC "WASTED" (Lãng phí / Cần cắt giảm) ---
-  {
-    name: 'Ăn nhậu quá đà',
-    type: 'EXPENSE',
-    parentId: PARENT_WASTED_ID,
-    icon: 'Beer',
-    color: '#EA580C',
-    quickTags: ['Bia rượu thừa mứa', 'Tăng 2 tăng 3', 'Tiền tips vô lý', 'Nhậu say gọi đồ thừa'],
-    isDefault: true
-  },
-  {
-    name: 'Mua sắm bốc đồng',
-    type: 'EXPENSE',
-    parentId: PARENT_WASTED_ID,
-    icon: 'Flame',
-    color: '#F59E0B',
-    quickTags: ['Đồ ngẫu hứng', 'Mua về không dùng', 'Săn sale bốc đồng', 'Đồ thừa mứa'],
-    isDefault: true
-  },
-  {
-    name: 'Tiền phạt & Phí trễ hạn',
-    type: 'EXPENSE',
-    parentId: PARENT_WASTED_ID,
-    icon: 'AlertTriangle',
-    color: '#DC2626',
-    quickTags: ['Phạt giao thông', 'Phạt trả chậm thẻ', 'Phí duy trì tài khoản', 'Phạt vi phạm'],
-    isDefault: true
-  },
-  {
-    name: 'Đồ hỏng & Bỏ quên',
-    type: 'EXPENSE',
-    parentId: PARENT_WASTED_ID,
-    icon: 'Trash2',
-    color: '#6B7280',
-    quickTags: ['Đồ ăn hết hạn vứt đi', 'Làm mất đồ', 'Hư hỏng do bất cẩn'],
-    isDefault: true
-  },
-  {
-    name: 'Trò chơi may rủi',
-    type: 'EXPENSE',
-    parentId: PARENT_WASTED_ID,
-    icon: 'Dice5',
-    color: '#7C3AED',
-    quickTags: ['Vé số', 'Game cá cược', 'Sở thích may rủi'],
-    isDefault: true
-  },
-
   // ==========================================
-  // 2. THU TIỀN (INCOME)
+  // 2. KHOẢN THU (INCOME) - 7 HẠNG MỤC MẶC ĐỊNH
+  // (Có thể chọn trực tiếp cha hoặc tạo thêm con bên dưới để chọn)
   // ==========================================
   {
-    name: 'Lương chính',
+    id: 'cat_income_salary',
+    name: 'Lương',
     type: 'INCOME',
     icon: 'Banknote',
     color: '#10B981',
-    quickTags: ['Lương chuyển khoản', 'Lương cứng', 'Lương tạm ứng'],
-    isDefault: true
+    quickTags: ['Lương tháng', 'Lương chuyển khoản', 'Lương tạm ứng'],
+    isDefault: true,
+    isStarred: true
   },
   {
-    name: 'Được cho tặng',
-    type: 'INCOME',
-    icon: 'PartyPopper',
-    color: '#EC4899',
-    quickTags: ['Bố mẹ cho', 'Lì xì', 'Bạn bè tặng', 'Người thân biếu'],
-    isDefault: true
-  },
-  {
+    id: 'cat_income_bonus',
     name: 'Thưởng',
     type: 'INCOME',
     icon: 'TrendingUp',
     color: '#3B82F6',
-    quickTags: ['Thưởng KPI', 'Thưởng Tết', 'Dự án ngoài', 'Hoa hồng'],
-    isDefault: true
+    quickTags: ['Thưởng KPI', 'Thưởng Tết', 'Thưởng dự án', 'Hoa hồng'],
+    isDefault: true,
+    isStarred: true
   },
   {
+    id: 'cat_income_saving_interest',
     name: 'Lãi tiết kiệm',
     type: 'INCOME',
     icon: 'Landmark',
     color: '#8B5CF6',
-    quickTags: ['Lãi có kỳ hạn', 'Lãi không kỳ hạn', 'Sổ tiết kiệm'],
+    quickTags: ['Lãi có kỳ hạn', 'Lãi không kỳ hạn', 'Tất toán sổ tiết kiệm'],
     isDefault: true
   },
   {
+    id: 'cat_income_gift',
+    name: 'Được cho tặng',
+    type: 'INCOME',
+    icon: 'PartyPopper',
+    color: '#EC4899',
+    quickTags: ['Người thân cho', 'Lì xì', 'Bạn bè tặng', 'Quà mừng'],
+    isDefault: true
+  },
+  {
+    id: 'cat_income_profit',
     name: 'Tiền lãi',
     type: 'INCOME',
     icon: 'Coins',
     color: '#F59E0B',
-    quickTags: ['Lãi chứng khoán', 'Lãi cổ tức', 'Lãi cho vay', 'Đầu tư sinh lời'],
+    quickTags: ['Lãi đầu tư', 'Lãi cổ tức', 'Lãi cho vay'],
     isDefault: true
   },
   {
+    id: 'cat_income_inflow',
     name: 'Tiền vào',
     type: 'INCOME',
     icon: 'CircleDollarSign',
     color: '#06B6D4',
-    quickTags: ['Bán đồ cũ', 'Thu cọc', 'Hoàn thuế', 'Hoàn tiền mua sắm'],
+    quickTags: ['Bán đồ cũ', 'Hoàn tiền', 'Thu cọc'],
     isDefault: true
   },
   {
-    name: 'Thu nhập khác',
+    id: 'cat_income_other',
+    name: 'Khác',
     type: 'INCOME',
     icon: 'MoreHorizontal',
     color: '#64748B',
-    quickTags: ['Khoản thu bất ngờ', 'Lặt vặt'],
+    quickTags: ['Khoản thu khác', 'Lặt vặt'],
     isDefault: true
   },
 
   // ==========================================
-  // 3. VAY NỢ (DEBT)
+  // 3. VAY NỢ (DEBT) - 4 OPTION MẶC ĐỊNH (PHẲNG, KHÔNG CHA CON)
   // ==========================================
   {
+    id: 'cat_debt_lend',
     name: 'Cho vay',
     type: 'DEBT',
     icon: 'HandCoins',
@@ -295,22 +138,25 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     isDefault: true
   },
   {
+    id: 'cat_debt_borrow',
     name: 'Đi vay',
     type: 'DEBT',
     icon: 'Receipt',
     color: '#8B5CF6',
-    quickTags: ['Vay ngân hàng', 'Mượn bạn', 'Thấu chi thẻ'],
+    quickTags: ['Vay ngân hàng', 'Mượn bạn', 'Vay người thân'],
     isDefault: true
   },
   {
+    id: 'cat_debt_collect',
     name: 'Thu nợ',
     type: 'DEBT',
     icon: 'PiggyBank',
     color: '#10B981',
-    quickTags: ['Bạn trả nợ', 'Đòi được nợ', 'Thu hồi nợ cũ'],
+    quickTags: ['Thu nợ bạn trả', 'Thu hồi nợ cũ'],
     isDefault: true
   },
   {
+    id: 'cat_debt_pay',
     name: 'Trả nợ',
     type: 'DEBT',
     icon: 'CreditCard',
@@ -320,8 +166,9 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
   }
 ];
 
-export const DEFAULT_WALLETS: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>[] = [
+export const DEFAULT_WALLETS: (Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'> & { id: string })[] = [
   {
+    id: 'wallet_default_cash',
     name: 'Tiền mặt',
     type: 'CASH',
     balance: 0,
@@ -332,6 +179,7 @@ export const DEFAULT_WALLETS: Omit<Wallet, 'id' | 'createdAt' | 'updatedAt'>[] =
     isExcludedFromTotal: false
   },
   {
+    id: 'wallet_default_bank',
     name: 'Ngân hàng',
     type: 'BANK',
     balance: 0,
@@ -351,8 +199,7 @@ export async function ensureDefaultWallets(): Promise<void> {
   if (walletCount === 0) {
     const now = new Date().toISOString();
     for (const wallet of DEFAULT_WALLETS) {
-      await db.wallets.add({
-        id: generateUUID(),
+      await db.wallets.put({
         ...wallet,
         createdAt: now,
         updatedAt: now
@@ -362,17 +209,50 @@ export async function ensureDefaultWallets(): Promise<void> {
 }
 
 /**
- * Đảm bảo nạp đầy đủ cấu trúc Hạng mục Cha & Con mới theo hành vi vào cơ sở dữ liệu
+ * Đảm bảo cấu trúc hạng mục chuẩn v6:
+ * - EXPENSE: Chỉ giữ 3 nhóm cha mặc định (Must have, Nice to have, Wasted). Xóa toàn bộ mục con mặc định cũ (giữ lại mục con do user tự tạo isDefault === false).
+ * - INCOME: 7 mục mặc định (Lương, Thưởng, Lãi tiết kiệm, Được cho tặng, Tiền lãi, Tiền vào, Khác).
+ * - DEBT: 4 mục phẳng (Cho vay, Đi vay, Thu nợ, Trả nợ), không có quan hệ cha con.
  */
 export async function ensureHierarchicalCategories(): Promise<void> {
-  const versionSetting = await db.settings.get('has_seeded_unique_icons_v3');
+  const versionSetting = await db.settings.get('has_seeded_categories_v6');
   if (versionSetting?.value) {
     return;
   }
 
   const now = new Date().toISOString();
   await db.transaction('rw', [db.categories, db.settings], async () => {
-    // 1. Đảm bảo 3 nhóm cha của EXPENSE luôn tồn tại
+    const allCats = await db.categories.toArray();
+
+    // 1. Xóa các hạng mục con EXPENSE mặc định cũ (chỉ giữ lại 3 cha Must have, Nice to have, Wasted, system_adjustment, phí grab và các mục do user tự tạo isDefault === false)
+    const expenseParentIds = new Set([
+      PARENT_MUST_HAVE_ID,
+      PARENT_NICE_TO_HAVE_ID,
+      PARENT_WASTED_ID,
+      'system_adjustment',
+      GRAB_FEE_CAT_ID
+    ]);
+
+    for (const cat of allCats) {
+      if (cat.type === 'EXPENSE' && !expenseParentIds.has(cat.id)) {
+        if (cat.isDefault) {
+          await db.categories.delete(cat.id);
+        }
+      }
+      // Chuẩn hóa tên cũ của INCOME nếu có ("Lương chính" -> "Lương", "Thu nhập khác" -> "Khác")
+      if (cat.type === 'INCOME' && cat.name.trim().toLowerCase() === 'lương chính') {
+        await db.categories.update(cat.id, { name: 'Lương', updatedAt: now });
+      }
+      if (cat.type === 'INCOME' && cat.name.trim().toLowerCase() === 'thu nhập khác') {
+        await db.categories.update(cat.id, { name: 'Khác', updatedAt: now });
+      }
+      // Đảm bảo DEBT không bao giờ có parentId
+      if (cat.type === 'DEBT' && cat.parentId) {
+        await db.categories.update(cat.id, { parentId: undefined, updatedAt: now });
+      }
+    }
+
+    // 2. Đảm bảo 3 nhóm cha của EXPENSE luôn tồn tại
     const parents = [
       {
         id: PARENT_MUST_HAVE_ID,
@@ -400,7 +280,7 @@ export async function ensureHierarchicalCategories(): Promise<void> {
     for (const p of parents) {
       const exist = await db.categories.get(p.id);
       if (!exist) {
-        await db.categories.add({
+        await db.categories.put({
           id: p.id,
           name: p.name,
           type: p.type,
@@ -412,24 +292,22 @@ export async function ensureHierarchicalCategories(): Promise<void> {
       }
     }
 
-    // 2. Nạp hoặc cập nhật các danh mục con theo hành vi và Quick Tags
-    const currentCategories = await db.categories.toArray();
+    // 3. Đảm bảo 7 mục INCOME và 4 mục DEBT mặc định tồn tại
+    const remainingCategories = await db.categories.toArray();
     const existingNameSet = new Set(
-      currentCategories.map((c) => `${c.type}_${c.name.trim().toLowerCase()}`)
+      remainingCategories.map((c) => `${c.type}_${c.name.trim().toLowerCase()}`)
     );
 
     for (const item of SEED_CATEGORIES) {
-      if (item.id && [PARENT_MUST_HAVE_ID, PARENT_NICE_TO_HAVE_ID, PARENT_WASTED_ID].includes(item.id)) {
-        continue;
-      }
+      if (item.type === 'EXPENSE') continue; // EXPENSE chỉ có 3 cha đã tạo ở bước 2
 
       const key = `${item.type}_${item.name.trim().toLowerCase()}`;
       if (!existingNameSet.has(key)) {
-        await db.categories.add({
+        await db.categories.put({
           id: item.id || generateUUID(),
           name: item.name,
           type: item.type,
-          parentId: item.parentId,
+          parentId: undefined,
           icon: item.icon,
           color: item.color,
           quickTags: item.quickTags || [],
@@ -438,26 +316,11 @@ export async function ensureHierarchicalCategories(): Promise<void> {
           createdAt: now
         });
         existingNameSet.add(key);
-      } else {
-        // Cập nhật icon không trùng lặp, isStarred và quickTags nếu là danh mục mặc định
-        const found = currentCategories.find(
-          (c) => `${c.type}_${c.name.trim().toLowerCase()}` === key
-        );
-        if (found && found.isDefault) {
-          await db.categories.update(found.id, {
-            icon: item.icon,
-            color: item.color,
-            quickTags: item.quickTags || found.quickTags,
-            parentId: item.parentId || found.parentId,
-            isStarred: item.isStarred !== undefined ? item.isStarred : found.isStarred,
-            updatedAt: now
-          });
-        }
       }
     }
 
     await db.settings.put({
-      key: 'has_seeded_starred_categories_v4',
+      key: 'has_seeded_categories_v6',
       value: true
     });
   });
@@ -476,35 +339,38 @@ export async function ensureDefaultSettings(): Promise<void> {
 
 export async function initializeSeedData(): Promise<void> {
   await requestPersistentStorage();
-  await ensureDefaultSettings();
-  await ensureDefaultWallets();
-  await ensureHierarchicalCategories();
+  await runWithoutDirtyTracking(async () => {
+    await ensureDefaultSettings();
+    await ensureDefaultWallets();
+    await ensureHierarchicalCategories();
+    await ensureGrabCategories();
+    await migrateLegacyGrabTransactions();
 
-  const isInitialized = await db.settings.get('has_seeded_v3');
-  if (isInitialized?.value) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-  await db.transaction('rw', [db.categories, db.wallets, db.settings], async () => {
-    // Đảm bảo danh mục hệ thống 'Điều chỉnh số dư' tồn tại
-    const sysAdj = await db.categories.get('system_adjustment');
-    if (!sysAdj) {
-      await db.categories.add({
-        id: 'system_adjustment',
-        name: 'Điều chỉnh số dư',
-        type: 'EXPENSE',
-        icon: 'SlidersHorizontal',
-        color: '#64748B',
-        quickTags: ['Khớp tiền thực tế', 'Tiền chênh lệch', 'Kiểm kê'],
-        isDefault: true,
-        createdAt: now
-      });
+    const isInitialized = await db.settings.get('has_seeded_v3');
+    if (isInitialized?.value) {
+      return;
     }
 
-    await db.settings.put({
-      key: 'has_seeded_v3',
-      value: true
+    const now = new Date().toISOString();
+    await db.transaction('rw', [db.categories, db.wallets, db.settings], async () => {
+      const sysAdj = await db.categories.get('system_adjustment');
+      if (!sysAdj) {
+        await db.categories.put({
+          id: 'system_adjustment',
+          name: 'Điều chỉnh số dư',
+          type: 'EXPENSE',
+          icon: 'SlidersHorizontal',
+          color: '#64748B',
+          quickTags: ['Khớp tiền thực tế', 'Tiền chênh lệch', 'Kiểm kê'],
+          isDefault: true,
+          createdAt: now
+        });
+      }
+
+      await db.settings.put({
+        key: 'has_seeded_v3',
+        value: true
+      });
     });
   });
 }

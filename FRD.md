@@ -1,217 +1,258 @@
-# TÀI LIỆU YÊU CẦU CHỨC NĂNG (FRD) & KẾ HOẠCH TRIỂN KHAI V2.0
-## DỰ ÁN: SỔ THU CHI CÁ NHÂN (PWA CHUẨN IOS - LOCAL-FIRST 100% - 0 ĐỒNG CHI PHÍ)
+# TÀI LIỆU YÊU CẦU CHỨC NĂNG (FRD) & KẾ HOẠCH TRIỂN KHAI V3.0
+## DỰ ÁN: SỔ THU CHI CÁ NHÂN (CHUẨN MISA MONEYKEEPER - RESPONSIVE WEB & MOBILE PWA - LOCAL-FIRST 100% - 0 ĐỒNG CHI PHÍ)
 
 ---
 
 ## 1. TỔNG QUAN HỆ THỐNG & ĐỊNH HƯỚNG CÔNG NGHỆ
 
 ### 1.1 Mục tiêu dự án
-* **Nền tảng:** Progressive Web App (PWA) tối ưu hóa giao diện và trải nghiệm cảm ứng theo chuẩn iOS Safari ("Thêm vào Màn hình chính" / Add to Home Screen).
-* **Trải nghiệm:** Chạy toàn màn hình (Standalone display), không thanh URL, có icon ứng dụng trên màn hình chính của iPhone, hoạt động offline 100% ngoài đường mà không cần bật máy tính hay kết nối Internet.
-* **Chi phí vận hành:** **0 VNĐ trọn đời** (Không máy chủ, không cloud database bên ngoài, không lo bị tạm dừng sau 7 ngày).
-* **Hiệu năng & Bảo mật:** Dữ liệu lưu 100% trong bộ nhớ iPhone bằng **IndexedDB (qua thư viện Dexie.js)**. Tốc độ đọc/ghi tức thì, an toàn tuyệt đối.
+* **Định vị sản phẩm:** Ứng dụng quản lý tài chính cá nhân và ghi chép thu chi hàng ngày toàn diện như **MISA Sổ Thu Chi (MoneyKeeper)**, tối ưu tốc độ nhập liệu **< 3 giây/giao dịch**.
+* **Đa nền tảng (Cross-Platform Responsive Web & PWA):**
+  * **Trên Điện thoại (iOS / Android PWA):** Chạy toàn màn hình (Standalone display), thanh điều hướng đáy (`BottomNav`), thao tác 1 ngón tay cái, hoạt động offline 100% ngoài đường.
+  * **Trên Máy tính (Desktop / Laptop Web):** Giao diện Dashboard mở rộng (`max-w-5xl`), thanh điều hướng Header, hộp thoại chuẩn Radix UI (Popover Calendar, Wallet Select, Dialog Modal) và hỗ trợ đầy đủ bàn phím vật lý (`0-9`, `+ - * /`, `Enter`, `Esc`).
+* **Chi phí vận hành:** **0 VNĐ trọn đời** (Không phụ thuộc backend trả phí, lưu trữ cục bộ bằng IndexedDB kết hợp đồng bộ đám mây 2 chiều qua Google Drive cá nhân của người dùng).
+* **Hiệu năng & Bảo mật:** Dữ liệu lưu 100% trong bộ nhớ thiết bị bằng **IndexedDB (`Dexie.js v4`)** với `navigator.storage.persist()`. Tốc độ đọc/ghi tức thì, an toàn tuyệt đối.
 
 ### 1.2 Công nghệ cốt lõi
-* **Frontend:** React + Vite + TypeScript.
-* **Styling & Design System:** TailwindCSS + iOS Human Interface Guidelines (Dynamic Safe Area Insets, Smooth transitions, Touch visual feedback, Rounded cards).
-* **Database (Local-First):** `Dexie.js` (Wrapper mạnh mẽ nhất của IndexedDB trên trình duyệt, hỗ trợ ACID Transactions, Reactive Hooks, Schema Indexing).
-* **State Management:** Zustand + Dexie liveQuery.
-* **Icon:** `lucide-react`.
-* **Biểu đồ:** Recharts hoặc Chart.js (tương thích hoàn hảo với touch/drill-down trên di động).
-* **Xuất file:** `xlsx` (SheetJS xuất Excel) và Native Web Share API (`navigator.share`) để gửi file backup JSON/Excel qua AirDrop, Zalo, Mail, Tệp.
+* **Frontend:** React 19 + Vite + TypeScript.
+* **Styling & UI Components:** Tailwind CSS v4 + Radix UI (`@radix-ui/react-dialog`, `@radix-ui/react-popover`, `@radix-ui/react-select`, `@radix-ui/react-dropdown-menu`) + `lucide-react`.
+* **Database (Local-First):** `Dexie.js v4` + `dexie-react-hooks` (`useLiveQuery`).
+* **Đồng bộ & Sao lưu:** Google Identity Services (OAuth 2.0) + Google Drive REST API v3 (Smart Two-Way Merge Sync) + `xlsx` (SheetJS xuất báo cáo Excel 3 sheets) + JSON Backup/Restore.
 
 ---
 
-## 2. THIẾT KẾ CƠ SỞ DỮ LIỆU (DEXIE.JS / INDEXEDDB SCHEMA)
+## 2. THIẾT KẾ CƠ SỞ DỮ LIỆU (DEXIE.JS / INDEXEDDB SCHEMA V3.0)
 
 ```typescript
-// Định nghĩa Database Schema trong Dexie.js
+export type WalletType = 'CASH' | 'BANK' | 'E_WALLET' | 'CREDIT' | 'INVESTMENT' | 'OTHER';
+
 export interface Wallet {
-  id: string;               // UUID v4
-  name: string;             // Ví dụ: 'Tiền mặt', 'Vietcombank', 'Ví MoMo'
-  type: 'CASH' | 'BANK' | 'E_WALLET' | 'CREDIT';
-  balance: number;          // Số dư hiện tại (VNĐ)
-  initialBalance: number;   // Số dư khởi tạo ban đầu
+  id: string;                   // UUID v4
+  name: string;                 // Ví dụ: 'Tiền mặt', 'Vietcombank', 'Ví MoMo'
+  type: WalletType;
+  balance: number;              // Số dư hiện tại (VNĐ)
+  initialBalance: number;       // Số dư khởi tạo ban đầu
+  creditLimit?: number;         // Hạn mức tín dụng (dành cho thẻ CREDIT)
+  statementDay?: number;        // Ngày sao kê hàng tháng (1-31, dành cho CREDIT)
+  paymentDueDay?: number;       // Ngày đến hạn thanh toán (1-31, dành cho CREDIT)
   currency: 'VND';
-  icon: string;             // Tên Lucide Icon
-  color: string;            // Mã màu HEX
-  isExcludedFromTotal: boolean; // true: không tính vào tổng tài sản
-  createdAt: string;        // ISO 8601
+  icon: string;                 // Tên Lucide Icon
+  color: string;                // Mã màu HEX
+  isExcludedFromTotal: boolean; // true: không tính vào tổng tài sản khả dụng
+  createdAt: string;            // ISO 8601
   updatedAt: string;
 }
 
+export type CategoryType = 'EXPENSE' | 'INCOME' | 'DEBT';
+
 export interface Category {
   id: string;
-  name: string;             // Ví dụ: 'Ăn uống', 'Lương', 'Đi lại'
-  type: 'EXPENSE' | 'INCOME';
-  icon: string;             // Tên Lucide Icon
-  color: string;            // Mã màu HEX
-  quickTags?: string[];     // Danh sách gợi ý ghi chú nhanh (vd: ['Ăn sáng', 'Cà phê', 'Cơm trưa'])
+  name: string;                 // Ví dụ: 'Đi chợ & Nấu ăn', 'Must have', 'Lương'
+  type: CategoryType;
+  parentId?: string;            // null/undefined: Hạng mục cha; có giá trị: Hạng mục con (Mô hình 2 tầng)
+  icon: string;                 // Tên Lucide Icon
+  color: string;                // Mã màu HEX
+  quickTags?: string[];         // Danh sách gợi ý ghi chú nhanh (vd: ['Ăn sáng', 'Cà phê', 'Cơm trưa'])
   isDefault: boolean;
+  isStarred?: boolean;          // true: Được gắn sao ưu tiên hiển thị ngoài màn hình ghi chép
   createdAt: string;
+  updatedAt?: string;
 }
+
+export type TransactionType =
+  | 'EXPENSE'        // Chi tiền
+  | 'INCOME'         // Thu tiền
+  | 'TRANSFER'       // Chuyển khoản nội bộ giữa các ví
+  | 'LEND'           // Cho vay (Tiền ra khỏi ví -> Tăng khoản phải thu)
+  | 'BORROW'         // Đi vay (Tiền vào ví -> Tăng khoản phải trả)
+  | 'COLLECT_DEBT'   // Thu nợ (Tiền vào ví -> Giảm khoản phải thu)
+  | 'PAY_DEBT'       // Trả nợ (Tiền ra khỏi ví -> Giảm khoản phải trả)
+  | 'ADJUST';        // Điều chỉnh số dư thực tế
 
 export interface Transaction {
   id: string;
-  walletId: string;         // Ví nguồn
-  toWalletId?: string;      // Ví đích (chỉ dùng khi type = 'TRANSFER')
-  categoryId?: string;      // ID danh mục (null nếu là TRANSFER)
-  type: 'EXPENSE' | 'INCOME' | 'TRANSFER';
-  amount: number;           // Số tiền (> 0)
-  date: string;             // 'YYYY-MM-DD'
-  time: string;             // 'HH:mm'
-  note?: string;            // Ghi chú giao dịch
+  walletId: string;             // Ví nguồn / Ví thanh toán
+  toWalletId?: string;          // Ví đích (chỉ dùng khi type = 'TRANSFER')
+  categoryId?: string;          // ID hạng mục ('system_adjustment' nếu là điều chỉnh số dư)
+  type: TransactionType;
+  amount: number;               // Số tiền giao dịch (> 0)
+  transferFee?: number;         // Phí chuyển khoản (nếu có khi type = 'TRANSFER', mặc định = 0)
+  date: string;                 // 'YYYY-MM-DD'
+  time: string;                 // 'HH:mm'
+  note?: string;                // Ghi chú giao dịch (hỗ trợ ghép nhiều Quick Tags)
+  contactName?: string;         // Người vay / Chủ nợ (dùng cho LEND, BORROW, COLLECT_DEBT, PAY_DEBT)
+  eventId?: string;             // ID Sự kiện / Chuyến đi (vd: 'Du lịch Đà Lạt', 'Tết 2026')
+  excludeFromReport?: boolean;  // true: Không tính vào báo cáo Thu/Chi tháng (dùng cho khoản chi hộ/thu hộ)
+  recurringId?: string;         // ID cấu hình giao dịch định kỳ sinh ra giao dịch này
   createdAt: string;
+  updatedAt?: string;           // ISO 8601 phục vụ đồng bộ 2 chiều (Last-Write-Wins)
 }
 
 export interface Budget {
   id: string;
-  categoryId?: string;      // null nếu là hạn mức tổng tháng
-  amount: number;           // Số tiền hạn mức
-  month: string;            // 'YYYY-MM' (Ví dụ: '2026-10')
+  categoryId?: string;          // null: Hạn mức tổng tháng; ID cha: Hạn mức nhóm; ID con: Hạn mức mục con
+  amount: number;               // Số tiền hạn mức (> 0)
+  month: string;                // 'YYYY-MM' (Ví dụ: '2026-10')
   createdAt: string;
+  updatedAt?: string;
+}
+
+export type RecurringFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+export interface RecurringTransaction {
+  id: string;
+  name: string;                 // Ví dụ: 'Tiền thuê nhà', 'Lương hàng tháng', 'Netflix'
+  walletId: string;
+  toWalletId?: string;
+  categoryId?: string;
+  type: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  amount: number;
+  note?: string;
+  frequency: RecurringFrequency;
+  dayOfMonth?: number;          // Ngày lặp lại trong tháng (1-31)
+  nextRunDate: string;          // 'YYYY-MM-DD'
+  isActive: boolean;
+  autoCreate: boolean;          // true: Tự động ghi sổ khi đến ngày; false: Hiện thông báo nhắc xác nhận
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventTrip {
+  id: string;
+  name: string;                 // Ví dụ: 'Du lịch Phú Quốc', 'Đám cưới', 'Sửa nhà'
+  icon: string;
+  color: string;
+  budgetAmount?: number;        // Ngân sách dự kiến cho sự kiện
+  startDate: string;            // 'YYYY-MM-DD'
+  endDate?: string;
+  isCompleted: boolean;         // true: Đã kết thúc sự kiện
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Setting {
-  key: string;              // 'app_theme', 'user_name', 'last_backup', etc.
+  key: string;
   value: any;
 }
 ```
 
 ---
 
-## 3. ĐẶC TẢ CHI TIẾT CÁC MODULE CHỨC NĂNG (FRD V2.0)
+## 3. ĐẶC TẢ CHI TIẾT CÁC MODULE CHỨC NĂNG (FRD V3.0 - CHUẨN MISA SỔ THU CHI)
 
 ---
 
-### MODULE 1: QUẢN LÝ VÍ & TÀI KHOẢN (WALLET MODULE)
-* **FR-W-01: Danh sách ví & Tổng tài sản:**
-  * Thẻ tổng quan hiển thị Tổng số dư khả dụng (không cộng các ví `isExcludedFromTotal = true`).
-  * Danh sách phân nhóm: Tiền mặt, Ngân hàng, Ví điện tử, Thẻ tín dụng. Hiển thị số dư định dạng chuẩn `1.500.000 ₫`.
-* **FR-W-02: Tạo mới & Sửa ví:**
-  * Nhập: Tên ví, Loại ví, Số dư ban đầu, chọn Icon, chọn Mã màu, Tùy chọn bỏ qua khỏi tổng tài sản.
-* **FR-W-03: Chuyển tiền nội bộ (Transfer):**
-  * Nhập: Ví gửi (`walletId`), Ví nhận (`toWalletId`), Số tiền chuyển, Ngày giờ, Ghi chú.
-  * **Xử lý Atomic Transaction trong Dexie:** Giảm số dư Ví gửi, tăng số dư Ví nhận, ghi 1 bản ghi giao dịch loại `TRANSFER`.
-* **FR-W-04: Xóa ví:**
-  * Kiểm tra an toàn: Nếu ví đã có giao dịch phát sinh, chặn xóa và hiển thị cảnh báo yêu cầu xóa hoặc đổi ví các giao dịch liên quan trước.
+### MODULE 1: QUẢN LÝ ĐA TÀI KHOẢN & VÍ (WALLET MODULE)
+* **FR-W-01: Danh sách ví & Tổng tài sản khả dụng:**
+  * Thẻ tổng quan hiển thị Tổng tài sản khả dụng (tự động loại trừ các ví có `isExcludedFromTotal = true`).
+  * Phân loại 6 nhóm tài khoản: Tiền mặt (`CASH`), Ngân hàng (`BANK`), Ví điện tử (`E_WALLET`), Thẻ tín dụng (`CREDIT`), Đầu tư & Tích lũy (`INVESTMENT`), Khác (`OTHER`).
+* **FR-W-02: Preset Ngân hàng & Ví điện tử Việt Nam (1-Click Setup):**
+  * Tích hợp sẵn danh mục 15+ Ngân hàng (Vietcombank, Techcombank, MB Bank, VietinBank, BIDV, ACB, TPBank, VPBank, VIB, Sacombank, HDBank, Agribank, Timo, Cake...), 5+ Ví điện tử (MoMo, ZaloPay, VNPay, Viettel Money, ShopeePay) và kênh Đầu tư (Chứng khoán VPS/SSI/TCBS, Sổ tiết kiệm, Vàng SJC, Crypto) kèm màu sắc nhận diện thương hiệu.
+  * Cho phép **Tạo tài khoản mới ngay trong lúc đang ghi giao dịch** thông qua Popover/Dialog `WalletSelect` mà không làm mất dữ liệu đang nhập.
+* **FR-W-03: Chuyển tiền nội bộ & Phí chuyển khoản (Transfer & Transfer Fee):**
+  * Nhập: Ví gửi (`walletId`), Ví nhận (`toWalletId`), Số tiền chuyển (`amount`), **Phí chuyển khoản (`transferFee` - tùy chọn)**, Ngày giờ, Ghi chú.
+  * **Xử lý Atomic Transaction:**
+    * Giảm số dư Ví gửi: `fromWallet.balance -= (amount + (transferFee || 0))`.
+    * Tăng số dư Ví nhận: `toWallet.balance += amount`.
+    * Nếu `transferFee > 0`: Tự động ghi nhận phí chuyển khoản vào chi tiêu hoặc lưu trực tiếp trên giao dịch `TRANSFER` để số dư 2 ví luôn khớp 100% thực tế.
+* **FR-W-04: Điều chỉnh số dư thực tế (Balance Adjustment):**
+  * Khi kiểm kê tiền thực tế bị lệch so với sổ sách, người dùng nhập **Số dư thực tế mới**.
+  * Hệ thống tự động tính phần chênh lệch (`diff = newBalance - oldBalance`) và tạo giao dịch điều chỉnh với `categoryId: 'system_adjustment'` để lịch sử biến động luôn minh bạch.
+* **FR-W-05: An toàn dữ liệu khi xóa ví:**
+  * Chặn xóa ví nếu đã có giao dịch phát sinh, hướng dẫn người dùng chuyển giao dịch sang ví khác hoặc xóa giao dịch trước.
 
 ---
 
-### MODULE 2: DANH MỤC THU / CHI & QUICK TAGS (CATEGORY MODULE)
-* **FR-C-01: Bộ danh mục chuẩn hóa Việt Nam (Seed Data kèm Quick Tags):**
-  * **Chi tiêu (EXPENSE):**
-    * 🍔 **Ăn uống** (Icon: `Utensils`, Màu: `#F97316`) ➡️ *Quick Tags: `['Ăn sáng', 'Cơm trưa', 'Cơm tối', 'Cà phê', 'Trà sữa', 'Ăn vặt']`*
-    * 🚗 **Đi lại / Xăng xe** (Icon: `Car`, Màu: `#3B82F6`) ➡️ *Quick Tags: `['Đổ xăng', 'Gửi xe', 'Grab/Taxi', 'Rửa xe', 'Bảo dưỡng']`*
-    * 🛒 **Đi chợ / Siêu thị** (Icon: `ShoppingBag`, Màu: `#8B5CF6`) ➡️ *Quick Tags: `['Thịt cá rau', 'Gia vị', 'Đồ dùng nhà tắm', 'Bách hóa']`*
-    * 🏠 **Hóa đơn nhà cửa** (Icon: `Home`, Màu: `#EAB308`) ➡️ *Quick Tags: `['Tiền nhà', 'Tiền điện', 'Tiền nước', 'Internet', 'Phí dịch vụ']`*
-    * 💊 **Y tế & Sức khỏe** (Icon: `HeartPulse`, Màu: `#EF4444`) ➡️ *Quick Tags: `['Thuốc men', 'Khám bệnh', 'Nha khoa', 'Vitamin/Thực phẩm chức năng']`*
-    * 🎮 **Giải trí & Gặp gỡ** (Icon: `PartyPopper`, Màu: `#EC4899`) ➡️ *Quick Tags: `['Xem phim', 'Nhậu với bạn', 'Du lịch', 'Game/App']`*
-    * 📚 **Phát triển bản thân** (Icon: `GraduationCap`, Màu: `#10B981`) ➡️ *Quick Tags: `['Sách', 'Khóa học', 'Dụng cụ học tập']`*
-    * 🎁 **Hiếu hỉ & Quà cáp** (Icon: `Gift`, Màu: `#06B6D4`) ➡️ *Quick Tags: `['Đám cưới', 'Sinh nhật', 'Biếu bố mẹ', 'Mừng lễ']`*
-    * 📦 **Chi tiêu khác** (Icon: `MoreHorizontal`, Màu: `#6B7280`) ➡️ *Quick Tags: `['Rút tiền', 'Chi đột xuất']`*
-  * **Thu nhập (INCOME):**
-    * 💰 **Lương chính** (Icon: `Banknote`, Màu: `#059669`) ➡️ *Quick Tags: `['Lương cứng', 'Lương chuyển khoản']`*
-    * 📈 **Thưởng & Làm thêm** (Icon: `TrendingUp`, Màu: `#2563EB`) ➡️ *Quick Tags: `['Thưởng KPI', 'Dự án ngoài', 'Overtime']`*
-    * 🪙 **Thu nhập khác** (Icon: `Coins`, Màu: `#D97706`) ➡️ *Quick Tags: `['Được tặng', 'Bán đồ cũ', 'Lãi tiết kiệm']`*
-* **FR-C-02: Tùy biến danh mục:**
-  * Cho phép thêm danh mục mới, chỉnh sửa icon, mã màu và bổ sung danh sách Quick Tags.
+### MODULE 2: HỆ THỐNG HẠNG MỤC 2 TẦNG, GẮN SAO & QUICK TAGS (CATEGORY MODULE)
+* **FR-C-01: Kiến trúc Hạng mục 2 tầng (Cha – Con) kết hợp Quản trị Tài chính:**
+  * **Nhóm Chi tiêu (`EXPENSE`) chia làm 3 nhóm Cha cốt lõi:**
+    1. 🛡️ **Must Have (Chi tiêu Thiết yếu - Nhu cầu cơ bản):** Đi chợ & Nấu ăn, Ăn ngoài & Cơm văn phòng, Nhà cửa & Điện nước, Đi lại & Xăng xe, Y tế & Thuốc men, Con cái & Học phí, Hiếu hỉ & Gia đình, Trả nợ & Phí dịch vụ.
+    2. ❤️ **Nice to Have (Nâng cao chất lượng sống & Phát triển):** Cà phê & Trà sữa, Giải trí & Hẹn hò, Mua sắm quần áo & Mỹ phẩm, Thể thao & Chăm sóc bản thân, Du lịch & Nghỉ dưỡng, Học tập & Sách vở, Quà tặng & Từ thiện.
+    3. 🔥 **Wasted (Chi tiêu Lãng phí / Cần cắt giảm):** Mua sắm bốc đồng, Phí phạt & Lãi quá hạn, Đồ mua không dùng, Tiệc tùng quá đà, Trò chơi & Cá cược.
+  * **Nhóm Thu nhập (`INCOME`):** Lương & Phụ cấp, Thưởng & Hoa hồng, Làm thêm & Freelance, Đầu tư & Cổ tức, Lãi tiết kiệm, Tiền mừng & Được tặng, Bán đồ thanh lý.
+  * **Nhóm Vay nợ (`DEBT`):** Cho vay, Đi vay, Thu nợ, Trả nợ.
+* **FR-C-02: Thanh Hạng mục Hay dùng & Gắn sao ưu tiên (Starred & Frequent Categories):**
+  * Hiển thị trực tiếp bên dưới ô chọn hạng mục ở màn hình ghi chép (tối đa 2 dòng).
+  * **Thuật toán sắp xếp thông minh:** Ưu tiên (1) Các hạng mục được người dùng **Gắn sao (`isStarred = true`)** ➡️ (2) Các hạng mục có **tần suất sử dụng nhiều nhất** trong lịch sử ➡️ (3) Bảng chữ cái tiếng Việt.
+* **FR-C-03: Hệ thống Quick Tags cộng dồn & Tạo nhanh tại chỗ:**
+  * Mỗi hạng mục có danh sách gợi ý ghi chú nhanh riêng biệt (ví dụ chọn *Đi lại & Xăng xe* hiện ngay `Đổ xăng`, `Gửi xe`, `Grab/Taxi`, `Bảo dưỡng`).
+  * Bấm nhiều tag sẽ tự động nối bằng dấu phẩy (ví dụ: `"Đổ xăng, Gửi xe"`).
+  * Nút **`+ Thêm tag`** cho phép tạo mới Quick Tag ngay tại màn hình ghi chép và lưu vĩnh viễn vào hạng mục đó.
 
 ---
 
-### MODULE 3: GHI CHÉP GIAO DỊCH CỰC NHANH (FAST TRANSACTION ENTRY)
-* **FR-T-01: Bàn phím số tích hợp (Custom Numpad với phím `000`):**
-  * Thiết kế bàn phím số riêng chiếm nửa dưới màn hình:
-    * Hàng phím số: `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `C`, `0`, **`000`** (bấm `5` rồi bấm `000` thành `5.000`, bấm thêm lần nữa thành `5.000.000`).
-    * Hàng phím tính toán nhanh: `+`, `-`, `x`, `÷` (cho phép tính gộp nhiều món ngay trên form nhập: vd: `35000 + 42000`).
-    * Nút **"LƯU"** to nổi bật, dễ bấm bằng ngón tay cái trên iPhone.
-* **FR-T-02: Hàng gợi ý ghi chú nhanh (Quick Tags Bar):**
-  * Khi chọn danh mục (ví dụ: Ăn uống), hệ thống ngay lập tức hiển thị một hàng ngang các Quick Tags tương ứng (`Ăn sáng`, `Cơm trưa`, `Cà phê`...).
-  * Chạm 1 lần vào tag để điền nhanh vào ô ghi chú mà không cần gõ bàn phím chữ.
-* **FR-T-03: Logic Thêm giao dịch (Create Transaction):**
-  * Thực thi trong `Dexie Transaction`:
-    * Tạo record trong bảng `transactions`.
-    * Cập nhật số dư ví:
-      * Nếu `EXPENSE`: `wallet.balance = wallet.balance - amount`
-      * Nếu `INCOME`: `wallet.balance = wallet.balance + amount`
-      * Nếu `TRANSFER`: `wallet.balance = wallet.balance - amount`, `toWallet.balance = toWallet.balance + amount`
-* **FR-T-04: Logic SỬA / XÓA giao dịch có hoàn tác số dư (Atomic Revert Balance):**
-  * **Quy tắc bắt buộc khi CẬP NHẬT giao dịch (Update):**
-    1. Lấy dữ liệu giao dịch cũ (`oldTx`) trước khi sửa.
-    2. **Hoàn tác số dư cũ:**
-       * Nếu `oldTx.type == 'EXPENSE'`: hoàn trả số tiền cũ vào ví cũ (`oldWallet.balance += oldTx.amount`).
-       * Nếu `oldTx.type == 'INCOME'`: trừ lại số tiền cũ khỏi ví cũ (`oldWallet.balance -= oldTx.amount`).
-       * Nếu `oldTx.type == 'TRANSFER'`: trả tiền về ví gửi cũ (`oldWallet.balance += oldTx.amount`) và trừ tiền khỏi ví nhận cũ (`oldToWallet.balance -= oldTx.amount`).
-    3. **Áp dụng số dư mới (`newTx`):**
-       * Áp dụng tương tự bước Thêm mới vào ví mới (`newWallet`, `newToWallet`).
-    4. Toàn bộ bước (2) và (3) phải chạy trong **cùng 1 `db.transaction('rw', [db.wallets, db.transactions], ...)`**.
-  * **Quy tắc bắt buộc khi XÓA giao dịch (Delete):**
-    1. Thực hiện bước (2) Hoàn tác số dư.
-    2. Xóa record khỏi bảng `transactions`.
+### MODULE 3: GHI CHÉP GIAO DỊCH HÀNG NGÀY SIÊU TỐC (DAILY TRANSACTION ENTRY)
+* **FR-T-01: Bàn phím Numpad tích hợp Máy tính & Phím `000`:**
+  * Có phím `000` (chặn bấm khi đang là `0`), tự động tính biểu thức `+`, `-`, `×`, `÷` ngay khi gõ và tự động evaluate ra kết quả cuối cùng khi bấm **Lưu**.
+  * Hỗ trợ gõ trực tiếp từ bàn phím cứng khi dùng trên máy tính (PC/Laptop).
+* **FR-T-02: Tính năng tăng tốc ghi chép hàng ngày (Chuẩn MISA Sổ Thu Chi):**
+  * **Nút "Lưu & Ghi tiếp" (Save & Continue):** Lưu giao dịch hiện tại, giữ nguyên Ngày và Ví vừa chọn, reset số tiền về `0` để nhập ngay món tiếp theo (cực kỳ tiện khi nhập hóa đơn đi chợ nhiều món hoặc tổng kết chi tiêu cuối ngày).
+  * **Nút "Nhân bản giao dịch" (Duplicate Transaction):** Trong màn hình chi tiết giao dịch cũ, có nút **"Sao chép / Nhân bản"** để tạo nhanh một giao dịch mới có cùng số tiền, hạng mục, ví và ghi chú nhưng lấy ngày hôm nay.
+  * **Tùy chọn "Không tính vào báo cáo" (`excludeFromReport`):** Cho phép đánh dấu các khoản chi hộ / ứng trước cho người khác để vẫn trừ tiền trong ví thực tế nhưng không làm sai lệch báo cáo chi tiêu cá nhân.
+  * **Chọn Ngày & Giờ linh hoạt:** Bộ chọn ngày trực quan (kèm nút nhanh *Hôm nay*, *Hôm qua*) và chọn giờ giao dịch.
+* **FR-T-03: Hoàn tác số dư nguyên tử (Atomic Balance Revert):**
+  * Mọi thao tác Thêm / Sửa / Xóa giao dịch bắt buộc chạy trong `db.transaction('rw', [db.wallets, db.transactions, ...])`.
+  * Khi Sửa hoặc Xóa: Luôn hoàn tác chính xác tác động số dư của `oldTx` trên ví cũ trước khi áp dụng `newTx` lên ví mới.
 
 ---
 
-### MODULE 4: LỊCH SỬ & BÁO CÁO THÁNG THÔNG MINH (ANALYTICS & DRILL-DOWN)
-* **FR-A-01: Sổ lịch sử Timeline:**
-  * Nhóm theo Ngày: Mỗi ngày có header hiển thị Thứ/Ngày và tổng Chi tiêu/Thu nhập trong ngày.
-  * Chạm vào từng giao dịch để xem chi tiết / chỉnh sửa / xóa.
-* **FR-A-02: Phân tích so sánh tháng liền trước (MoM - Month-over-Month):**
-  * Hiển thị tỷ lệ biến động:
-    * Tổng chi tiêu tháng này so với tháng trước: hiển thị Badge chỉ số ví dụ `+15.2%` (Màu đỏ - chi nhiều hơn) hoặc `-8.4%` (Màu xanh - tiết kiệm hơn).
-    * So sánh từng danh mục: Bên cạnh mỗi danh mục có hiển thị chênh lệch số tiền và % so với tháng trước để người dùng biết danh mục nào đang bị "vung tay quá trán".
-* **FR-A-03: Biểu đồ tròn cơ cấu chi & Drill-down chi tiết:**
-  * Biểu đồ Donut hiển thị tỷ lệ % các nhóm chi tiêu trong tháng.
-  * **Tính năng Drill-down:** Người dùng bấm trực tiếp vào một miếng trên biểu đồ hoặc bấm vào một danh mục trong danh sách ➡️ Ứng dụng mở ngay **Màn hình/Modal danh sách chi tiết tất cả các giao dịch của danh mục đó trong tháng** để rà soát cụ thể từng khoản chi.
-* **FR-A-04: Biểu đồ cột Thu nhập vs Chi tiêu:**
-  * So sánh các tháng gần nhất để theo dõi xu hướng tích lũy và dòng tiền ròng (Net = Thu - Chi).
+### MODULE 4: QUẢN LÝ CÔNG NỢ - SỔ VAY & CHO VAY (DEBT & LOAN TRACKING MODULE)
+* **FR-D-01: Tách biệt dòng tiền Vay/Nợ khỏi Thu/Chi tiêu dùng:**
+  * Giao dịch `LEND` (Cho vay) và `PAY_DEBT` (Trả nợ) làm giảm số dư ví nhưng **không tính vào Chi tiêu tiêu dùng** mặc định trong báo cáo cơ cấu chi (tránh làm ảo chi tiêu tháng).
+  * Giao dịch `BORROW` (Đi vay) và `COLLECT_DEBT` (Thu nợ) làm tăng số dư ví nhưng **không tính vào Thu nhập kiếm được**.
+* **FR-D-02: Theo dõi theo Người vay / Chủ nợ (`contactName`):**
+  * Khi chọn tab `Cho vay`, `Đi vay`, `Thu nợ`, `Trả nợ`, hiển thị ô nhập/chọn nhanh **Người giao dịch (`contactName`)** (gợi ý danh sách những người đã từng giao dịch trước đó).
+* **FR-D-03: Bảng tổng hợp Sổ Nợ (Debt Dashboard):**
+  * Thống kê rõ 2 cột giống MISA Sổ Thu Chi:
+    1. **Cần thu (Người khác nợ mình):** Tổng cho vay (`LEND`) trừ đi Tổng đã thu nợ (`COLLECT_DEBT`) theo từng người. Có nút **"Thu nợ"** 1 chạm để tự động điền form thu hồi số tiền còn lại.
+    2. **Phải trả (Mình nợ người khác):** Tổng đi vay (`BORROW`) trừ đi Tổng đã trả nợ (`PAY_DEBT`) theo từng người. Có nút **"Trả nợ"** 1 chạm.
 
 ---
 
-### MODULE 5: QUẢN LÝ HẠN MỨC & SAO CHÉP HẠN MỨC (BUDGET MODULE)
-* **FR-B-01: Thiết lập hạn mức chi tiêu:**
-  * Hạn mức tổng cho cả tháng hoặc hạn mức riêng cho từng danh mục.
-* **FR-B-02: Sao chép hạn mức từ tháng trước (Copy Budgets):**
-  * Nút bấm nổi bật: **"Sao chép hạn mức tháng trước"** khi sang tháng mới.
-  * Tự động quét toàn bộ hạn mức của tháng liền trước (`YYYY-(MM-1)`) và nhân bản sang tháng hiện tại chỉ với 1 chạm.
-* **FR-B-03: Giám sát & Cảnh báo thông minh:**
-  * Thanh tiến độ đổi màu:
-    * Xanh lá: < 70% hạn mức (An toàn).
-    * Vàng cam: 70% - 99% (Cần chú ý).
-    * Đỏ rực: >= 100% (Vượt ngân sách).
-  * Hiển thị số tiền còn lại được phép chi và số tiền trung bình an toàn mỗi ngày đến hết tháng.
+### MODULE 5: GHI CHÉP ĐỊNH KỲ & SỰ KIỆN / CHUYẾN ĐI (RECURRING & EVENTS MODULE)
+* **FR-R-01: Giao dịch định kỳ (Recurring Transactions):**
+  * Cho phép tạo các mẫu giao dịch lặp lại: Tiền thuê nhà, Điện nước, Internet, Gói đăng ký (Netflix, Spotify, Youtube, iCloud), Lương cứng...
+  * Chu kỳ lặp: Hàng ngày (`DAILY`), Hàng tuần (`WEEKLY`), Hàng tháng (`MONTHLY`), Hàng năm (`YEARLY`).
+  * Khi mở ứng dụng mỗi ngày, hệ thống kiểm tra các khoản định kỳ có `nextRunDate <= today`:
+    * Nếu `autoCreate = true`: Tự động tạo giao dịch, cập nhật số dư ví, đẩy `nextRunDate` sang kỳ tiếp theo và hiện thông báo Toast cho người dùng biết.
+    * Nếu `autoCreate = false`: Hiển thị thẻ nhắc nhở "Đến hạn thanh toán" để người dùng bấm **"Ghi sổ ngay"** hoặc chỉnh sửa số tiền thực tế (ví dụ tiền điện mỗi tháng khác nhau).
+* **FR-V-01: Quản lý Sự kiện / Chuyến đi (Events & Trips):**
+  * Tạo sự kiện (ví dụ: *"Du lịch Đà Nẵng"*, *"Tết Nguyên Đán"*, *"Đám cưới bạn"*).
+  * Khi ghi chép giao dịch hàng ngày, có thể gắn giao dịch vào một Sự kiện đang diễn ra.
+  * Báo cáo riêng cho từng Sự kiện: Tổng tiền đã chi cho sự kiện đó, danh sách các khoản chi theo ngày giúp quyết toán hoặc chia tiền nhóm dễ dàng.
 
 ---
 
-### MODULE 6: SAO LƯU & XUẤT DỮ LIỆU ĐỘC LẬP (BACKUP & EXPORT)
-* **FR-E-01: Xuất báo cáo Excel (.xlsx):**
-  * Xuất bảng kê chi tiết và bảng tổng hợp thu chi theo tháng dạng file Excel chuẩn.
-  * Kích hoạt Native Web Share API (`navigator.share`) để gửi qua Zalo, Mail, AirDrop hoặc lưu vào app Tệp trên iPhone.
-* **FR-E-02: Sao lưu đầy đủ (Full JSON Backup):**
-  * Xuất 100% dữ liệu (Wallets, Categories, Transactions, Budgets, Settings) thành 1 file `.json`.
-  * Không phụ thuộc bất kỳ file ảnh nào, đảm bảo sao lưu và phục hồi thành công 100%.
-* **FR-E-03: Khôi phục dữ liệu (Restore Data):**
-  * Tải lên file JSON backup, xác thực cấu trúc trước khi ghi đè vào IndexedDB.
-* **FR-E-04: Tự động sao lưu hàng ngày (Auto-Backup & Background Trigger):**
-  * **Cấu hình trong Cài đặt (Settings):**
-    * Tùy chọn Bật/Tắt `auto_backup_enabled` (lưu trong bảng `settings` của Dexie).
-    * Chọn khung giờ sao lưu hàng ngày `auto_backup_time` (mặc định: `21:00`).
-    * Ghi nhớ ngày sao lưu tự động thành công gần nhất `last_auto_backup_date` (`YYYY-MM-DD`).
-  * **Cơ chế kiểm tra ngầm khi khởi động ứng dụng (App Initialization Check):**
-    * Mỗi khi ứng dụng khởi chạy hoặc hoạt động: nếu `auto_backup_enabled === true` và hôm nay chưa sao lưu lần nào (`last_auto_backup_date !== today`), hệ thống sẽ tự động gọi logic xuất file JSON đầy đủ toàn bộ dữ liệu.
-    * Kích hoạt `navigator.share()` (trên iOS/Safari để lưu vào app Tệp hoặc gửi qua AirDrop/Zalo) hoặc tự động tải file `.json` về máy.
-    * Sau khi xuất thành công, cập nhật ngay `last_auto_backup_date` thành ngày hiện tại để không lặp lại trong ngày.
+### MODULE 6: BÁO CÁO PHÂN TÍCH ĐA CHIỀU & NGÂN SÁCH 2 TẦNG (ANALYTICS & BUDGETS)
+* **FR-A-01: Báo cáo gom nhóm 2 tầng (Cha – Con) & Phân tích 50/30/20:**
+  * Chế độ xem **Theo Nhóm Cha** (*Must Have / Nice to Have / Wasted*) giúp người dùng biết ngay tỷ lệ chi tiêu Thiết yếu vs Giải trí vs Lãng phí trong tháng chiếm bao nhiêu %.
+  * Chế độ xem **Theo Hạng mục Chi tiết** với biểu đồ Donut trực quan, so sánh cùng kỳ tháng trước (`MoM %`) và tính năng **Drill-down** bấm vào xem danh sách giao dịch chi tiết.
+* **FR-A-02: Báo cáo Tình hình Tài chính & Xu hướng Dòng tiền:**
+  * Biểu đồ cột so sánh Thu nhập vs Chi tiêu và Dòng tiền ròng (`Net = Thu - Chi`) qua 6 tháng gần nhất.
+  * Thống kê trung bình chi tiêu/ngày trong tháng và dự báo chi tiêu cuối tháng.
+* **FR-B-01: Hạn mức chi tiêu (Budget) hỗ trợ cả Hạng mục Cha & Con:**
+  * Cho phép đặt hạn mức tổng cả tháng, đặt hạn mức cho nhóm Cha (tự động cộng tổng chi của tất cả các mục con thuộc nhóm đó) hoặc đặt hạn mức cho từng hạng mục con cụ thể.
+  * Thanh tiến độ cảnh báo 3 cấp màu (Xanh `< 70%`, Vàng `70% - 99%`, Đỏ `>= 100%`), tính toán **Số tiền được phép tiêu an toàn mỗi ngày** cho những ngày còn lại của tháng.
+  * Nút **"Sao chép hạn mức từ tháng trước"** bằng 1 chạm.
 
 ---
 
-## 4. KẾ HOẠCH TRIỂN KHAI THEO GIAI ĐOẠN (ROADMAP)
+### MODULE 7: ĐỒNG BỘ ĐÁM MÂY GOOGLE DRIVE & XUẤT BÁO CÁO (SYNC & BACKUP)
+* **FR-S-01: Đồng bộ 2 chiều thông minh qua Google Drive (Smart Two-Way Sync):**
+  * Đăng nhập bằng Google OAuth 2.0 (hỗ trợ cấu hình Custom Client ID trực tiếp trên giao diện để tương thích mọi tên miền triển khai).
+  * Hợp nhất dữ liệu thông minh (Merge by ID + `updatedAt` + Tombstone `deletedIds`) giữa Máy tính và Điện thoại thông qua tệp `SoThuChi_SyncData.json` trên Google Drive mà không làm mất giao dịch ở bất kỳ thiết bị nào.
+  * Nút **"Sao lưu ngay lên Google Drive"** tạo các bản snapshot dự phòng trong thư mục `SoThuChi_Backups` trên Google Drive.
+* **FR-S-02: Lưu trữ & Xuất báo cáo Ngoại tuyến (Offline Export):**
+  * Xuất báo cáo bảng tính **Excel (`.xlsx`)** gồm 3 sheets: *Tổng hợp thu chi*, *Chi tiết giao dịch*, *Danh sách tài khoản ví*.
+  * Tải tệp JSON về máy (Offline) & Khôi phục dữ liệu từ tệp JSON có màn hình **Xem trước (Preview)** kiểm tra tính hợp lệ trước khi ghi đè.
 
-| Giai đoạn | Nội dung thực hiện | Bàn giao (Deliverables) |
+---
+
+## 4. LỘ TRÌNH HOÀN THIỆN TIẾP THEO (ROADMAP V3.0)
+
+| Giai đoạn | Hạng mục nâng cấp chuẩn MISA Sổ Thu Chi | Trạng thái |
 | :--- | :--- | :--- |
-| **P1** | **Khởi tạo PWA & Cấu hình Dexie.js Database** | Khởi tạo dự án Vite React TypeScript, cấu hình PWA Manifest + Service Worker, khởi tạo Dexie DB Schema, bộ Seed Data danh mục kèm Quick Tags. |
-| **P2** | **Module Ví & Quản lý Dòng tiền** | UI Danh sách ví, Thêm/Sửa ví, Chuyển tiền nội bộ giữa các ví, tính toán số dư. |
-| **P3** | **Module Ghi chép Nhanh & Numpad (`000` + Quick Tags)** | Form nhập liệu cực nhanh, bàn phím số có phím `000` và tính toán `+ - x ÷`, thanh Quick Tags, Atomic Balance Revert. |
-| **P4** | **Module Lịch sử & Sổ giao dịch** | Timeline giao dịch theo ngày, bộ lọc, chức năng Sửa/Xóa giao dịch có hoàn tác số dư. |
-| **P5** | **Module Báo cáo Tháng (MoM & Drill-down)** | Biểu đồ tròn cơ cấu chi, tính năng Drill-down xem chi tiết giao dịch danh mục, so sánh % tăng giảm với tháng trước. |
-| **P6** | **Module Hạn mức (Budget & Copy tháng trước)** | Thiết lập ngân sách, thanh tiến độ cảnh báo, nút "Sao chép hạn mức từ tháng trước". |
-| **P7** | **Module Xuất Excel & Backup/Restore JSON** | Xuất file Excel (.xlsx), Backup & Restore JSON, tích hợp Web Share API. |
-| **P8** | **Hoàn thiện PWA iOS & Tối ưu Trải nghiệm Home Screen** | Thử nghiệm trên Safari iPhone (Add to Home Screen), tối ưu hóa Safe Area, Offline Caching. |
+| **P1 - P8** | Nền tảng PWA + Responsive Web Desktop/Mobile, Đa ví (Preset ngân hàng VN), Hạng mục 2 tầng + Gắn sao, Numpad `000`, Lịch sử & Lọc đa năng, Báo cáo MoM & Drill-down, Hạn mức tháng, Đồng bộ Google Drive 2 chiều & Xuất Excel. | ✅ **Đã hoàn thành** |
+| **P9** | **Tối ưu Ghi chép Hàng ngày & Chuẩn hóa Dòng tiền Vay/Nợ:**<br>• Bổ sung nút **"Lưu & Ghi tiếp"** và **"Nhân bản giao dịch"**.<br>• Bổ sung **Phí chuyển khoản (`transferFee`)** và tích chọn **"Không tính vào báo cáo" (`excludeFromReport`)**.<br>• Tách riêng dòng tiền `LEND`/`BORROW`/`COLLECT_DEBT`/`PAY_DEBT` khỏi báo cáo Thu/Chi tiêu dùng và bổ sung trường **Người vay/Chủ nợ (`contactName`)**. | 🚀 **Ưu tiên tiếp theo** |
+| **P10** | **Báo cáo & Ngân sách gom nhóm 2 tầng (Cha – Con):**<br>• Chế độ xem báo cáo theo nhóm Cha (*Must Have / Nice to Have / Wasted*) và tính ngân sách cộng gộp các mục con vào mục cha. | 📋 **Kế hoạch V3.0** |
+| **P11** | **Sổ Nợ (Debt Manager), Ghi chép Định kỳ & Sự kiện/Chuyến đi:**<br>• Kích hoạt tính năng **Ghi chép định kỳ** và **Sự kiện / Chia tiền du lịch** trong tab *Khác*.<br>• Màn hình tổng hợp Sổ nợ theo từng đối tượng kèm nút *Thu nợ / Trả nợ* 1 chạm. | 📋 **Kế hoạch V3.0** |
