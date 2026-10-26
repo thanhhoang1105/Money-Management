@@ -11,6 +11,7 @@ import {
 } from '../BankLogo';
 import { formatVND } from '../../utils/formatters';
 import { createWallet, sortWallets } from '../../services/transactionService';
+import { Toast } from './Toast';
 
 interface WalletSelectProps {
   wallets: Wallet[];
@@ -277,9 +278,11 @@ export const WalletSelect: React.FC<WalletSelectProps> = ({
           </div>
 
           {errorMsg && (
-            <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs">
-              {errorMsg}
-            </div>
+            <Toast
+              message={errorMsg}
+              type="error"
+              onClose={() => setErrorMsg('')}
+            />
           )}
 
           <div className="flex items-center justify-end gap-2">

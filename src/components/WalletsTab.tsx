@@ -23,6 +23,7 @@ import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import { CustomSelect } from './ui/CustomSelect';
 import { WalletSelect } from './ui/WalletSelect';
 import { DatePicker } from './ui/DatePicker';
+import { Toast } from './ui/Toast';
 import {
   Plus,
   Edit3,
@@ -75,6 +76,10 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   const [transferFeeStr, setTransferFeeStr] = useState<string>('0');
   const [transferDate, setTransferDate] = useState<string>(() => getCurrentDate());
   const [transferNote, setTransferNote] = useState<string>('');
+  const [walletNotice, setWalletNotice] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'warning';
+  } | null>(null);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về danh sách ví chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -157,7 +162,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
 
   const openTransferModal = (w: Wallet) => {
     if (sortedWallets.length <= 1) {
-      alert('Bạn cần có ít nhất 2 tài khoản / ví để thực hiện chuyển tiền giữa các ví.');
+      setWalletNotice({
+        message: 'Bạn cần có ít nhất 2 tài khoản / ví để thực hiện chuyển tiền giữa các ví.',
+        type: 'warning'
+      });
+      setTimeout(() => setWalletNotice(null), 3500);
       return;
     }
     setSelectedWallet(w);
@@ -210,6 +219,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
         isExcludedFromTotal: isExcluded,
         order: wallets.length
       });
+      setWalletNotice({
+        message: `Đã tạo tài khoản "${name.trim()}" thành công!`,
+        type: 'success'
+      });
+      setTimeout(() => setWalletNotice(null), 3000);
       setViewMode('LIST');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Lỗi tạo ví');
@@ -230,6 +244,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
       isExcludedFromTotal: isExcluded,
       updatedAt: new Date().toISOString()
     });
+    setWalletNotice({
+      message: `Đã cập nhật tài khoản "${name.trim()}"!`,
+      type: 'success'
+    });
+    setTimeout(() => setWalletNotice(null), 3000);
     setViewMode('LIST');
   };
 
@@ -248,6 +267,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
         date: getCurrentDate(),
         time: getCurrentTime()
       });
+      setWalletNotice({
+        message: `Đã điều chỉnh số dư tài khoản "${selectedWallet.name}"!`,
+        type: 'success'
+      });
+      setTimeout(() => setWalletNotice(null), 3000);
       setViewMode('LIST');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Lỗi điều chỉnh số dư');
@@ -262,8 +286,17 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
     ) {
       try {
         await deleteWallet(w.id);
+        setWalletNotice({
+          message: `Đã xóa tài khoản "${w.name}"!`,
+          type: 'success'
+        });
+        setTimeout(() => setWalletNotice(null), 3000);
       } catch (err: any) {
-        alert(err?.message || 'Không thể xóa tài khoản');
+        setWalletNotice({
+          message: err?.message || 'Không thể xóa tài khoản',
+          type: 'error'
+        });
+        setTimeout(() => setWalletNotice(null), 3500);
       }
     }
   };
@@ -307,6 +340,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
         categoryId: ''
       });
       window.dispatchEvent(new Event('local-data-changed'));
+      setWalletNotice({
+        message: `Đã chuyển ${formatVND(amt)} sang "${toWallet?.name || 'ví nhận'}" thành công!`,
+        type: 'success'
+      });
+      setTimeout(() => setWalletNotice(null), 3000);
       setViewMode('LIST');
     } catch (err: any) {
       setErrorMsg(err?.message || 'Có lỗi xảy ra khi thực hiện chuyển tiền');
@@ -442,9 +480,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
           </label>
 
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-400 text-xs font-semibold">
-              {errorMsg}
-            </div>
+            <Toast
+              message={errorMsg}
+              type="error"
+              onClose={() => setErrorMsg('')}
+            />
           )}
 
           <div className="flex items-center gap-2.5 pt-1">
@@ -549,7 +589,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
           </label>
 
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-400 text-xs">{errorMsg}</div>
+            <Toast
+              message={errorMsg}
+              type="error"
+              onClose={() => setErrorMsg('')}
+            />
           )}
 
           <div className="flex items-center gap-2.5">
@@ -774,9 +818,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
           </div>
 
           {errorMsg && (
-            <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-medium">
-              {errorMsg}
-            </div>
+            <Toast
+              message={errorMsg}
+              type="error"
+              onClose={() => setErrorMsg('')}
+            />
           )}
 
           {/* Action Buttons */}
@@ -807,6 +853,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   // ==========================================
   return (
     <div className="pb-28">
+      {walletNotice && (
+        <Toast
+          message={walletNotice.message}
+          type={walletNotice.type}
+          onClose={() => setWalletNotice(null)}
+        />
+      )}
+
       {/* 1. Thẻ Tổng tài sản */}
       <div className="mx-4 my-3 rounded-3xl p-5 bg-gradient-to-br from-emerald-500/15 to-slate-900/95 border border-emerald-500/30 shadow-xl backdrop-blur-md">
         <div className="text-xs text-slate-400 uppercase font-semibold tracking-wider">

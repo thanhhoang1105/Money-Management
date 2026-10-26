@@ -1,4 +1,5 @@
 // src/services/grabService.ts
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db, runWithoutDirtyTracking } from '../db';
 import { generateUUID } from '../utils/uuid';
 import {
@@ -10,9 +11,43 @@ import type { Wallet, Transaction } from '../types';
 
 export { GRAB_INCOME_CAT_ID, GRAB_FEE_CAT_ID };
 
+export const GRAB_SETTING_ENABLED = 'grab_driver_mode_enabled';
 export const GRAB_SETTING_CREDIT_WALLET = 'grab_credit_wallet_id';
 export const GRAB_SETTING_CASH_WALLET = 'grab_cash_wallet_id';
 export const GRAB_SETTING_PHYSICAL_CASH_WALLET = 'grab_physical_cash_wallet_id';
+
+/**
+ * Hook kiểm tra trạng thái bật/tắt nghiệp vụ Tài xế GrabBike.
+ * Tự động đồng bộ phản ứng thời gian thực khi người dùng gạt công tắc trong Cài đặt.
+ * - Mặc định với người dùng mới: false (TẮT).
+ * - Tự động nhận diện với người dùng cũ (đã có ví hoặc giao dịch Grab): true (BẬT).
+ */
+export function useGrabDriverMode(): boolean {
+  const setting = useLiveQuery(() => db.settings.get(GRAB_SETTING_ENABLED));
+  const creditSetting = useLiveQuery(() => db.settings.get(GRAB_SETTING_CREDIT_WALLET));
+  const cashSetting = useLiveQuery(() => db.settings.get(GRAB_SETTING_CASH_WALLET));
+
+  if (setting !== undefined) {
+    return Boolean(setting?.value);
+  }
+
+  // Tự động giữ BẬT cho người dùng đã cấu hình ví Grab từ trước
+  if (creditSetting?.value || cashSetting?.value) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Cập nhật trạng thái BẬT/TẮT tính năng Tài xế GrabBike vào IndexedDB
+ */
+export async function setGrabDriverModeEnabled(enabled: boolean): Promise<void> {
+  await db.settings.put({
+    key: GRAB_SETTING_ENABLED,
+    value: enabled
+  });
+}
 
 export interface GrabWalletsConfig {
   creditWalletId: string;

@@ -13,6 +13,7 @@ import { CategoryIcon } from './CategoryIcon';
 import { BankLogo, detectBankBrand } from './BankLogo';
 import { CustomSelect } from './ui/CustomSelect';
 import { CategoryFilterSelect } from './ui/CategoryFilterSelect';
+import { Toast } from './ui/Toast';
 import {
   formatVND,
   formatFriendlyDate,
@@ -313,9 +314,11 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
       </div>
 
       {feedbackMsg && (
-        <div className="mx-4 mt-3 p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center animate-fade-in">
-          {feedbackMsg}
-        </div>
+        <Toast
+          message={feedbackMsg}
+          type="success"
+          onClose={() => setFeedbackMsg('')}
+        />
       )}
 
       {/* 2. Bộ Chuyển Tháng Filter bên trên */}

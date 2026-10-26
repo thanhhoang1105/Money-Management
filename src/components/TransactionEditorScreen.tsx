@@ -17,6 +17,7 @@ import { NumpadBottomSheet } from './NumpadBottomSheet';
 import { DatePicker } from './ui/DatePicker';
 import { WalletSelect } from './ui/WalletSelect';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import {
   ArrowLeft,
@@ -45,6 +46,7 @@ import {
 } from 'lucide-react';
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
+import { useGrabDriverMode } from '../services/grabService';
 
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_WALLETS: Wallet[] = [];
@@ -151,6 +153,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   // Mở màn hình Lịch sử ghi chép (dạng màn hình phẳng)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isGrabTripModalOpen, setIsGrabTripModalOpen] = useState(false);
+  const isGrabDriverMode = useGrabDriverMode();
 
   const handleCloseOrReturnToHistory = () => {
     if (onSelectTransactionToEdit) {
@@ -813,9 +816,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       {/* 2. Nội dung phẳng chính */}
       <div className="flex flex-col">
         {toastMsg && (
-          <div className="mx-4 mt-3 p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs text-center font-bold animate-fade-in">
-            {toastMsg}
-          </div>
+          <Toast
+            message={toastMsg}
+            type="success"
+            onClose={() => setToastMsg('')}
+          />
         )}
 
         {/* THỨ TỰ 1: CHỌN LOẠI GIAO DỊCH (2 nút chính + Dropdown Nghiệp vụ khác chống tràn trên Mobile) */}
@@ -998,22 +1003,24 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                 </button>
 
                 {/* Nút Nghiệp Vụ Chạy Grab */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsOtherTypesDropdownOpen(false);
-                    setIsGrabTripModalOpen(true);
-                  }}
-                  className="touch-btn h-11 px-3.5 rounded-xl border flex items-center justify-between text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all col-span-2 bg-gradient-to-r from-emerald-500/20 via-slate-800 to-teal-500/15 border-emerald-500/40 text-emerald-300 hover:text-white"
-                >
-                  <div className="flex items-center gap-2">
-                    <MotorcycleIcon size={18} className="text-emerald-400 shrink-0" strokeWidth={2.2} />
-                    <span>Nghiệp vụ Chạy GrabBike (Tự động chia tiền mặt & tín dụng)</span>
-                  </div>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">
-                    Mở ➔
-                  </span>
-                </button>
+                {isGrabDriverMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOtherTypesDropdownOpen(false);
+                      setIsGrabTripModalOpen(true);
+                    }}
+                    className="touch-btn h-11 px-3.5 rounded-xl border flex items-center justify-between text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all col-span-2 bg-gradient-to-r from-emerald-500/20 via-slate-800 to-teal-500/15 border-emerald-500/40 text-emerald-300 hover:text-white"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MotorcycleIcon size={18} className="text-emerald-400 shrink-0" strokeWidth={2.2} />
+                      <span>Nghiệp vụ Chạy GrabBike (Tự động chia tiền mặt & tín dụng)</span>
+                    </div>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">
+                      Mở ➔
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1215,9 +1222,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         </div>
 
         {errorMsg && (
-          <div className="mx-4 mt-2 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs text-center font-medium">
-            {errorMsg}
-          </div>
+          <Toast
+            message={errorMsg}
+            type="error"
+            onClose={() => setErrorMsg('')}
+          />
         )}
 
         {/* THỨ TỰ 3: CHỌN & QUẢN LÝ HẠNG MỤC */}

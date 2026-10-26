@@ -20,16 +20,17 @@ import {
   performSupabaseSmartSync
 } from '../services/supabaseService';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
+import { useGrabDriverMode, setGrabDriverModeEnabled } from '../services/grabService';
+import { MotorcycleIcon } from './MotorcycleIcon';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import {
   ArrowLeft,
-  Clock,
   Database,
   FileSpreadsheet,
   Download,
   Upload,
   ShieldCheck,
-  Check,
   AlertTriangle,
   RotateCw,
   CloudUpload,
@@ -97,6 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   // Phạm vi xuất Excel
   const [excelScope, setExcelScope] = useState<'all' | string>('all');
+  const isGrabModeEnabled = useGrabDriverMode();
 
   // Màn hình mở app mặc định
   const [defaultStartTab, setDefaultStartTab] = useState<string>(() => {
@@ -325,6 +327,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     });
   };
 
+  const handleToggleGrabDriverMode = async () => {
+    const nextVal = !isGrabModeEnabled;
+    await setGrabDriverModeEnabled(nextVal);
+    setStatusMsg({
+      text: nextVal
+        ? 'Đã bật tính năng Tài xế GrabBike (Xuất hiện nút cuốc xe)'
+        : 'Đã tắt tính năng Tài xế GrabBike',
+      type: 'success'
+    });
+  };
+
   const handleExportManualJSON = async () => {
     setIsProcessing(true);
     setStatusMsg(null);
@@ -452,26 +465,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         <div className="w-9 shrink-0" />
       </div>
 
-      {/* Thông báo trạng thái */}
+      {/* Thông báo trạng thái nổi (Floating Popup Toast) */}
       {statusMsg && (
-        <div
-          className={`mx-4 mt-3 px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 border ${
-            statusMsg.type === 'success'
-              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-              : statusMsg.type === 'error'
-              ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-              : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
-          }`}
-        >
-          {statusMsg.type === 'success' ? (
-            <Check size={16} className="shrink-0" />
-          ) : statusMsg.type === 'error' ? (
-            <AlertTriangle size={16} className="shrink-0" />
-          ) : (
-            <Clock size={16} className="shrink-0" />
-          )}
-          <span>{statusMsg.text}</span>
-        </div>
+        <Toast
+          message={statusMsg.text}
+          type={statusMsg.type}
+          onClose={() => setStatusMsg(null)}
+        />
       )}
 
       {/* Khung xác nhận Khôi phục dữ liệu phẳng (không dùng Popup) */}
@@ -815,7 +815,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
         </div>
 
-        {/* PHẦN 3: SAO LƯU & XUẤT TỆP NGOẠI TUYẾN (JSON & EXCEL) */}
+        {/* PHẦN 3: TÍNH NĂNG MỞ RỘNG (TÀI XẾ GRABBIKE) */}
+        <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <MotorcycleIcon size={22} strokeWidth={2.2} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-bold text-slate-100">
+                    Nghiệp vụ Tài xế GrabBike
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
+                    Mở rộng
+                  </span>
+                </div>
+                <div className="text-xs text-slate-400 mt-0.5 leading-snug">
+                  Bật nút nhập nhanh cuốc xe, tự động tách vốn lưu động & thu nhập ròng
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleGrabDriverMode}
+              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer p-0.5 border-none shrink-0 ${
+                isGrabModeEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+              }`}
+              title={isGrabModeEnabled ? 'Đang Bật' : 'Đang Tắt'}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white transition-transform shadow-md ${
+                  isGrabModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* PHẦN 4: SAO LƯU & XUẤT TỆP NGOẠI TUYẾN (JSON & EXCEL) */}
         <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-2.5">
           <div>
             <div className="text-xs font-bold text-slate-300 mb-0.5 tracking-wider uppercase">

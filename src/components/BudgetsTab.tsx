@@ -5,6 +5,7 @@ import { db } from '../db';
 import type { Category, Budget } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import {
   formatVND,
   formatMonthDisplay,
@@ -20,10 +21,8 @@ import {
   AlertTriangle,
   Trash2,
   Edit3,
-  X,
   Calendar,
   ShieldCheck,
-  Check,
   ArrowLeft
 } from 'lucide-react';
 
@@ -430,19 +429,11 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
       </div>
 
       {statusNotice && (
-        <div className="mx-4 my-2 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between gap-2 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <Check size={16} strokeWidth={3} />
-            <span>{statusNotice}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setStatusNotice(null)}
-            className="bg-transparent border-none text-emerald-400 cursor-pointer p-0.5"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <Toast
+          message={statusNotice}
+          type="success"
+          onClose={() => setStatusNotice(null)}
+        />
       )}
 
       {/* 2. Thẻ Hero Tổng Quan Ngân Sách Tháng */}

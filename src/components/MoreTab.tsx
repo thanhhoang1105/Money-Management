@@ -20,6 +20,7 @@ import { generateUUID } from '../utils/uuid';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
 import { DatePicker } from './ui/DatePicker';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import type { AppStartupTab, RecurringFrequency, Transaction } from '../types';
 import {
   Target,
@@ -34,7 +35,6 @@ import {
   FileSpreadsheet,
   ChevronRight,
   ShieldCheck,
-  Check,
   Sparkles,
   Plus,
   Trash2,
@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
+import { useGrabDriverMode } from '../services/grabService';
 
 interface MoreTabProps {
   onOpenSettings: () => void;
@@ -76,6 +77,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const [subView, setSubView] = useState<SubViewType>('MAIN');
   const [notice, setNotice] = useState<string | null>(null);
   const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
+  const isGrabDriverMode = useGrabDriverMode();
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về menu Khác chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -469,10 +471,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         </div>
 
         {notice && (
-          <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check size={16} />
-            <span>{notice}</span>
-          </div>
+          <Toast
+            message={notice}
+            type="success"
+            onClose={() => setNotice(null)}
+          />
         )}
 
         {/* Khung phẳng: Thêm nhanh người nợ / khoản vay nợ mới (không dùng Popup) */}
@@ -987,10 +990,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         </div>
 
         {notice && (
-          <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check size={16} />
-            <span>{notice}</span>
-          </div>
+          <Toast
+            message={notice}
+            type="success"
+            onClose={() => setNotice(null)}
+          />
         )}
 
         {/* Form phẳng thêm ghi chép định kỳ */}
@@ -1285,10 +1289,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         </div>
 
         {notice && (
-          <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-            <Check size={16} />
-            <span>{notice}</span>
-          </div>
+          <Toast
+            message={notice}
+            type="success"
+            onClose={() => setNotice(null)}
+          />
         )}
 
         {isAddingEvent && (
@@ -1457,10 +1462,11 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   return (
     <div className="pb-32 px-4 pt-3 flex flex-col gap-5">
       {notice && (
-        <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <Check size={16} strokeWidth={3} />
-          <span>{notice}</span>
-        </div>
+        <Toast
+          message={notice}
+          type="success"
+          onClose={() => setNotice(null)}
+        />
       )}
 
       {/* NHÓM 1: TÀI CHÍNH & QUẢN LÝ */}
@@ -1602,29 +1608,31 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           </button>
 
           {/* Mục 6: Tiện ích Tài xế Chạy Grab */}
-          <button
-            type="button"
-            onClick={() => setIsGrabModalOpen(true)}
-            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors bg-emerald-500/5"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <MotorcycleIcon size={20} strokeWidth={2.2} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
-                  <span>Nghiệp vụ Tài xế GrabBike</span>
-                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                    Tự động
-                  </span>
+          {isGrabDriverMode && (
+            <button
+              type="button"
+              onClick={() => setIsGrabModalOpen(true)}
+              className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors bg-emerald-500/5 animate-fade-in"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <MotorcycleIcon size={20} strokeWidth={2.2} />
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Ghi cuốc xe máy, tự động trừ ví tín dụng, nạp & rút ví Grab
+                <div>
+                  <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                    <span>Nghiệp vụ Tài xế GrabBike</span>
+                    <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                      Tự động
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    Ghi cuốc xe máy, tự động trừ ví tín dụng, nạp & rút ví Grab
+                  </div>
                 </div>
               </div>
-            </div>
-            <ChevronRight size={16} className="text-slate-500 shrink-0" />
-          </button>
+              <ChevronRight size={16} className="text-slate-500 shrink-0" />
+            </button>
+          )}
         </div>
       </section>
 

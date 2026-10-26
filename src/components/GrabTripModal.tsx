@@ -5,7 +5,6 @@ import { db } from '../db';
 import {
   X,
   Settings2,
-  Check,
   CreditCard,
   Banknote,
   ArrowRightLeft,
@@ -27,6 +26,7 @@ import {
 } from '../utils/formatters';
 import { DatePicker } from './ui/DatePicker';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import { NumpadBottomSheet } from './NumpadBottomSheet';
 import {
   getGrabWalletsConfig,
@@ -644,18 +644,21 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
         {/* NỘI DUNG CUỘN CHÍNH */}
         <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-3.5">
-          {/* Thông báo phản hồi */}
+          {/* Thông báo phản hồi (Glassmorphism) */}
           {feedback && (
-            <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center animate-fade-in flex items-center justify-center gap-1.5">
-              <Check size={14} strokeWidth={3} />
-              <span>{feedback}</span>
-            </div>
+            <Toast
+              message={feedback}
+              type="success"
+              onClose={() => setFeedback('')}
+            />
           )}
 
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold text-center animate-fade-in">
-              {errorMsg}
-            </div>
+            <Toast
+              message={errorMsg}
+              type="error"
+              onClose={() => setErrorMsg('')}
+            />
           )}
 
           {/* KHUNG CÀI ĐẶT 2 VÍ APP GRAB */}

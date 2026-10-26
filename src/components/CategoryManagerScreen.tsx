@@ -10,6 +10,7 @@ import {
 import type { Category, CategoryType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import { generateUUID } from '../utils/uuid';
 import {
   ArrowLeft,
@@ -309,9 +310,11 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
 
         <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">
           {formError && (
-            <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs text-center font-medium">
-              {formError}
-            </div>
+            <Toast
+              message={formError}
+              type="error"
+              onClose={() => setFormError('')}
+            />
           )}
 
           {/* Tên Hạng Mục */}

@@ -14,6 +14,7 @@ import {
 } from '../utils/formatters';
 import { exportTransactionsToExcel } from '../services/backupService';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,7 +27,6 @@ import {
   Calendar,
   FileSpreadsheet,
   RotateCw,
-  Check,
   Layers,
   ListTree,
   ArrowLeft,
@@ -738,10 +738,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       </div>
 
       {exportToast && (
-        <div className="mx-4 mt-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <Check size={15} />
-          <span>{exportToast}</span>
-        </div>
+        <Toast
+          message={exportToast}
+          type="success"
+          onClose={() => setExportToast(null)}
+        />
       )}
 
       {/* 2. Thẻ Tổng Quan Dòng Tiền & MoM */}

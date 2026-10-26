@@ -8,6 +8,7 @@ import { WalletsTab } from './components/WalletsTab';
 import { MoreTab } from './components/MoreTab';
 import { TransactionEditorScreen } from './components/TransactionEditorScreen';
 import { SettingsModal } from './components/SettingsModal';
+import { Toast } from './components/ui/Toast';
 import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
 import type { Transaction, AppStartupTab } from './types';
@@ -16,7 +17,6 @@ import {
   X,
   Smartphone,
   Settings as SettingsIcon,
-  Check,
   Plus,
   LayoutDashboard,
   Wallet as WalletIcon,
@@ -329,29 +329,23 @@ export function App() {
         </div>
       </header>
 
-      {/* Thông báo đồng bộ tự động thành công */}
+      {/* Thông báo đồng bộ tự động thành công (Floating Popup Toast) */}
       {autoBackupNotice && (
-        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[13px] font-semibold flex items-center justify-between gap-2 animate-fade-in max-w-5xl md:mx-auto md:w-full">
-          <div className="flex items-center gap-2">
-            <Check size={16} strokeWidth={3} />
-            <span>{autoBackupNotice}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAutoBackupNotice(null)}
-            className="bg-transparent border-none text-emerald-400 cursor-pointer p-0.5"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <Toast
+          message={autoBackupNotice}
+          type="success"
+          onClose={() => setAutoBackupNotice(null)}
+        />
       )}
 
-      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" phẳng trên Mobile */}
+      {/* 2. Banner Hướng Dẫn "Thêm Vào Màn Hình Chính" phẳng trên Mobile (Glassmorphism) */}
       {!isStandalone && showIosTip && (
-        <div className="mx-4 mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-500/15 via-indigo-500/15 to-purple-500/15 border border-sky-400/30 flex items-center justify-between gap-2.5 shadow-lg shadow-sky-500/5 max-w-5xl md:hidden">
-          <div className="flex items-center gap-2.5 text-left flex-1">
-            <Smartphone size={20} className="text-sky-400 shrink-0" />
-            <div className="text-xs text-slate-200 leading-snug">
+        <div className="mx-4 mt-2.5 p-3 rounded-2xl glass-toast-info flex items-center justify-between gap-2.5 shadow-xl max-w-5xl md:hidden animate-toast-slide">
+          <div className="flex items-center gap-2.5 text-left flex-1 min-w-0">
+            <div className="w-7 h-7 rounded-xl flex items-center justify-center border border-sky-400/40 bg-sky-500/20 text-sky-400 shrink-0">
+              <Smartphone size={16} />
+            </div>
+            <div className="text-xs text-slate-100 leading-snug">
               <b>Dùng trên iPhone:</b> Bấm{' '}
               <Share size={12} className="inline align-middle mx-0.5 text-sky-400" /> ➔{' '}
               <b>"Thêm vào MH chính"</b> để mở full màn hình như app thật!
@@ -360,10 +354,10 @@ export function App() {
           <button
             type="button"
             onClick={handleDismissIosTip}
-            className="touch-btn bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg p-1.5 cursor-pointer shrink-0 border border-white/5"
+            className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all shrink-0 cursor-pointer"
             title="Ẩn thông báo"
           >
-            <X size={14} />
+            <X size={15} />
           </button>
         </div>
       )}

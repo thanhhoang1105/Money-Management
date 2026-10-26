@@ -6,6 +6,7 @@ import type { Transaction } from '../types';
 import { createTransaction, sortWallets } from '../services/transactionService';
 import { TransactionHistoryView } from './TransactionHistoryView';
 import { CustomSelect } from './ui/CustomSelect';
+import { Toast } from './ui/Toast';
 import {
   formatVND,
   formatMonthDisplay,
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react';
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
+import { useGrabDriverMode } from '../services/grabService';
 
 interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
@@ -48,6 +50,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
   const [isGrabModalOpen, setIsGrabModalOpen] = useState<boolean>(false);
+  const isGrabDriverMode = useGrabDriverMode();
 
   // Trạng thái cho bảng Theo dõi Vay / Nợ ngay trên màn hình Tổng quan
   const [isAddingDebtQuick, setIsAddingDebtQuick] = useState<boolean>(false);
@@ -446,9 +449,11 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   return (
     <div className="pb-28">
       {duplicateFeedback && (
-        <div className="sticky top-3 z-40 mx-4 mt-3 p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 backdrop-blur-md text-emerald-300 text-xs font-bold text-center animate-fade-in">
-          {duplicateFeedback}
-        </div>
+        <Toast
+          message={duplicateFeedback}
+          type="success"
+          onClose={() => setDuplicateFeedback('')}
+        />
       )}
 
       {/* 1. Header Card: Tổng số dư & Dòng tiền tháng */}
@@ -555,35 +560,37 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       </div>
 
       {/* 4. Thẻ Nghiệp Vụ Chạy Grab Dành Riêng Cho Tài Xế */}
-      <div className="mx-4 my-3 p-4 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/35 shadow-lg flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-sm">
-            <MotorcycleIcon size={24} strokeWidth={2.2} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-extrabold text-slate-100 truncate">
-                Chạy GrabBike
-              </span>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 uppercase tracking-wider shrink-0">
-                Tự động chia
-              </span>
+      {isGrabDriverMode && (
+        <div className="mx-4 my-3 p-4 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/35 shadow-lg flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-sm">
+              <MotorcycleIcon size={24} strokeWidth={2.2} />
             </div>
-            <div className="text-xs text-slate-400 mt-0.5 truncate">
-              Tự tách vốn & thu nhập ròng
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-extrabold text-slate-100 truncate">
+                  Chạy GrabBike
+                </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 uppercase tracking-wider shrink-0">
+                  Tự động chia
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 mt-0.5 truncate">
+                Tự tách vốn & thu nhập ròng
+              </div>
             </div>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={() => setIsGrabModalOpen(true)}
-          className="touch-btn py-2 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md shadow-emerald-500/20 border-none transition-transform active:scale-95"
-        >
-          <Plus size={15} strokeWidth={3} />
-          <span>Ghi cuốc</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setIsGrabModalOpen(true)}
+            className="touch-btn py-2 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md shadow-emerald-500/20 border-none transition-transform active:scale-95"
+          >
+            <Plus size={15} strokeWidth={3} />
+            <span>Ghi cuốc</span>
+          </button>
+        </div>
+      )}
 
       {/* 5. KHU VỰC THEO DÕI VAY & NỢ TRỰC QUAN Ở DƯỚI CÙNG MÀN HÌNH TỔNG QUAN (AI ĐANG NỢ MÌNH / ĐANG NỢ AI) */}
       <div className="mx-4 mt-4 rounded-3xl p-4 bg-slate-900/90 border border-white/10 shadow-lg flex flex-col gap-3">
