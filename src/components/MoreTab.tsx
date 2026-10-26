@@ -78,8 +78,14 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về menu Khác chính
+  const prevResetSignalRef = React.useRef(resetSignal);
   React.useEffect(() => {
-    if (resetSignal !== undefined && resetSignal > 0) {
+    if (
+      resetSignal !== undefined &&
+      resetSignal > 0 &&
+      resetSignal !== prevResetSignalRef.current
+    ) {
+      prevResetSignalRef.current = resetSignal;
       setSubView('MAIN');
       setIsGrabModalOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });

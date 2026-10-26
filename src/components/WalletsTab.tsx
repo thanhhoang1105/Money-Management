@@ -63,8 +63,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   const [draggedWalletId, setDraggedWalletId] = useState<string | null>(null);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về danh sách ví chính
+  const prevResetSignalRef = React.useRef(resetSignal);
   React.useEffect(() => {
-    if (resetSignal !== undefined && resetSignal > 0) {
+    if (
+      resetSignal !== undefined &&
+      resetSignal > 0 &&
+      resetSignal !== prevResetSignalRef.current
+    ) {
+      prevResetSignalRef.current = resetSignal;
       setViewMode('LIST');
       setSelectedWallet(null);
       setIsReordering(false);

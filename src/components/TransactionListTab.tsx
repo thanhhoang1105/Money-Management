@@ -71,8 +71,14 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [showSettledDebts, setShowSettledDebts] = useState<boolean>(false);
 
   // Lắng nghe tín hiệu từ menu điều hướng (BottomNav / TopNav) để trở về màn hình Tổng quan gốc
+  const prevResetSignalRef = React.useRef(resetSignal);
   React.useEffect(() => {
-    if (resetSignal !== undefined && resetSignal > 0) {
+    if (
+      resetSignal !== undefined &&
+      resetSignal > 0 &&
+      resetSignal !== prevResetSignalRef.current
+    ) {
+      prevResetSignalRef.current = resetSignal;
       setIsHistoryOpen(false);
       setIsGrabModalOpen(false);
       setIsAddingDebtQuick(false);

@@ -159,9 +159,16 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     onClose();
   };
 
+  const prevResetSignalRef = useRef(resetSignal);
+
   // Lắng nghe tín hiệu từ nút [+] Ghi giao dịch ở BottomNav & DesktopNav để quay về màn ghi giao dịch gốc
   useEffect(() => {
-    if (resetSignal !== undefined && resetSignal > 0) {
+    if (
+      resetSignal !== undefined &&
+      resetSignal > 0 &&
+      resetSignal !== prevResetSignalRef.current
+    ) {
+      prevResetSignalRef.current = resetSignal;
       setIsHistoryOpen(false);
       setIsCategoryManagerOpen(false);
       setIsGrabTripModalOpen(false);
@@ -181,24 +188,11 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         setToastMsg('');
         setIsAddingTag(false);
         setNewTagInput('');
-
-        if (wallets.length > 0) {
-          const lastId = lastWalletSetting?.value;
-          const foundLast = lastId ? wallets.find((w) => w.id === lastId) : null;
-          if (foundLast) {
-            setSelectedWalletId(foundLast.id);
-          } else {
-            const cashWallet = wallets.find((w) =>
-              w.name.toLowerCase().includes('tiền mặt')
-            );
-            setSelectedWalletId(cashWallet ? cashWallet.id : wallets[0].id);
-          }
-        }
       }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [resetSignal, editingTransaction, lastWalletSetting?.value, wallets]);
+  }, [resetSignal, editingTransaction]);
 
   // Mở màn hình Chọn & Quản lý Hạng mục (dạng màn hình phẳng)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);

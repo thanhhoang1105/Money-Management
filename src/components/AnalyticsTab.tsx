@@ -48,8 +48,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
   const [exportToast, setExportToast] = useState<string | null>(null);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về báo cáo tổng quan chính
+  const prevResetSignalRef = React.useRef(resetSignal);
   React.useEffect(() => {
-    if (resetSignal !== undefined && resetSignal > 0) {
+    if (
+      resetSignal !== undefined &&
+      resetSignal > 0 &&
+      resetSignal !== prevResetSignalRef.current
+    ) {
+      prevResetSignalRef.current = resetSignal;
       setDrillDownCategory(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
