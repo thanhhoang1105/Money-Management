@@ -360,6 +360,10 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       const bStar = b.isStarred ? 1 : 0;
       if (aStar !== bStar) return bStar - aStar;
 
+      const aOrder = typeof a.order === 'number' ? a.order : 999999;
+      const bOrder = typeof b.order === 'number' ? b.order : 999999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+
       const aCount = categoryUsageCountMap[a.id] || 0;
       const bCount = categoryUsageCountMap[b.id] || 0;
       if (aCount !== bCount) return bCount - aCount;

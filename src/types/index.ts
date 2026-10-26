@@ -29,6 +29,7 @@ export interface Category {
   quickTags?: string[];     // Danh sách gợi ý ghi chú nhanh
   isDefault: boolean;
   isStarred?: boolean;      // true: Được gắn sao ưu tiên trong mục Hay dùng
+  order?: number;           // Thứ tự hiển thị tùy chỉnh của hạng mục
   createdAt: string;
   updatedAt?: string;
 }

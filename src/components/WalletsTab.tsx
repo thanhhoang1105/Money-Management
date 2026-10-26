@@ -12,6 +12,7 @@ import {
   reorderWallets,
   createTransaction
 } from '../services/transactionService';
+import { COLOR_PRESETS, isLightColor } from '../services/categoryService';
 import { CategoryIcon } from './CategoryIcon';
 import {
   BANK_BRANDS,
@@ -44,18 +45,7 @@ import {
   GripVertical
 } from 'lucide-react';
 
-const WALLET_COLORS = [
-  '#10B981',
-  '#3B82F6',
-  '#E30613',
-  '#A50064',
-  '#0068FF',
-  '#8B5CF6',
-  '#F59E0B',
-  '#EC4899',
-  '#06B6D4',
-  '#6366F1'
-];
+const WALLET_COLORS = COLOR_PRESETS;
 
 interface WalletsTabProps {
   resetSignal?: number;
@@ -445,26 +435,46 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
             </div>
           )}
 
-          {/* 4. Màu sắc đại diện */}
+          {/* 4. Màu sắc đại diện (24 màu chuẩn) */}
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
-              Màu sắc viền / thẻ
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {WALLET_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className="touch-btn w-8 h-8 rounded-full cursor-pointer flex items-center justify-center transition-transform"
-                  style={{
-                    backgroundColor: c,
-                    border: color === c ? '2.5px solid #fff' : '2px solid transparent'
-                  }}
-                >
-                  {color === c && <Check size={14} color="#fff" />}
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase">
+                Màu sắc viền / thẻ
+              </label>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-white/20 inline-block shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="uppercase">{color}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-8 gap-2 p-3 rounded-2xl bg-slate-800/60 border border-white/6">
+              {WALLET_COLORS.map((c) => {
+                const isSelected = color.toLowerCase() === c.toLowerCase();
+                const isLight = isLightColor(c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    className={`touch-btn w-8 h-8 rounded-full cursor-pointer flex items-center justify-center transition-transform border border-black/15 dark:border-white/10 ${
+                      isSelected
+                        ? 'ring-2 ring-white scale-110 shadow-lg z-10'
+                        : 'opacity-85 hover:opacity-100 hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: c }}
+                  >
+                    {isSelected && (
+                      <Check
+                        size={14}
+                        strokeWidth={3}
+                        className={isLight ? 'text-slate-950' : 'text-white'}
+                      />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

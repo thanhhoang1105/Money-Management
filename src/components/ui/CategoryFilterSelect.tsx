@@ -86,12 +86,18 @@ export const CategoryFilterSelect: React.FC<CategoryFilterSelectProps> = ({
       const children = categories
         .filter((c) => c.type === 'EXPENSE' && c.parentId === parent.id)
         .sort((a, b) => {
-          const countA = categoryUsageMap[a.id] || 0;
-          const countB = categoryUsageMap[b.id] || 0;
-          if (countB !== countA) return countB - countA; // Sử dụng nhiều nhất lên đầu
           const starA = a.isStarred ? 1 : 0;
           const starB = b.isStarred ? 1 : 0;
-          if (starB !== starA) return starB - starA;
+          if (starB !== starA) return starB - starA; // Luôn ưu tiên mục có dấu sao lên đầu
+
+          const orderA = typeof a.order === 'number' ? a.order : 999999;
+          const orderB = typeof b.order === 'number' ? b.order : 999999;
+          if (orderA !== orderB) return orderA - orderB;
+
+          const countA = categoryUsageMap[a.id] || 0;
+          const countB = categoryUsageMap[b.id] || 0;
+          if (countB !== countA) return countB - countA;
+
           return a.name.localeCompare(b.name, 'vi');
         });
 
@@ -144,6 +150,12 @@ export const CategoryFilterSelect: React.FC<CategoryFilterSelectProps> = ({
       const children = categories
         .filter((c) => c.type === 'INCOME' && c.parentId === parent.id)
         .sort((a, b) => {
+          const starA = a.isStarred ? 1 : 0;
+          const starB = b.isStarred ? 1 : 0;
+          if (starB !== starA) return starB - starA;
+          const orderA = typeof a.order === 'number' ? a.order : 999999;
+          const orderB = typeof b.order === 'number' ? b.order : 999999;
+          if (orderA !== orderB) return orderA - orderB;
           const countA = categoryUsageMap[a.id] || 0;
           const countB = categoryUsageMap[b.id] || 0;
           if (countB !== countA) return countB - countA;

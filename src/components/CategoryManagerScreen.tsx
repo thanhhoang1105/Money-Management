@@ -21,8 +21,20 @@ import {
   X,
   Search,
   Star,
-  HelpCircle
+  HelpCircle,
+  ArrowUpDown,
+  GripVertical,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
+import {
+  sortCategories,
+  moveCategoryPosition,
+  reorderCategories,
+  toggleCategoryStar,
+  COLOR_PRESETS,
+  isLightColor
+} from '../services/categoryService';
 
 interface CategoryManagerScreenProps {
   isOpen: boolean;
@@ -36,21 +48,6 @@ const FIXED_EXPENSE_PARENT_IDS = new Set([
   PARENT_NICE_TO_HAVE_ID,
   PARENT_WASTED_ID
 ]);
-
-const COLOR_PRESETS = [
-  '#F97316',
-  '#EF4444',
-  '#10B981',
-  '#3B82F6',
-  '#8B5CF6',
-  '#EC4899',
-  '#EAB308',
-  '#06B6D4',
-  '#14B8A6',
-  '#F59E0B',
-  '#64748B',
-  '#7C3AED'
-];
 
 const ICON_PRESETS = [
   'Soup', 'UtensilsCrossed', 'Utensils', 'Coffee', 'Beer', 'Wine', 'Pizza', 'Apple', 'Fish', 'Carrot',
@@ -77,6 +74,10 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
 
+  // Chế độ sắp xếp vị trí các hạng mục
+  const [isReordering, setIsReordering] = useState(false);
+  const [draggedCatId, setDraggedCatId] = useState<string | null>(null);
+
   // Form states
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState<CategoryType>(activeTab);
@@ -89,15 +90,54 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   const [formError, setFormError] = useState('');
   const [iconSearch, setIconSearch] = useState('');
 
-  const handleToggleStar = async (cat: Category) => {
+  const handleToggleStar = async (cat: Category, siblings?: Category[]) => {
     try {
-      await db.categories.update(cat.id, {
-        isStarred: !cat.isStarred,
-        updatedAt: new Date().toISOString()
-      });
+      await toggleCategoryStar(cat, siblings);
     } catch (err) {
       console.error('Lỗi khi gắn sao danh mục:', err);
     }
+  };
+
+  const handleMovePosition = async (
+    catId: string,
+    direction: 'UP' | 'DOWN',
+    siblingCategories: Category[]
+  ) => {
+    try {
+      await moveCategoryPosition(catId, direction, siblingCategories);
+    } catch (err) {
+      console.error('Lỗi khi di chuyển vị trí hạng mục:', err);
+    }
+  };
+
+  const handleDropCategory = async (
+    sourceId: string,
+    targetId: string,
+    siblingCategories: Category[]
+  ) => {
+    const sorted = sortCategories(siblingCategories);
+    const sourceIdx = sorted.findIndex((c) => c.id === sourceId);
+    const targetIdx = sorted.findIndex((c) => c.id === targetId);
+    if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return;
+
+    const sourceCat = sorted[sourceIdx];
+    const targetCat = sorted[targetIdx];
+
+    const newSorted = [...sorted];
+    newSorted.splice(sourceIdx, 1);
+    newSorted.splice(targetIdx, 0, sourceCat);
+
+    // Nếu kéo qua ranh giới giữa có sao và không có sao:
+    // Đồng bộ trạng thái sao theo nhóm đích để luôn duy trì trật tự có sao ở trên!
+    if (Boolean(sourceCat.isStarred) !== Boolean(targetCat.isStarred)) {
+      await db.categories.update(sourceCat.id, {
+        isStarred: Boolean(targetCat.isStarred),
+        updatedAt: new Date().toISOString()
+      });
+      sourceCat.isStarred = Boolean(targetCat.isStarred);
+    }
+
+    await reorderCategories(newSorted.map((c) => c.id));
   };
 
   const filteredIcons = useMemo(() => {
@@ -111,8 +151,21 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   }, [categories, activeTab]);
 
   const parentCategories = useMemo(() => {
-    return tabCategories.filter((c) => !c.parentId);
-  }, [tabCategories]);
+    const parents = tabCategories.filter((c) => !c.parentId);
+    if (activeTab === 'EXPENSE') {
+      const orderMap: Record<string, number> = {
+        [PARENT_MUST_HAVE_ID]: 0,
+        [PARENT_NICE_TO_HAVE_ID]: 1,
+        [PARENT_WASTED_ID]: 2
+      };
+      return [...parents].sort((a, b) => {
+        const oA = orderMap[a.id] ?? 99;
+        const oB = orderMap[b.id] ?? 99;
+        return oA - oB;
+      });
+    }
+    return sortCategories(parents);
+  }, [tabCategories, activeTab]);
 
   const childCategoriesByParent = useMemo(() => {
     const map = new Map<string, Category[]>();
@@ -123,6 +176,12 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
         map.set(c.parentId, arr);
       }
     });
+
+    // Luôn ưu tiên mục có dấu sao lên đầu và sắp xếp theo order tùy chỉnh
+    for (const [pId, list] of map.entries()) {
+      map.set(pId, sortCategories(list));
+    }
+
     return map;
   }, [tabCategories]);
 
@@ -415,25 +474,49 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
             </div>
           )}
 
-          {/* Chọn Màu Sắc */}
+          {/* Chọn Màu Sắc (24 Màu chọn lọc kỹ đầy đủ đậm/nhạt) */}
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              Màu sắc nhận diện
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {COLOR_PRESETS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setFormColor(color)}
-                  className={`touch-btn w-8 h-8 rounded-full shrink-0 flex items-center justify-center cursor-pointer transition-transform ${
-                    formColor === color ? 'ring-2 ring-white scale-110' : 'opacity-80'
-                  }`}
-                  style={{ backgroundColor: color }}
-                >
-                  {formColor === color && <Check size={14} className="text-white" />}
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-slate-300">
+                Màu sắc nhận diện ({COLOR_PRESETS.length} màu)
+              </label>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+                <span
+                  className="w-3 h-3 rounded-full border border-white/20 inline-block shrink-0 shadow-sm"
+                  style={{ backgroundColor: formColor }}
+                />
+                <span className="uppercase">{formColor}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-8 gap-2 sm:gap-2.5 p-3 rounded-2xl bg-slate-800/60 border border-white/6">
+              {COLOR_PRESETS.map((color) => {
+                const isSelected = formColor.toLowerCase() === color.toLowerCase();
+                const isLight = isLightColor(color);
+
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setFormColor(color)}
+                    className={`touch-btn w-8 h-8 rounded-full shrink-0 flex items-center justify-center cursor-pointer transition-all border border-black/15 dark:border-white/10 ${
+                      isSelected
+                        ? 'ring-2 ring-white scale-110 shadow-lg z-10'
+                        : 'opacity-85 hover:opacity-100 hover:scale-105'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  >
+                    {isSelected && (
+                      <Check
+                        size={14}
+                        strokeWidth={3}
+                        className={isLight ? 'text-slate-950' : 'text-white'}
+                      />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -603,7 +686,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   return (
     <div className="w-full flex flex-col min-h-full animate-fade-in font-body text-slate-100 pb-24">
       {/* 1. Header Bar phẳng cân đối */}
-      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3">
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3 sticky top-0 z-20 backdrop-blur-md">
         <div className="w-9 shrink-0 flex items-center justify-start">
           <button
             type="button"
@@ -619,16 +702,38 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           {onSelectCategory ? 'Chọn & Quản lý hạng mục' : 'Quản lý hạng mục'}
         </h2>
 
-        <div className="shrink-0 flex items-center justify-end">
+        <div className="shrink-0 flex items-center justify-end gap-1.5">
           {activeTab !== 'DEBT' ? (
-            <button
-              type="button"
-              onClick={() => handleOpenAdd()}
-              className="touch-btn flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none"
-            >
-              <Plus size={15} strokeWidth={2.5} />
-              <span>Thêm mới</span>
-            </button>
+            isReordering ? (
+              <button
+                type="button"
+                onClick={() => setIsReordering(false)}
+                className="touch-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black cursor-pointer shadow-md shadow-emerald-500/25 border-none"
+              >
+                <Check size={14} strokeWidth={3} />
+                <span>Xong</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsReordering(true)}
+                  className="touch-btn flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 text-xs font-bold cursor-pointer transition-colors"
+                  title="Sắp xếp vị trí các hạng mục"
+                >
+                  <ArrowUpDown size={13} className="text-emerald-400" />
+                  <span className="hidden sm:inline">Sắp xếp</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenAdd()}
+                  className="touch-btn flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer hover:bg-emerald-400 border-none shadow-md shadow-emerald-500/20"
+                >
+                  <Plus size={15} strokeWidth={2.5} />
+                  <span>Thêm mới</span>
+                </button>
+              </>
+            )
           ) : (
             <div className="w-9 h-9" />
           )}
@@ -676,6 +781,25 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
         </div>
       </div>
 
+      {/* 2.5. BANNER HƯỚNG DẪN KHI Ở CHẾ ĐỘ SẮP XẾP */}
+      {isReordering && (
+        <div className="mx-4 mt-3 mb-1 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center justify-between gap-2 animate-fade-in shadow-lg">
+          <div className="flex items-center gap-2">
+            <Star size={16} className="text-amber-400 fill-amber-400 shrink-0" />
+            <span>
+              Hạng mục có dấu sao ⭐ <strong>luôn được ưu tiên trên cùng</strong>. Bấm <strong className="text-white">↑</strong> / <strong className="text-white">↓</strong> hoặc kéo thả để đổi vị trí.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsReordering(false)}
+            className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-lg text-[11px] cursor-pointer border-none shrink-0 shadow-md shadow-emerald-500/20"
+          >
+            Xong
+          </button>
+        </div>
+      )}
+
       {/* 3. DANH SÁCH HẠNG MỤC THEO TỪNG TAB */}
       <div className="px-4 py-3 space-y-4">
         <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/20 text-sky-300 text-xs flex items-center gap-2">
@@ -720,16 +844,34 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAdd(parent.id)}
-                      className="touch-btn text-xs font-bold text-sky-400 bg-sky-500/15 px-2.5 py-1.5 rounded-xl border border-sky-400/25 flex items-center gap-1 cursor-pointer hover:bg-sky-500/25"
-                      title="Thêm hạng mục con vào nhóm này"
-                    >
-                      <Plus size={13} strokeWidth={2.5} />
-                      <span>Thêm con</span>
-                    </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {children.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsReordering(!isReordering)}
+                        className={`touch-btn text-xs font-bold px-2.5 py-1.5 rounded-xl border flex items-center gap-1 cursor-pointer transition-all ${
+                          isReordering
+                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                            : 'bg-slate-700/60 border-white/10 text-slate-300 hover:text-white hover:bg-slate-700'
+                        }`}
+                        title={isReordering ? 'Hoàn tất sắp xếp' : 'Sắp xếp các mục con trong nhóm này'}
+                      >
+                        <ArrowUpDown size={12} className={isReordering ? 'text-emerald-400' : 'text-slate-400'} />
+                        <span className="text-[11px]">{isReordering ? 'Xong' : 'Sắp xếp'}</span>
+                      </button>
+                    )}
+
+                    {!isReordering && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAdd(parent.id)}
+                        className="touch-btn text-xs font-bold text-sky-400 bg-sky-500/15 px-2.5 py-1.5 rounded-xl border border-sky-400/25 flex items-center gap-1 cursor-pointer hover:bg-sky-500/25"
+                        title="Thêm hạng mục con vào nhóm này"
+                      >
+                        <Plus size={13} strokeWidth={2.5} />
+                        <span>Thêm con</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -745,73 +887,181 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                   </button>
                 ) : (
                   <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {children.map((child) => (
-                      <div
-                        key={child.id}
-                        onClick={() => handleItemClick(child)}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                          onSelectCategory
-                            ? 'hover:border-sky-400 hover:bg-slate-800/80 active:scale-98'
-                            : ''
-                        } bg-slate-800/50 border-white/5`}
-                      >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0"
-                            style={{ backgroundColor: child.color }}
-                          >
-                            <CategoryIcon name={child.icon || 'Tag'} size={15} color="#ffffff" />
-                          </div>
-                          <div className="truncate text-left">
-                            <div className="text-xs font-semibold text-slate-100 truncate">
-                              {child.name}
-                            </div>
-                            {child.quickTags && child.quickTags.length > 0 && (
-                              <div className="text-[10px] text-slate-400 truncate">
-                                {child.quickTags[0]}
-                                {child.quickTags.length > 1 ? ` +${child.quickTags.length - 1}` : ''}
+                    {children.map((child, index) => {
+                      const isUpDisabled =
+                        index === 0 ||
+                        Boolean(child.isStarred) !== Boolean(children[index - 1]?.isStarred);
+                      const isDownDisabled =
+                        index === children.length - 1 ||
+                        Boolean(child.isStarred) !== Boolean(children[index + 1]?.isStarred);
+
+                      return (
+                        <div
+                          key={child.id}
+                          draggable={isReordering}
+                          onDragStart={(e) => {
+                            if (!isReordering) return;
+                            e.dataTransfer.setData('text/plain', child.id);
+                            setDraggedCatId(child.id);
+                          }}
+                          onDragOver={(e) => {
+                            if (!isReordering) return;
+                            e.preventDefault();
+                          }}
+                          onDrop={async (e) => {
+                            if (!isReordering) return;
+                            e.preventDefault();
+                            const sourceId = e.dataTransfer.getData('text/plain') || draggedCatId;
+                            if (!sourceId || sourceId === child.id) return;
+                            await handleDropCategory(sourceId, child.id, children);
+                            setDraggedCatId(null);
+                          }}
+                          onDragEnd={() => setDraggedCatId(null)}
+                          onClick={() => !isReordering && handleItemClick(child)}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                            isReordering
+                              ? draggedCatId === child.id
+                                ? 'border-amber-400/60 bg-amber-500/10 scale-[0.98]'
+                                : 'border-white/12 hover:border-amber-500/40 cursor-grab active:cursor-grabbing bg-slate-800/80'
+                              : `bg-slate-800/50 border-white/5 ${
+                                  onSelectCategory
+                                    ? 'hover:border-sky-400 hover:bg-slate-800/80 active:scale-98 cursor-pointer'
+                                    : 'cursor-default'
+                                }`
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            {/* Số thứ tự & Tay nắm kéo khi ở chế độ sắp xếp */}
+                            {isReordering && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <GripVertical size={14} className="text-slate-500 shrink-0" />
+                                <span
+                                  className={`text-[10px] font-black px-1.5 py-0.5 rounded-md border ${
+                                    child.isStarred
+                                      ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
+                                      : 'text-slate-300 bg-slate-700/60 border-white/8'
+                                  }`}
+                                >
+                                  #{index + 1}
+                                </span>
                               </div>
+                            )}
+
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
+                              style={{ backgroundColor: child.color }}
+                            >
+                              <CategoryIcon name={child.icon || 'Tag'} size={15} color="#ffffff" />
+                            </div>
+
+                            <div className="truncate text-left">
+                              <div className="text-xs font-semibold text-slate-100 truncate flex items-center gap-1.5">
+                                <span className="truncate">{child.name}</span>
+                                {child.isStarred && (
+                                  <span className="text-[10px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-400 font-bold flex items-center gap-0.5 shrink-0">
+                                    <Star size={10} className="fill-amber-400 text-amber-400" />
+                                    <span>Ưu tiên</span>
+                                  </span>
+                                )}
+                              </div>
+                              {child.quickTags && child.quickTags.length > 0 && (
+                                <div className="text-[10px] text-slate-400 truncate">
+                                  {child.quickTags[0]}
+                                  {child.quickTags.length > 1 ? ` +${child.quickTags.length - 1}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            className="flex items-center gap-0.5 shrink-0 ml-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {isReordering ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleMovePosition(child.id, 'UP', children)}
+                                  disabled={isUpDisabled}
+                                  title={
+                                    isUpDisabled
+                                      ? !child.isStarred && index > 0
+                                        ? 'Hạng mục có sao ⭐ luôn nằm trên cùng. Bấm ⭐ để đưa lên nhóm ưu tiên!'
+                                        : 'Đã ở vị trí cao nhất trong nhóm'
+                                      : 'Di chuyển lên'
+                                  }
+                                  className="touch-btn w-8 h-8 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                                >
+                                  <ChevronUp size={16} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => void handleMovePosition(child.id, 'DOWN', children)}
+                                  disabled={isDownDisabled}
+                                  title={
+                                    isDownDisabled
+                                      ? child.isStarred && index < children.length - 1
+                                        ? 'Hạng mục có sao ⭐ luôn ưu tiên trên các mục thường'
+                                        : 'Đã ở vị trí thấp nhất trong nhóm'
+                                      : 'Di chuyển xuống'
+                                  }
+                                  className="touch-btn w-8 h-8 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                                >
+                                  <ChevronDown size={16} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStar(child, children)}
+                                  className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                                    child.isStarred
+                                      ? 'text-amber-400 hover:text-amber-300'
+                                      : 'text-slate-600 hover:text-slate-400'
+                                  }`}
+                                  title={child.isStarred ? 'Bỏ gắn sao ưu tiên' : 'Gắn sao ưu tiên'}
+                                >
+                                  <Star size={15} className={child.isStarred ? 'fill-amber-400' : ''} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStar(child, children)}
+                                  className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                                    child.isStarred
+                                      ? 'text-amber-400 hover:text-amber-300'
+                                      : 'text-slate-600 hover:text-slate-400'
+                                  }`}
+                                  title={child.isStarred ? 'Bỏ gắn sao ưu tiên' : 'Gắn sao ưu tiên'}
+                                >
+                                  <Star size={14} className={child.isStarred ? 'fill-amber-400' : ''} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEdit(child)}
+                                  className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                                  title="Sửa hạng mục"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCategory(child)}
+                                  className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                                  title="Xóa hạng mục"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
-
-                        <div
-                          className="flex items-center gap-0.5 shrink-0 ml-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStar(child)}
-                            className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
-                              child.isStarred
-                                ? 'text-amber-400 hover:text-amber-300'
-                                : 'text-slate-600 hover:text-slate-400'
-                            }`}
-                            title={child.isStarred ? 'Bỏ gắn sao ưu tiên' : 'Gắn sao ưu tiên'}
-                          >
-                            <Star size={14} className={child.isStarred ? 'fill-amber-400' : ''} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(child)}
-                            className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
-                            title="Sửa hạng mục"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCategory(child)}
-                            className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
-                            title="Xóa hạng mục"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -823,22 +1073,68 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
            ==================================================== */}
         {activeTab === 'INCOME' && (
           <div className="space-y-2.5">
-            {parentCategories.map((parent) => {
+            {parentCategories.map((parent, pIndex) => {
               const children = childCategoriesByParent.get(parent.id) || [];
+              const isPUpDisabled =
+                pIndex === 0 ||
+                Boolean(parent.isStarred) !== Boolean(parentCategories[pIndex - 1]?.isStarred);
+              const isPDownDisabled =
+                pIndex === parentCategories.length - 1 ||
+                Boolean(parent.isStarred) !== Boolean(parentCategories[pIndex + 1]?.isStarred);
 
               return (
                 <div
                   key={parent.id}
-                  className="rounded-2xl bg-slate-900 border border-white/8 overflow-hidden shadow-md"
+                  draggable={isReordering}
+                  onDragStart={(e) => {
+                    if (!isReordering) return;
+                    e.dataTransfer.setData('text/plain', parent.id);
+                    setDraggedCatId(parent.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (!isReordering) return;
+                    e.preventDefault();
+                  }}
+                  onDrop={async (e) => {
+                    if (!isReordering) return;
+                    e.preventDefault();
+                    const sourceId = e.dataTransfer.getData('text/plain') || draggedCatId;
+                    if (!sourceId || sourceId === parent.id) return;
+                    await handleDropCategory(sourceId, parent.id, parentCategories);
+                    setDraggedCatId(null);
+                  }}
+                  onDragEnd={() => setDraggedCatId(null)}
+                  className={`rounded-2xl bg-slate-900 border overflow-hidden shadow-md transition-all ${
+                    isReordering
+                      ? draggedCatId === parent.id
+                        ? 'border-amber-400/60 bg-amber-500/10 scale-[0.98]'
+                        : 'border-white/12 hover:border-amber-500/40 cursor-grab active:cursor-grabbing'
+                      : 'border-white/8'
+                  }`}
                 >
                   {/* Hàng Hạng mục cha: Bấm vào chọn trực tiếp được luôn */}
                   <div
-                    onClick={() => handleItemClick(parent)}
-                    className={`px-3.5 py-3 flex items-center justify-between cursor-pointer transition-all ${
-                      onSelectCategory ? 'hover:bg-slate-800/90 active:scale-99' : ''
+                    onClick={() => !isReordering && handleItemClick(parent)}
+                    className={`px-3.5 py-3 flex items-center justify-between transition-all ${
+                      !isReordering && onSelectCategory ? 'hover:bg-slate-800/90 active:scale-99 cursor-pointer' : ''
                     } ${children.length > 0 ? 'border-b border-white/6 bg-slate-800/60' : ''}`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
+                      {isReordering && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <GripVertical size={14} className="text-slate-500 shrink-0" />
+                          <span
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded-md border ${
+                              parent.isStarred
+                                ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
+                                : 'text-slate-300 bg-slate-700/60 border-white/8'
+                            }`}
+                          >
+                            #{pIndex + 1}
+                          </span>
+                        </div>
+                      )}
+
                       <div
                         className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
                         style={{ backgroundColor: parent.color }}
@@ -849,7 +1145,10 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                         <div className="text-xs font-bold text-white flex items-center gap-1.5">
                           <span className="truncate">{parent.name}</span>
                           {parent.isStarred && (
-                            <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />
+                            <span className="text-[10px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-400 font-bold flex items-center gap-0.5 shrink-0">
+                              <Star size={10} className="fill-amber-400 text-amber-400" />
+                              <span>Ưu tiên</span>
+                            </span>
                           )}
                         </div>
                         {parent.quickTags && parent.quickTags.length > 0 && (
@@ -864,105 +1163,227 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                       className="flex items-center gap-0.5 shrink-0 ml-2"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAdd(parent.id)}
-                        className="touch-btn text-[11px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-1 rounded-lg border-none flex items-center gap-0.5 cursor-pointer hover:bg-sky-500/20 mr-1"
-                        title="Thêm mục con"
-                      >
-                        <Plus size={12} />
-                        <span>Thêm con</span>
-                      </button>
+                      {isReordering ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void handleMovePosition(parent.id, 'UP', parentCategories)}
+                            disabled={isPUpDisabled}
+                            title="Di chuyển lên"
+                            className="touch-btn w-8 h-8 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleMovePosition(parent.id, 'DOWN', parentCategories)}
+                            disabled={isPDownDisabled}
+                            title="Di chuyển xuống"
+                            className="touch-btn w-8 h-8 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStar(parent, parentCategories)}
+                            className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                              parent.isStarred
+                                ? 'text-amber-400 hover:text-amber-300'
+                                : 'text-slate-600 hover:text-slate-400'
+                            }`}
+                          >
+                            <Star size={15} className={parent.isStarred ? 'fill-amber-400' : ''} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAdd(parent.id)}
+                            className="touch-btn text-[11px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-1 rounded-lg border-none flex items-center gap-0.5 cursor-pointer hover:bg-sky-500/20 mr-1"
+                            title="Thêm mục con"
+                          >
+                            <Plus size={12} />
+                            <span>Thêm con</span>
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStar(parent)}
-                        className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
-                          parent.isStarred
-                            ? 'text-amber-400 hover:text-amber-300'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                      >
-                        <Star size={14} className={parent.isStarred ? 'fill-amber-400' : ''} />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStar(parent, parentCategories)}
+                            className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent transition-colors ${
+                              parent.isStarred
+                                ? 'text-amber-400 hover:text-amber-300'
+                                : 'text-slate-600 hover:text-slate-400'
+                            }`}
+                          >
+                            <Star size={14} className={parent.isStarred ? 'fill-amber-400' : ''} />
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(parent)}
-                        className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
-                        title="Sửa hạng mục"
-                      >
-                        <Edit2 size={13} />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(parent)}
+                            className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                            title="Sửa hạng mục"
+                          >
+                            <Edit2 size={13} />
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCategory(parent)}
-                        className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
-                        title="Xóa hạng mục"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(parent)}
+                            className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                            title="Xóa hạng mục"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Nếu Khoản Thu này có tạo thêm mục con thì hiển thị bên dưới để chọn */}
                   {children.length > 0 && (
                     <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-950/40">
-                      {children.map((child) => (
-                        <div
-                          key={child.id}
-                          onClick={() => handleItemClick(child)}
-                          className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                            onSelectCategory
-                              ? 'hover:border-emerald-400 hover:bg-slate-800/80 active:scale-98'
-                              : ''
-                          } bg-slate-800/50 border-white/5`}
-                        >
-                          <div className="flex items-center gap-2.5 truncate">
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
-                              style={{ backgroundColor: child.color }}
-                            >
-                              <CategoryIcon name={child.icon || 'Tag'} size={14} color="#ffffff" />
-                            </div>
-                            <div className="truncate text-left">
-                              <div className="text-xs font-semibold text-slate-100 truncate">
-                                {child.name}
+                      {children.map((child, cIndex) => {
+                        const isCUpDisabled =
+                          cIndex === 0 ||
+                          Boolean(child.isStarred) !== Boolean(children[cIndex - 1]?.isStarred);
+                        const isCDownDisabled =
+                          cIndex === children.length - 1 ||
+                          Boolean(child.isStarred) !== Boolean(children[cIndex + 1]?.isStarred);
+
+                        return (
+                          <div
+                            key={child.id}
+                            draggable={isReordering}
+                            onDragStart={(e) => {
+                              if (!isReordering) return;
+                              e.dataTransfer.setData('text/plain', child.id);
+                              setDraggedCatId(child.id);
+                            }}
+                            onDragOver={(e) => {
+                              if (!isReordering) return;
+                              e.preventDefault();
+                            }}
+                            onDrop={async (e) => {
+                              if (!isReordering) return;
+                              e.preventDefault();
+                              const sourceId = e.dataTransfer.getData('text/plain') || draggedCatId;
+                              if (!sourceId || sourceId === child.id) return;
+                              await handleDropCategory(sourceId, child.id, children);
+                              setDraggedCatId(null);
+                            }}
+                            onDragEnd={() => setDraggedCatId(null)}
+                            onClick={() => !isReordering && handleItemClick(child)}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                              isReordering
+                                ? draggedCatId === child.id
+                                  ? 'border-amber-400/60 bg-amber-500/10 scale-[0.98]'
+                                  : 'border-white/12 hover:border-amber-500/40 cursor-grab active:cursor-grabbing bg-slate-800/80'
+                                : `bg-slate-800/50 border-white/5 ${
+                                    onSelectCategory
+                                      ? 'hover:border-emerald-400 hover:bg-slate-800/80 active:scale-98 cursor-pointer'
+                                      : 'cursor-default'
+                                  }`
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              {isReordering && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <GripVertical size={14} className="text-slate-500 shrink-0" />
+                                  <span
+                                    className={`text-[10px] font-black px-1.5 py-0.5 rounded-md border ${
+                                      child.isStarred
+                                        ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
+                                        : 'text-slate-300 bg-slate-700/60 border-white/8'
+                                    }`}
+                                  >
+                                    #{cIndex + 1}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0"
+                                style={{ backgroundColor: child.color }}
+                              >
+                                <CategoryIcon name={child.icon || 'Tag'} size={14} color="#ffffff" />
+                              </div>
+                              <div className="truncate text-left">
+                                <div className="text-xs font-semibold text-slate-100 truncate flex items-center gap-1.5">
+                                  <span className="truncate">{child.name}</span>
+                                  {child.isStarred && (
+                                    <Star size={10} className="fill-amber-400 text-amber-400 shrink-0" />
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div
-                            className="flex items-center gap-0.5 shrink-0 ml-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStar(child)}
-                              className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent ${
-                                child.isStarred ? 'text-amber-400' : 'text-slate-600'
-                              }`}
+                            <div
+                              className="flex items-center gap-0.5 shrink-0 ml-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <Star size={13} className={child.isStarred ? 'fill-amber-400' : ''} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(child)}
-                              className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCategory(child)}
-                              className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                              {isReordering ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleMovePosition(child.id, 'UP', children)}
+                                    disabled={isCUpDisabled}
+                                    title="Di chuyển lên"
+                                    className="touch-btn w-7 h-7 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleMovePosition(child.id, 'DOWN', children)}
+                                    disabled={isCDownDisabled}
+                                    title="Di chuyển xuống"
+                                    className="touch-btn w-7 h-7 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-slate-200 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleStar(child, children)}
+                                    className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent ${
+                                      child.isStarred ? 'text-amber-400' : 'text-slate-600'
+                                    }`}
+                                  >
+                                    <Star size={13} className={child.isStarred ? 'fill-amber-400' : ''} />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleStar(child, children)}
+                                    className={`touch-btn p-1.5 rounded-lg cursor-pointer border-none bg-transparent ${
+                                      child.isStarred ? 'text-amber-400' : 'text-slate-600'
+                                    }`}
+                                  >
+                                    <Star size={13} className={child.isStarred ? 'fill-amber-400' : ''} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEdit(child)}
+                                    className="touch-btn p-1.5 text-slate-400 hover:text-sky-400 rounded bg-transparent border-none cursor-pointer"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCategory(child)}
+                                    className="touch-btn p-1.5 text-slate-500 hover:text-rose-400 rounded bg-transparent border-none cursor-pointer"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
