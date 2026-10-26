@@ -28,8 +28,10 @@ import {
   ChevronDown,
   ChevronUp,
   History,
-  X
+  X,
+  Car
 } from 'lucide-react';
+import { GrabTripModal } from './GrabTripModal';
 
 interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
@@ -43,6 +45,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
+  const [isGrabModalOpen, setIsGrabModalOpen] = useState<boolean>(false);
 
   // Trạng thái cho bảng Theo dõi Vay / Nợ ngay trên màn hình Tổng quan
   const [isAddingDebtQuick, setIsAddingDebtQuick] = useState<boolean>(false);
@@ -60,12 +63,19 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   } | null>(null);
   const [settleAmountInput, setSettleAmountInput] = useState<string>('');
   const [settleWalletIdInput, setSettleWalletIdInput] = useState<string>('');
+  const [settleError, setSettleError] = useState<string>('');
+  const [isSettling, setIsSettling] = useState<boolean>(false);
   const [expandedDebtContact, setExpandedDebtContact] = useState<string | null>(null);
   const [showSettledDebts, setShowSettledDebts] = useState<boolean>(false);
 
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const savedContactsSetting = useLiveQuery(() => db.settings.get('saved_debt_contacts'));
+  const lastWalletSetting = useLiveQuery(() => db.settings.get('last_used_wallet_id'));
+
+  // Ví mặc định khi thu/trả nợ: ví dùng gần nhất, nếu không có thì ví đầu tiên
+  const defaultSettleWalletId =
+    wallets.find((w) => w.id === lastWalletSetting?.value)?.id ?? wallets[0]?.id ?? '';
 
   // Toàn bộ giao dịch Vay / Nợ xuyên suốt các tháng để tính chính xác Ai đang nợ mình & Đang nợ ai
   const allDebtTransactions =
@@ -275,37 +285,60 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   };
 
   // Thu nợ / Trả nợ trực tiếp 1 chạm ngay trên Tổng quan
+  const handleOpenSettleDebt = (
+    contactName: string,
+    mode: 'COLLECT_DEBT' | 'PAY_DEBT',
+    remaining: number
+  ) => {
+    setSettleDebtInline({ contactName, mode });
+    setSettleAmountInput(new Intl.NumberFormat('vi-VN').format(remaining));
+    setSettleWalletIdInput(defaultSettleWalletId);
+    setSettleError('');
+  };
+
   const handleConfirmSettleDebt = async () => {
-    if (!settleDebtInline) return;
+    if (!settleDebtInline || isSettling) return;
     const amount = Number(settleAmountInput.replace(/\D/g, ''));
     if (!amount || amount <= 0) {
-      alert('Vui lòng nhập số tiền hợp lệ lớn hơn 0');
+      setSettleError('Vui lòng nhập số tiền hợp lệ lớn hơn 0');
       return;
     }
-    const walletId = settleWalletIdInput || wallets[0]?.id;
-    if (!walletId) return;
+    const walletId = settleWalletIdInput || defaultSettleWalletId;
+    if (!walletId) {
+      setSettleError('Chưa có ví tiền để ghi nhận');
+      return;
+    }
 
     const targetCatName = settleDebtInline.mode === 'COLLECT_DEBT' ? 'thu nợ' : 'trả nợ';
     const debtCat = categories.find(
       (c) => c.type === 'DEBT' && c.name.trim().toLowerCase() === targetCatName
     );
 
-    await createTransaction({
-      walletId,
-      categoryId: debtCat?.id,
-      type: settleDebtInline.mode,
-      amount,
-      contactName: settleDebtInline.contactName,
-      date: getCurrentDate(),
-      time: getCurrentTime(),
-      note:
-        settleDebtInline.mode === 'COLLECT_DEBT'
-          ? `Thu nợ từ ${settleDebtInline.contactName}`
-          : `Trả nợ cho ${settleDebtInline.contactName}`
-    });
+    setIsSettling(true);
+    setSettleError('');
+    try {
+      await createTransaction({
+        walletId,
+        categoryId: debtCat?.id,
+        type: settleDebtInline.mode,
+        amount,
+        contactName: settleDebtInline.contactName,
+        date: getCurrentDate(),
+        time: getCurrentTime(),
+        note:
+          settleDebtInline.mode === 'COLLECT_DEBT'
+            ? `Thu nợ từ ${settleDebtInline.contactName}`
+            : `Trả nợ cho ${settleDebtInline.contactName}`
+      });
+    } catch (err) {
+      setSettleError(err instanceof Error ? err.message : 'Không thể ghi nhận giao dịch');
+      setIsSettling(false);
+      return;
+    }
 
     const doneName = settleDebtInline.contactName;
     const doneMode = settleDebtInline.mode;
+    setIsSettling(false);
     setSettleDebtInline(null);
     setDuplicateFeedback(
       doneMode === 'COLLECT_DEBT'
@@ -313,6 +346,71 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         : `Đã trả nợ ${formatVND(amount)} cho "${doneName}"!`
     );
     setTimeout(() => setDuplicateFeedback(''), 3000);
+  };
+
+  // Form Thu nợ / Trả nợ hiển thị ngay dưới dòng của người được chọn
+  const renderSettleForm = () => {
+    if (!settleDebtInline) return null;
+    const isCollect = settleDebtInline.mode === 'COLLECT_DEBT';
+    return (
+      <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/40 flex flex-col gap-2.5 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-emerald-400">
+            {isCollect ? '🐷 Xác nhận thu nợ' : '💳 Xác nhận trả nợ'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSettleDebtInline(null)}
+            className="text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={settleAmountInput}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '');
+              setSettleAmountInput(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
+            }}
+            placeholder="Số tiền..."
+            className="input-ios text-xs py-2 font-extrabold text-emerald-400"
+          />
+          <CustomSelect
+            value={settleWalletIdInput || defaultSettleWalletId}
+            onChange={setSettleWalletIdInput}
+            options={wallets.map((w) => ({
+              value: w.id,
+              label: `${w.name} (${formatVND(w.balance)})`
+            }))}
+            triggerClassName="text-xs py-2 bg-slate-800"
+          />
+        </div>
+
+        {settleError && <div className="text-[11px] font-semibold text-rose-400">{settleError}</div>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setSettleDebtInline(null)}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmSettleDebt}
+            disabled={isSettling}
+            className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold border-none cursor-pointer disabled:opacity-60"
+          >
+            {isSettling ? 'Đang lưu...' : 'Xác nhận'}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   if (isHistoryOpen) {
@@ -328,7 +426,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   return (
     <div className="pb-28">
       {duplicateFeedback && (
-        <div className="mx-4 mt-3 p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center animate-fade-in">
+        <div className="sticky top-3 z-40 mx-4 mt-3 p-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 backdrop-blur-md text-emerald-300 text-xs font-bold text-center animate-fade-in">
           {duplicateFeedback}
         </div>
       )}
@@ -433,6 +531,37 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         >
           <span>Xem tất cả</span>
           <ChevronRight size={15} />
+        </button>
+      </div>
+
+      {/* 4. Thẻ Nghiệp Vụ Chạy Grab Dành Riêng Cho Tài Xế */}
+      <div className="mx-4 my-3 p-4 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/35 shadow-lg flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-sm">
+            <Car size={22} strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-extrabold text-slate-100 truncate">
+                Chạy Grab
+              </span>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 uppercase tracking-wider shrink-0">
+                Tự động chia
+              </span>
+            </div>
+            <div className="text-xs text-slate-400 mt-0.5 truncate">
+              Nhập tiền khách đưa & thu nhập ròng • Xong trong 5s
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsGrabModalOpen(true)}
+          className="touch-btn py-2 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md shadow-emerald-500/20 border-none transition-transform active:scale-95"
+        >
+          <Plus size={15} strokeWidth={3} />
+          <span>Ghi cuốc</span>
         </button>
       </div>
 
@@ -612,21 +741,18 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setSettleDebtInline({
-                              contactName: person.contactName,
-                              mode: 'COLLECT_DEBT'
-                            });
-                            setSettleAmountInput(
-                              new Intl.NumberFormat('vi-VN').format(person.receivable)
-                            );
-                            setSettleWalletIdInput(wallets[0]?.id || '');
-                          }}
+                          onClick={() =>
+                            handleOpenSettleDebt(person.contactName, 'COLLECT_DEBT', person.receivable)
+                          }
                           className="touch-btn py-1.5 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold cursor-pointer shrink-0"
                         >
                           + Thu nợ
                         </button>
                       </div>
+
+                      {settleDebtInline?.mode === 'COLLECT_DEBT' &&
+                        settleDebtInline.contactName === person.contactName &&
+                        renderSettleForm()}
 
                       {isExpanded && (
                         <div className="pt-2 border-t border-white/6 flex flex-col gap-1.5 text-[11px] text-slate-400">
@@ -702,21 +828,18 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setSettleDebtInline({
-                              contactName: person.contactName,
-                              mode: 'PAY_DEBT'
-                            });
-                            setSettleAmountInput(
-                              new Intl.NumberFormat('vi-VN').format(person.payable)
-                            );
-                            setSettleWalletIdInput(wallets[0]?.id || '');
-                          }}
+                          onClick={() =>
+                            handleOpenSettleDebt(person.contactName, 'PAY_DEBT', person.payable)
+                          }
                           className="touch-btn py-1.5 px-2.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-[11px] font-bold cursor-pointer shrink-0"
                         >
                           - Trả nợ
                         </button>
                       </div>
+
+                      {settleDebtInline?.mode === 'PAY_DEBT' &&
+                        settleDebtInline.contactName === person.contactName &&
+                        renderSettleForm()}
 
                       {isExpanded && (
                         <div className="pt-2 border-t border-white/6 flex flex-col gap-1.5 text-[11px] text-slate-400">
@@ -747,68 +870,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             )}
           </div>
         </div>
-
-        {/* Khung xác nhận Thu nợ / Trả nợ nhanh ngay trên Tổng quan */}
-        {settleDebtInline && (
-          <div className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex flex-col gap-2.5 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-400">
-                {settleDebtInline.mode === 'COLLECT_DEBT'
-                  ? `🐷 Thu nợ từ "${settleDebtInline.contactName}"`
-                  : `💳 Trả nợ cho "${settleDebtInline.contactName}"`}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSettleDebtInline(null)}
-                className="text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={settleAmountInput}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  setSettleAmountInput(
-                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                  );
-                }}
-                placeholder="Số tiền..."
-                className="input-ios text-xs py-2 font-extrabold text-emerald-400"
-              />
-              <CustomSelect
-                value={settleWalletIdInput || (wallets[0]?.id ?? '')}
-                onChange={setSettleWalletIdInput}
-                options={wallets.map((w) => ({
-                  value: w.id,
-                  label: `${w.name} (${formatVND(w.balance)})`
-                }))}
-                triggerClassName="text-xs py-2 bg-slate-800"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setSettleDebtInline(null)}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSettleDebt}
-                className="px-4 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold border-none cursor-pointer"
-              >
-                Xác nhận
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Nút xem các người nợ đã tất toán xong (nếu có) */}
         {debtOverview.settledList.length > 0 && (
@@ -843,6 +904,16 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* MODAL GHI CUỐC GRAB TỰ ĐỘNG PHÂN BỔ */}
+      <GrabTripModal
+        isOpen={isGrabModalOpen}
+        onClose={() => setIsGrabModalOpen(false)}
+        onSuccess={(msg) => {
+          setDuplicateFeedback(msg);
+          setTimeout(() => setDuplicateFeedback(''), 4000);
+        }}
+      />
     </div>
   );
 };

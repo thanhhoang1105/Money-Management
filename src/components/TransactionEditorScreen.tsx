@@ -40,8 +40,10 @@ import {
   EyeOff,
   PlusCircle,
   Edit2,
-  History
+  History,
+  Car
 } from 'lucide-react';
+import { GrabTripModal } from './GrabTripModal';
 
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_WALLETS: Wallet[] = [];
@@ -146,6 +148,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   // Mở màn hình Lịch sử ghi chép (dạng màn hình phẳng)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [editingFromHistory, setEditingFromHistory] = useState(false);
+  const [isGrabTripModalOpen, setIsGrabTripModalOpen] = useState(false);
 
   const handleCloseOrReturnToHistory = () => {
     if (editingFromHistory) {
@@ -930,6 +933,24 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   <CreditCard size={14} className="text-orange-400 shrink-0" />
                   <span className="truncate">Trả nợ</span>
                 </button>
+
+                {/* Nút Nghiệp Vụ Chạy Grab */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOtherTypesDropdownOpen(false);
+                    setIsGrabTripModalOpen(true);
+                  }}
+                  className="touch-btn h-11 px-3.5 rounded-xl border flex items-center justify-between text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all col-span-2 bg-gradient-to-r from-emerald-500/20 via-slate-800 to-teal-500/15 border-emerald-500/40 text-emerald-300 hover:text-white"
+                >
+                  <div className="flex items-center gap-2">
+                    <Car size={16} className="text-emerald-400 shrink-0" strokeWidth={2.5} />
+                    <span>Nghiệp vụ Chạy Grab (Tự động chia tiền mặt & ví tín dụng)</span>
+                  </div>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">
+                    Mở ➔
+                  </span>
+                </button>
               </div>
             )}
           </div>
@@ -1675,6 +1696,16 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         onKeyPress={handleKeyPress}
         currentWalletBalance={currentWallet?.balance}
         adjustDiff={adjustDiff}
+      />
+
+      {/* MODAL GHI CUỐC GRAB TỰ ĐỘNG PHÂN BỔ */}
+      <GrabTripModal
+        isOpen={isGrabTripModalOpen}
+        onClose={() => setIsGrabTripModalOpen(false)}
+        onSuccess={(msg) => {
+          setToastMsg(msg);
+          setTimeout(() => setToastMsg(''), 3500);
+        }}
       />
     </div>
   );

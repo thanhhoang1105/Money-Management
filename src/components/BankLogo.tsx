@@ -303,6 +303,17 @@ export const BANK_BRANDS: BankBrandInfo[] = [
     keywords: ['shopeepay', 'shopee pay', 'airpay', 'shopee']
   },
   {
+    id: 'ewallet:grab',
+    code: 'GRAB',
+    name: 'Ví Grab (Tài xế)',
+    shortName: 'Grab',
+    category: 'EWALLET',
+    primaryColor: '#00B14F',
+    secondaryColor: '#008C3E',
+    textColor: '#FFFFFF',
+    keywords: ['grab', 'ví grab', 'grab driver', 'grab tín dụng', 'grab tiền mặt', 'tài xế grab']
+  },
+  {
     id: 'card:visa',
     code: 'VISA',
     name: 'Thẻ Quốc tế Visa',

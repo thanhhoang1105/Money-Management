@@ -44,8 +44,10 @@ import {
   Play,
   CheckCircle2,
   Edit2,
-  ArrowLeft
+  ArrowLeft,
+  Car
 } from 'lucide-react';
+import { GrabTripModal } from './GrabTripModal';
 
 interface MoreTabProps {
   onOpenSettings: () => void;
@@ -71,6 +73,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 }) => {
   const [subView, setSubView] = useState<SubViewType>('MAIN');
   const [notice, setNotice] = useState<string | null>(null);
+  const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
 
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
@@ -1580,6 +1583,31 @@ export const MoreTab: React.FC<MoreTabProps> = ({
             </div>
             <ChevronRight size={16} className="text-slate-500 shrink-0" />
           </button>
+
+          {/* Mục 6: Tiện ích Tài xế Chạy Grab */}
+          <button
+            type="button"
+            onClick={() => setIsGrabModalOpen(true)}
+            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors bg-emerald-500/5"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Car size={19} strokeWidth={2.5} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                  <span>Nghiệp vụ Tài xế Grab</span>
+                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                    Tự động
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Ghi cuốc xe, tự động trừ ví tín dụng, nạp & rút ví Grab
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={16} className="text-slate-500 shrink-0" />
+          </button>
         </div>
       </section>
 
@@ -1731,6 +1759,16 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         </div>
         <div>100% Offline • Dữ liệu lưu trữ bền vững trên thiết bị của bạn</div>
       </div>
+
+      {/* MODAL GHI CUỐC GRAB */}
+      <GrabTripModal
+        isOpen={isGrabModalOpen}
+        onClose={() => setIsGrabModalOpen(false)}
+        onSuccess={(msg) => {
+          setNotice(msg);
+          setTimeout(() => setNotice(null), 3500);
+        }}
+      />
     </div>
   );
 };
