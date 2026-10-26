@@ -13,6 +13,7 @@ import {
   getLastNMonths
 } from '../utils/formatters';
 import { exportTransactionsToExcel } from '../services/backupService';
+import { CustomSelect } from './ui/CustomSelect';
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,7 +29,10 @@ import {
   Check,
   Layers,
   ListTree,
-  ArrowLeft
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  X
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -38,12 +42,17 @@ interface AnalyticsTabProps {
 
 type ReportType = 'EXPENSE' | 'INCOME';
 type ExpenseGroupingMode = 'DETAIL' | 'PARENT';
+type ReportDimension = 'CATEGORY' | 'DAILY';
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, resetSignal }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
   const [groupingMode, setGroupingMode] = useState<ExpenseGroupingMode>('DETAIL');
   const [drillDownCategory, setDrillDownCategory] = useState<Category | null>(null);
+  const [drillDownDateFilter, setDrillDownDateFilter] = useState<string>('ALL');
+  const [reportDimension, setReportDimension] = useState<ReportDimension>('CATEGORY');
+  const [expandedDailyDates, setExpandedDailyDates] = useState<Set<string>>(() => new Set());
+  const [mainDailyFilter, setMainDailyFilter] = useState<string>('ALL');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
 
@@ -57,6 +66,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     ) {
       prevResetSignalRef.current = resetSignal;
       setDrillDownCategory(null);
+      setDrillDownDateFilter('ALL');
+      setMainDailyFilter('ALL');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [resetSignal]);
@@ -305,6 +316,103 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     return drillDownTxs.reduce((sum, tx) => sum + tx.amount, 0);
   }, [drillDownTxs]);
 
+  // Danh sách các ngày riêng biệt có giao dịch trong danh mục đang xem
+  const distinctDrillDownDates = useMemo(() => {
+    const dates = Array.from(new Set(drillDownTxs.map((tx) => tx.date)));
+    return dates.sort((a, b) => b.localeCompare(a));
+  }, [drillDownTxs]);
+
+  // Lọc giao dịch drill-down theo ngày (nếu người dùng chọn 1 ngày cụ thể)
+  const filteredDrillDownTxs = useMemo(() => {
+    if (drillDownDateFilter === 'ALL') return drillDownTxs;
+    return drillDownTxs.filter((tx) => tx.date === drillDownDateFilter);
+  }, [drillDownTxs, drillDownDateFilter]);
+
+  // Nhóm các giao dịch drill-down theo từng ngày (sắp xếp giờ mới nhất lên trên)
+  const groupedDrillDownTxs = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (const tx of filteredDrillDownTxs) {
+      const list = map.get(tx.date) || [];
+      list.push(tx);
+      map.set(tx.date, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        const timeA = a.time || '00:00';
+        const timeB = b.time || '00:00';
+        if (timeA !== timeB) return timeB.localeCompare(timeA);
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+      });
+    }
+    return map;
+  }, [filteredDrillDownTxs]);
+
+  // Bảng kê tổng thu, chi và ròng theo từng ngày trong tháng cho chế độ Xem Theo Ngày
+  const dailyCashflowBreakdown = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        date: string;
+        income: number;
+        expense: number;
+        net: number;
+        txCount: number;
+        txs: Transaction[];
+      }
+    >();
+
+    thisMonthTxs.forEach((tx) => {
+      if (tx.excludeFromReport) return;
+      const entry = map.get(tx.date) || {
+        date: tx.date,
+        income: 0,
+        expense: 0,
+        net: 0,
+        txCount: 0,
+        txs: []
+      };
+
+      if (tx.type === 'INCOME') {
+        entry.income += tx.amount;
+        entry.net += tx.amount;
+      } else if (tx.type === 'EXPENSE') {
+        entry.expense += tx.amount;
+        entry.net -= tx.amount;
+      } else if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
+        entry.expense += tx.transferFee;
+        entry.net -= tx.transferFee;
+      }
+
+      entry.txCount += 1;
+      entry.txs.push(tx);
+      map.set(tx.date, entry);
+    });
+
+    const list = Array.from(map.values());
+    list.sort((a, b) => b.date.localeCompare(a.date));
+
+    list.forEach((day) => {
+      day.txs.sort((a, b) => {
+        const timeA = a.time || '00:00';
+        const timeB = b.time || '00:00';
+        if (timeA !== timeB) return timeB.localeCompare(timeA);
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+      });
+    });
+
+    return list;
+  }, [thisMonthTxs]);
+
+  // Toggle mở rộng / thu gọn 1 ngày trong chế độ Theo Ngày
+  const toggleDailyExpand = (dateStr: string) => {
+    setExpandedDailyDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
+
   const handlePrevMonth = () => setSelectedMonth((m) => getPreviousMonth(m));
   const handleNextMonth = () => {
     const [year, month] = selectedMonth.split('-');
@@ -335,12 +443,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
   };
 
   if (drillDownCategory) {
+    const activeFilteredTotal = filteredDrillDownTxs.reduce((sum, tx) => sum + tx.amount, 0);
+
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
+        {/* Header điều hướng */}
         <div className="flex items-center justify-between border-b border-white/8 pb-3">
           <button
             type="button"
-            onClick={() => setDrillDownCategory(null)}
+            onClick={() => {
+              setDrillDownCategory(null);
+              setDrillDownDateFilter('ALL');
+            }}
             className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
             title="Quay lại"
           >
@@ -352,23 +466,26 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
           <div className="w-9" />
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        {/* THẺ TỔNG Ở ĐẦU TRANG (GIỮ NGUYÊN TỔNG CẢ THÁNG NHƯ YÊU CẦU) */}
+        <div className="p-4 rounded-2xl bg-slate-900/90 border border-white/10 flex items-center justify-between shadow-xl">
+          <div className="flex items-center gap-3 min-w-0">
             <div
-              className="cat-badge"
+              className="cat-badge shrink-0"
               style={{ backgroundColor: drillDownCategory.color }}
             >
               <CategoryIcon name={drillDownCategory.icon} size={22} color="#ffffff" />
             </div>
-            <div>
-              <div className="text-base font-bold text-slate-100">{drillDownCategory.name}</div>
+            <div className="min-w-0">
+              <div className="text-base font-bold text-slate-100 truncate">
+                {drillDownCategory.name}
+              </div>
               <div className="text-xs text-slate-400">
                 {formatMonthDisplay(selectedMonth)} • {drillDownTxs.length} giao dịch
               </div>
             </div>
           </div>
 
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <div
               className={`text-lg font-extrabold ${
                 reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
@@ -384,46 +501,185 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
           </div>
         </div>
 
-        <div className="flex flex-col gap-2.5">
-          {drillDownTxs.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-xs">
-              Không có giao dịch nào trong danh mục này
-            </div>
-          ) : (
-            drillDownTxs.map((tx) => {
-              const wallet = walletMap.get(tx.walletId);
-              const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
-              return (
-                <div
-                  key={tx.id}
-                  onClick={() => {
-                    if (onEditTransaction) {
-                      setDrillDownCategory(null);
-                      onEditTransaction(tx);
-                    }
-                  }}
-                  className="touch-btn flex items-center justify-between p-3.5 bg-slate-900/80 rounded-2xl border border-white/8 cursor-pointer hover:bg-slate-800 transition-colors"
+        {/* BỘ LỌC THEO NGÀY CHO DANH MỤC NÀY */}
+        {distinctDrillDownDates.length > 1 && (
+          <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-slate-900/80 border border-white/8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                <Calendar size={14} className="text-sky-400 shrink-0" />
+                <span>Lọc theo ngày ({distinctDrillDownDates.length} ngày phát sinh)</span>
+              </div>
+              {drillDownDateFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setDrillDownDateFilter('ALL')}
+                  className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer flex items-center gap-1 bg-transparent border-none p-0"
                 >
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-100 truncate">
-                      {tx.note || txCat?.name || drillDownCategory.name}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
-                      <span>
-                        {formatFriendlyDate(tx.date)} lúc {tx.time}
-                      </span>
-                      <span>•</span>
-                      <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
-                    </div>
-                  </div>
-                  <div
-                    className={`text-sm font-bold shrink-0 ml-3 ${
-                      reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                  <X size={12} />
+                  <span>Xem tất cả ngày</span>
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Lọc Ngày */}
+            <CustomSelect
+              value={drillDownDateFilter}
+              onChange={setDrillDownDateFilter}
+              options={[
+                {
+                  value: 'ALL',
+                  label: `Toàn bộ các ngày (${drillDownTxs.length} giao dịch • ${formatVND(drillDownTotal)})`
+                },
+                ...distinctDrillDownDates.map((d) => {
+                  const dayTxs = drillDownTxs.filter((t) => t.date === d);
+                  const daySum = dayTxs.reduce((s, t) => s + t.amount, 0);
+                  return {
+                    value: d,
+                    label: `${formatFriendlyDate(d)} (${dayTxs.length} GD • ${formatVND(daySum)})`
+                  };
+                })
+              ]}
+              triggerClassName="text-xs py-2 bg-slate-800"
+            />
+
+            {/* Chips chọn nhanh các ngày gần nhất */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar text-xs">
+              <button
+                type="button"
+                onClick={() => setDrillDownDateFilter('ALL')}
+                className={`touch-btn px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                  drillDownDateFilter === 'ALL'
+                    ? 'bg-sky-500 text-slate-950 font-bold'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-white border border-white/6'
+                }`}
+              >
+                Tất cả ngày
+              </button>
+              {distinctDrillDownDates.slice(0, 4).map((d) => {
+                const dayTxs = drillDownTxs.filter((t) => t.date === d);
+                const daySum = dayTxs.reduce((s, t) => s + t.amount, 0);
+                const isSelected = drillDownDateFilter === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDrillDownDateFilter(d)}
+                    className={`touch-btn px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-sky-500 text-slate-950 font-bold'
+                        : 'bg-slate-800/80 text-slate-300 hover:text-white border border-white/6'
                     }`}
                   >
-                    {reportType === 'EXPENSE'
-                      ? `-${formatVND(tx.amount)}`
-                      : `+${formatVND(tx.amount)}`}
+                    {formatFriendlyDate(d)} ({formatVND(daySum)})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* THÔNG BÁO KHI ĐANG LỌC 1 NGÀY CỤ THỂ */}
+        {drillDownDateFilter !== 'ALL' && (
+          <div className="p-3 rounded-2xl bg-sky-500/10 border border-sky-400/25 flex items-center justify-between text-xs">
+            <span className="text-slate-300">
+              Đang xem ngày <strong className="text-white">{formatFriendlyDate(drillDownDateFilter)}</strong>:{' '}
+              <strong className={reportType === 'EXPENSE' ? 'text-expense' : 'text-income'}>
+                {reportType === 'EXPENSE' ? '-' : '+'}{formatVND(activeFilteredTotal)}
+              </strong>{' '}
+              ({filteredDrillDownTxs.length} GD)
+            </span>
+            <button
+              type="button"
+              onClick={() => setDrillDownDateFilter('ALL')}
+              className="text-[11px] text-sky-400 hover:text-sky-300 font-bold cursor-pointer underline bg-transparent border-none p-0"
+            >
+              Xem tất cả
+            </button>
+          </div>
+        )}
+
+        {/* DANH SÁCH GIAO DỊCH PHÂN LOẠI RÕ RÀNG THEO TỪNG NGÀY */}
+        <div className="flex flex-col gap-4">
+          {filteredDrillDownTxs.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-xs">
+              Không có giao dịch nào phù hợp với bộ lọc ngày đã chọn
+            </div>
+          ) : (
+            Array.from(groupedDrillDownTxs.entries()).map(([dateStr, txs]) => {
+              const daySubTotal = txs.reduce((sum, tx) => sum + tx.amount, 0);
+
+              return (
+                <div key={dateStr} className="flex flex-col gap-2">
+                  {/* Tiêu đề Ngày kèm Tổng Tiền Trong Ngày */}
+                  <div className="flex items-center justify-between px-2 pt-1 pb-0.5 border-b border-white/6">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Calendar size={13} className="text-sky-400 shrink-0" />
+                      <span className="text-xs font-extrabold text-slate-200">
+                        {formatFriendlyDate(dateStr)}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-white/6 text-slate-400 font-medium shrink-0">
+                        {txs.length} GD
+                      </span>
+                    </div>
+
+                    <div
+                      className={`text-xs font-bold shrink-0 ${
+                        reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                      }`}
+                    >
+                      {reportType === 'EXPENSE'
+                        ? `-${formatVND(daySubTotal)}`
+                        : `+${formatVND(daySubTotal)}`}
+                    </div>
+                  </div>
+
+                  {/* Các giao dịch trong ngày */}
+                  <div className="flex flex-col gap-2">
+                    {txs.map((tx) => {
+                      const wallet = walletMap.get(tx.walletId);
+                      const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+                      return (
+                        <div
+                          key={tx.id}
+                          onClick={() => {
+                            if (onEditTransaction) {
+                              setDrillDownCategory(null);
+                              setDrillDownDateFilter('ALL');
+                              onEditTransaction(tx);
+                            }
+                          }}
+                          className="touch-btn flex items-center justify-between p-3.5 bg-slate-900/80 rounded-2xl border border-white/8 cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="text-xs font-bold text-slate-100 truncate">
+                              {tx.note || txCat?.name || drillDownCategory.name}
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>lúc {tx.time || '00:00'}</span>
+                              <span>•</span>
+                              <span className="text-slate-300 font-medium">
+                                {wallet?.name || 'Ví'}
+                              </span>
+                              {txCat && txCat.id !== drillDownCategory.id && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-sky-400 font-medium">{txCat.name}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div
+                            className={`text-sm font-bold shrink-0 ml-1 ${
+                              reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                            }`}
+                          >
+                            {reportType === 'EXPENSE'
+                              ? `-${formatVND(tx.amount)}`
+                              : `+${formatVND(tx.amount)}`}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -622,7 +878,248 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
         </div>
       </div>
 
-      {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ PHÂN TÍCH: CHI TIÊU VS THU NHẬP */}
+      {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ XEM: THEO DANH MỤC VS THEO TỪNG NGÀY TRONG THÁNG */}
+      <div className="mx-4 mt-4 mb-2.5 grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-900 border border-white/8 shadow-inner">
+        <button
+          type="button"
+          onClick={() => setReportDimension('CATEGORY')}
+          className={`touch-btn h-10 px-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            reportDimension === 'CATEGORY'
+              ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <PieChart size={14} className="shrink-0" />
+          <span>Theo Danh mục</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReportDimension('DAILY')}
+          className={`touch-btn h-10 px-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            reportDimension === 'DAILY'
+              ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Calendar size={14} className="shrink-0" />
+          <span>Theo Từng ngày ({dailyCashflowBreakdown.length})</span>
+        </button>
+      </div>
+
+      {reportDimension === 'DAILY' ? (
+        <div className="px-4 mt-1 flex flex-col gap-3">
+          {/* Bộ lọc ngày trên toàn tháng */}
+          {dailyCashflowBreakdown.length > 1 && (
+            <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/8 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                  <Calendar size={14} className="text-sky-400 shrink-0" />
+                  <span>Lọc xem theo ngày ({dailyCashflowBreakdown.length} ngày phát sinh)</span>
+                </div>
+                {mainDailyFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setMainDailyFilter('ALL')}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer flex items-center gap-1 bg-transparent border-none p-0"
+                  >
+                    <X size={12} />
+                    <span>Xem tất cả</span>
+                  </button>
+                )}
+              </div>
+
+              <CustomSelect
+                value={mainDailyFilter}
+                onChange={setMainDailyFilter}
+                options={[
+                  {
+                    value: 'ALL',
+                    label: `Tất cả các ngày trong tháng (${dailyCashflowBreakdown.length} ngày)`
+                  },
+                  ...dailyCashflowBreakdown.map((day) => ({
+                    value: day.date,
+                    label: `${formatFriendlyDate(day.date)} (Thu: +${formatVND(day.income)} | Chi: -${formatVND(day.expense)})`
+                  }))
+                ]}
+                triggerClassName="text-xs py-2 bg-slate-800"
+              />
+
+              {/* Chips chọn nhanh */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar text-xs">
+                <button
+                  type="button"
+                  onClick={() => setMainDailyFilter('ALL')}
+                  className={`touch-btn px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                    mainDailyFilter === 'ALL'
+                      ? 'bg-sky-500 text-slate-950 font-bold'
+                      : 'bg-slate-800/80 text-slate-400 hover:text-white border border-white/6'
+                  }`}
+                >
+                  Tất cả ngày
+                </button>
+                {dailyCashflowBreakdown.slice(0, 5).map((d) => {
+                  const isSelected = mainDailyFilter === d.date;
+                  return (
+                    <button
+                      key={d.date}
+                      type="button"
+                      onClick={() => setMainDailyFilter(d.date)}
+                      className={`touch-btn px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-sky-500 text-slate-950 font-bold'
+                          : 'bg-slate-800/80 text-slate-300 hover:text-white border border-white/6'
+                      }`}
+                    >
+                      {formatFriendlyDate(d.date)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Danh sách các ngày */}
+          {dailyCashflowBreakdown.length === 0 ? (
+            <div className="p-8 rounded-3xl bg-slate-900/40 border border-white/5 text-center text-slate-500 text-xs">
+              Chưa có giao dịch nào trong tháng này để phân tích theo ngày
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {dailyCashflowBreakdown
+                .filter((d) => mainDailyFilter === 'ALL' || d.date === mainDailyFilter)
+                .map((day) => {
+                  const isExpanded = expandedDailyDates.has(day.date) || mainDailyFilter !== 'ALL';
+
+                  return (
+                    <div
+                      key={day.date}
+                      className="rounded-2xl bg-slate-900/80 border border-white/8 overflow-hidden transition-all shadow-sm"
+                    >
+                      {/* Tiêu đề ngày bấm để mở rộng / thu gọn */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleDailyExpand(day.date)}
+                        className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/60 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
+                            <Calendar size={15} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-slate-100 truncate">
+                              {formatFriendlyDate(day.date)}
+                            </div>
+                            <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                              <span>{day.txCount} giao dịch</span>
+                              <span>•</span>
+                              <span
+                                className={`font-semibold ${
+                                  day.net >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                }`}
+                              >
+                                Ròng: {day.net >= 0 ? `+${formatVND(day.net)}` : formatVND(day.net)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0 ml-2">
+                          <div className="text-right">
+                            {day.income > 0 && (
+                              <div className="text-xs font-bold text-income">
+                                +{formatVND(day.income)}
+                              </div>
+                            )}
+                            {day.expense > 0 && (
+                              <div className="text-xs font-bold text-expense">
+                                -{formatVND(day.expense)}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-slate-400">
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Danh sách giao dịch chi tiết của ngày khi mở rộng */}
+                      {isExpanded && (
+                        <div className="p-3 pt-0 border-t border-white/6 flex flex-col gap-1.5 mt-1">
+                          {day.txs.map((tx) => {
+                            const wallet = walletMap.get(tx.walletId);
+                            const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+                            const isIncome = tx.type === 'INCOME';
+                            const isExpense = tx.type === 'EXPENSE';
+
+                            return (
+                              <div
+                                key={tx.id}
+                                onClick={() => {
+                                  if (onEditTransaction) {
+                                    onEditTransaction(tx);
+                                  }
+                                }}
+                                className="touch-btn flex items-center justify-between p-2.5 bg-slate-800/60 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div
+                                    className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                    style={{
+                                      backgroundColor: cat?.color ? `${cat.color}25` : '#64748b25',
+                                      color: cat?.color || '#94a3b8'
+                                    }}
+                                  >
+                                    <CategoryIcon
+                                      name={cat?.icon || 'CircleDot'}
+                                      size={13}
+                                      color={cat?.color || '#94a3b8'}
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-semibold text-slate-100 truncate">
+                                      {tx.note || cat?.name || 'Giao dịch'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                      <span>lúc {tx.time || '00:00'}</span>
+                                      <span>•</span>
+                                      <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
+                                      {cat && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="text-slate-300">{cat.name}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div
+                                  className={`text-xs font-bold shrink-0 ml-2 ${
+                                    isIncome
+                                      ? 'text-income'
+                                      : isExpense
+                                      ? 'text-expense'
+                                      : 'text-sky-400'
+                                  }`}
+                                >
+                                  {isIncome ? `+${formatVND(tx.amount)}` : isExpense ? `-${formatVND(tx.amount)}` : formatVND(tx.amount)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ PHÂN TÍCH: CHI TIÊU VS THU NHẬP */}
       <div className="mx-4 mt-4 mb-2 grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-900 border border-white/8">
         <button
           type="button"
@@ -822,6 +1319,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
           ))}
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 };

@@ -1,5 +1,5 @@
 // src/services/grabService.ts
-import { db } from '../db';
+import { db, runWithoutDirtyTracking } from '../db';
 import { generateUUID } from '../utils/uuid';
 import {
   PARENT_MUST_HAVE_ID,
@@ -25,51 +25,53 @@ export interface GrabWalletsConfig {
  */
 export async function ensureGrabCategories(): Promise<void> {
   const now = new Date().toISOString();
-  await db.transaction('rw', [db.categories], async () => {
-    const incomeCat = await db.categories.get(GRAB_INCOME_CAT_ID);
-    if (!incomeCat) {
-      await db.categories.put({
-        id: GRAB_INCOME_CAT_ID,
-        name: 'Thu nhập GrabBike',
-        type: 'INCOME',
-        icon: 'Motorcycle',
-        color: '#00B14F',
-        quickTags: ['Cuốc GrabBike', 'Cuốc GrabFood', 'Cuốc GrabExpress', 'Tiền tip Grab', 'Thưởng cuốc'],
-        isDefault: true,
-        isStarred: true,
-        createdAt: now,
-        updatedAt: now
-      });
-    } else if (incomeCat.icon !== 'Motorcycle' || incomeCat.name !== 'Thu nhập GrabBike') {
-      await db.categories.update(GRAB_INCOME_CAT_ID, {
-        icon: 'Motorcycle',
-        name: 'Thu nhập GrabBike',
-        updatedAt: now
-      });
-    }
+  await runWithoutDirtyTracking(async () => {
+    await db.transaction('rw', [db.categories], async () => {
+      const incomeCat = await db.categories.get(GRAB_INCOME_CAT_ID);
+      if (!incomeCat) {
+        await db.categories.put({
+          id: GRAB_INCOME_CAT_ID,
+          name: 'Thu nhập GrabBike',
+          type: 'INCOME',
+          icon: 'Motorcycle',
+          color: '#00B14F',
+          quickTags: ['Cuốc GrabBike', 'Cuốc GrabFood', 'Cuốc GrabExpress', 'Tiền tip Grab', 'Thưởng cuốc'],
+          isDefault: true,
+          isStarred: true,
+          createdAt: now,
+          updatedAt: now
+        });
+      } else if (incomeCat.icon !== 'Motorcycle' || incomeCat.name !== 'Thu nhập GrabBike') {
+        await db.categories.update(GRAB_INCOME_CAT_ID, {
+          icon: 'Motorcycle',
+          name: 'Thu nhập GrabBike',
+          updatedAt: now
+        });
+      }
 
-    const feeCat = await db.categories.get(GRAB_FEE_CAT_ID);
-    if (!feeCat) {
-      await db.categories.put({
-        id: GRAB_FEE_CAT_ID,
-        name: 'Phí dịch vụ Grab',
-        type: 'EXPENSE',
-        parentId: PARENT_MUST_HAVE_ID,
-        icon: 'Percent',
-        color: '#EF4444',
-        quickTags: ['Chiết khấu Grab', 'Phí nền tảng Grab', 'Thuế Grab'],
-        isDefault: true,
-        createdAt: now,
-        updatedAt: now
-      });
-    } else if (feeCat.name !== 'Phí dịch vụ Grab' || feeCat.icon !== 'Percent') {
-      await db.categories.update(GRAB_FEE_CAT_ID, {
-        name: 'Phí dịch vụ Grab',
-        icon: 'Percent',
-        color: '#EF4444',
-        updatedAt: now
-      });
-    }
+      const feeCat = await db.categories.get(GRAB_FEE_CAT_ID);
+      if (!feeCat) {
+        await db.categories.put({
+          id: GRAB_FEE_CAT_ID,
+          name: 'Phí dịch vụ Grab',
+          type: 'EXPENSE',
+          parentId: PARENT_MUST_HAVE_ID,
+          icon: 'Percent',
+          color: '#EF4444',
+          quickTags: ['Chiết khấu Grab', 'Phí nền tảng Grab', 'Thuế Grab'],
+          isDefault: true,
+          createdAt: now,
+          updatedAt: now
+        });
+      } else if (feeCat.name !== 'Phí dịch vụ Grab' || feeCat.icon !== 'Percent') {
+        await db.categories.update(GRAB_FEE_CAT_ID, {
+          name: 'Phí dịch vụ Grab',
+          icon: 'Percent',
+          color: '#EF4444',
+          updatedAt: now
+        });
+      }
+    });
   });
 }
 
@@ -505,7 +507,8 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
  */
 export async function migrateLegacyGrabTransactions(): Promise<number> {
   let migratedCount = 0;
-  await db.transaction('rw', [db.transactions, db.categories, db.wallets, db.settings], async () => {
+  await runWithoutDirtyTracking(async () => {
+    await db.transaction('rw', [db.transactions, db.categories, db.wallets, db.settings], async () => {
     // Đảm bảo 2 danh mục Grab luôn tồn tại
     const now = new Date().toISOString();
     const incomeCat = await db.categories.get(GRAB_INCOME_CAT_ID);
@@ -647,6 +650,7 @@ export async function migrateLegacyGrabTransactions(): Promise<number> {
         migratedCount++;
       }
     }
+  });
   });
 
   return migratedCount;

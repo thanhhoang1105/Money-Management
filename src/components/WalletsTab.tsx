@@ -9,7 +9,8 @@ import {
   deleteWallet,
   sortWallets,
   moveWalletPosition,
-  reorderWallets
+  reorderWallets,
+  createTransaction
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import {
@@ -20,6 +21,8 @@ import {
 } from './BankLogo';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import { CustomSelect } from './ui/CustomSelect';
+import { WalletSelect } from './ui/WalletSelect';
+import { DatePicker } from './ui/DatePicker';
 import {
   Plus,
   Edit3,
@@ -30,6 +33,10 @@ import {
   ShieldAlert,
   ArrowLeft,
   ArrowUpDown,
+  ArrowRightLeft,
+  MoreVertical,
+  ChevronRight,
+  X,
   ChevronUp,
   ChevronDown,
   ChevronsUp,
@@ -57,10 +64,17 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const sortedWallets = useMemo(() => sortWallets(wallets), [wallets]);
 
-  const [viewMode, setViewMode] = useState<'LIST' | 'CREATE' | 'EDIT' | 'ADJUST'>('LIST');
+  const [viewMode, setViewMode] = useState<'LIST' | 'CREATE' | 'EDIT' | 'ADJUST' | 'TRANSFER'>('LIST');
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [activeMenuWallet, setActiveMenuWallet] = useState<Wallet | null>(null);
   const [isReordering, setIsReordering] = useState(false);
   const [draggedWalletId, setDraggedWalletId] = useState<string | null>(null);
+
+  // Transfer states
+  const [toWalletId, setToWalletId] = useState<string>('');
+  const [transferFeeStr, setTransferFeeStr] = useState<string>('0');
+  const [transferDate, setTransferDate] = useState<string>(() => getCurrentDate());
+  const [transferNote, setTransferNote] = useState<string>('');
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về danh sách ví chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -73,10 +87,24 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
       prevResetSignalRef.current = resetSignal;
       setViewMode('LIST');
       setSelectedWallet(null);
+      setActiveMenuWallet(null);
       setIsReordering(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [resetSignal]);
+
+  // Đóng menu 3 chấm khi bấm phím Escape trên bàn phím
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveMenuWallet(null);
+      }
+    };
+    if (activeMenuWallet) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [activeMenuWallet]);
 
   // Form states
   const [name, setName] = useState('');
@@ -125,6 +153,22 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
     setAutoRecordAdjustTx(true);
     setErrorMsg('');
     setViewMode('ADJUST');
+  };
+
+  const openTransferModal = (w: Wallet) => {
+    if (sortedWallets.length <= 1) {
+      alert('Bạn cần có ít nhất 2 tài khoản / ví để thực hiện chuyển tiền giữa các ví.');
+      return;
+    }
+    setSelectedWallet(w);
+    const otherWallet = sortedWallets.find((x) => x.id !== w.id);
+    setToWalletId(otherWallet ? otherWallet.id : '');
+    setBalanceStr('');
+    setTransferFeeStr('0');
+    setTransferDate(getCurrentDate());
+    setTransferNote('');
+    setErrorMsg('');
+    setViewMode('TRANSFER');
   };
 
   const handleSelectBrandLogo = (brandId: string) => {
@@ -221,6 +265,51 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
       } catch (err: any) {
         alert(err?.message || 'Không thể xóa tài khoản');
       }
+    }
+  };
+
+  const handleSwapWallets = () => {
+    if (!selectedWallet || !toWalletId) return;
+    const targetWallet = wallets.find((w) => w.id === toWalletId);
+    if (targetWallet) {
+      const prevFrom = selectedWallet;
+      setSelectedWallet(targetWallet);
+      setToWalletId(prevFrom.id);
+    }
+  };
+
+  const handleExecuteTransfer = async () => {
+    if (!selectedWallet) return;
+    if (!toWalletId || toWalletId === selectedWallet.id) {
+      setErrorMsg('Vui lòng chọn ví nhận tiền khác với ví gửi');
+      return;
+    }
+    const amt = Number(balanceStr.replace(/[^0-9]/g, '')) || 0;
+    if (amt <= 0) {
+      setErrorMsg('Vui lòng nhập số tiền chuyển hợp lệ (> 0đ)');
+      return;
+    }
+    const fee = Number(transferFeeStr.replace(/[^0-9]/g, '')) || 0;
+
+    try {
+      const toWallet = wallets.find((w) => w.id === toWalletId);
+      await createTransaction({
+        type: 'TRANSFER',
+        amount: amt,
+        transferFee: fee,
+        walletId: selectedWallet.id,
+        toWalletId: toWalletId,
+        date: transferDate || getCurrentDate(),
+        time: getCurrentTime(),
+        note:
+          transferNote.trim() ||
+          `Chuyển tiền sang ${toWallet?.name || 'tài khoản khác'}`,
+        categoryId: ''
+      });
+      window.dispatchEvent(new Event('local-data-changed'));
+      setViewMode('LIST');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Có lỗi xảy ra khi thực hiện chuyển tiền');
     }
   };
 
@@ -485,6 +574,235 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   }
 
   // ==========================================
+  // MÀN HÌNH PHẲNG CON: CHUYỂN TIỀN GIỮA CÁC VÍ
+  // ==========================================
+  if (viewMode === 'TRANSFER' && selectedWallet) {
+    const currentAmt = Number(balanceStr.replace(/[^0-9]/g, '')) || 0;
+    const currentFee = Number(transferFeeStr.replace(/[^0-9]/g, '')) || 0;
+    const targetWallet = wallets.find((w) => w.id === toWalletId);
+
+    return (
+      <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
+        <div className="flex items-center justify-between border-b border-white/8 pb-3">
+          <button
+            type="button"
+            onClick={() => setViewMode('LIST')}
+            className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            title="Quay lại"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider text-center flex-1 truncate mx-2">
+            Chuyển tiền giữa các ví
+          </span>
+          <div className="w-9" />
+        </div>
+
+        <div className="bg-slate-900/90 rounded-3xl border border-white/10 p-5 flex flex-col gap-4 shadow-xl">
+          {/* Khung chuyển từ ví này sang ví kia */}
+          <div className="flex flex-col gap-2">
+            {/* Ví chuyển (Từ) */}
+            <div className="p-3.5 rounded-2xl bg-slate-800/70 border border-white/6 flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <CategoryIcon
+                  name={selectedWallet.icon}
+                  walletName={selectedWallet.name}
+                  size={24}
+                  color={selectedWallet.color}
+                />
+                <div className="min-w-0">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Chuyển từ tài khoản
+                  </span>
+                  <span className="text-sm font-bold text-slate-100 truncate block">
+                    {selectedWallet.name}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[11px] text-slate-400 block">Số dư hiện tại</span>
+                <span className="text-xs font-bold text-emerald-400">
+                  {formatVND(selectedWallet.balance)}
+                </span>
+              </div>
+            </div>
+
+            {/* Nút Hoán đổi 2 ví */}
+            <div className="flex justify-center -my-2.5 relative z-10">
+              <button
+                type="button"
+                onClick={handleSwapWallets}
+                title="Đảo chiều ví chuyển"
+                className="touch-btn w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/15 text-sky-400 flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
+              >
+                <ArrowUpDown size={16} />
+              </button>
+            </div>
+
+            {/* Ví nhận (Đến) */}
+            <div>
+              <WalletSelect
+                wallets={wallets}
+                selectedWalletId={toWalletId}
+                onSelect={setToWalletId}
+                excludeWalletId={selectedWallet.id}
+                label="Đến tài khoản nhận"
+              />
+            </div>
+          </div>
+
+          {/* Số tiền chuyển */}
+          <div>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase">
+                Số tiền chuyển (VNĐ)
+              </label>
+              {selectedWallet.balance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBalanceStr(selectedWallet.balance.toString())}
+                  className="text-xs font-bold text-sky-400 hover:text-sky-300 cursor-pointer"
+                >
+                  Chuyển tất cả ({formatVND(selectedWallet.balance)})
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="0"
+              value={
+                balanceStr
+                  ? new Intl.NumberFormat('vi-VN').format(
+                      Number(balanceStr.replace(/[^0-9]/g, '')) || 0
+                    )
+                  : ''
+              }
+              onChange={(e) => setBalanceStr(e.target.value.replace(/[^0-9]/g, ''))}
+              className="input-ios text-2xl font-extrabold text-sky-400"
+            />
+
+            {/* Quick Amount Chips */}
+            <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
+              {[50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000].map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => {
+                    const curr = Number(balanceStr.replace(/[^0-9]/g, '')) || 0;
+                    setBalanceStr((curr + amt).toString());
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 text-xs font-semibold text-slate-300 hover:text-white shrink-0 cursor-pointer"
+                >
+                  +{formatVND(amt)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Phí chuyển khoản */}
+          <div>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase">
+                Phí chuyển khoản (nếu có)
+              </label>
+              <span className="text-[11px] text-slate-400">
+                Tổng trừ ví gửi: <strong className="text-rose-400">{formatVND(currentAmt + currentFee)}</strong>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+              {[
+                { label: 'Miễn phí (0đ)', value: 0 },
+                { label: '1.100 đ', value: 1100 },
+                { label: '3.300 đ', value: 3300 },
+                { label: '5.500 đ', value: 5500 }
+              ].map((fee) => (
+                <button
+                  key={fee.value}
+                  type="button"
+                  onClick={() => setTransferFeeStr(fee.value.toString())}
+                  className={`touch-btn py-2 px-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    currentFee === fee.value
+                      ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                      : 'bg-slate-800/80 border-white/6 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {fee.label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Phí tùy chỉnh..."
+              value={
+                transferFeeStr && transferFeeStr !== '0'
+                  ? new Intl.NumberFormat('vi-VN').format(
+                      Number(transferFeeStr.replace(/[^0-9]/g, '')) || 0
+                    )
+                  : ''
+              }
+              onChange={(e) => setTransferFeeStr(e.target.value.replace(/[^0-9]/g, ''))}
+              className="input-ios text-sm font-semibold"
+            />
+          </div>
+
+          {/* Ngày chuyển & Ghi chú */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
+                Ngày chuyển
+              </label>
+              <DatePicker
+                value={transferDate}
+                onChange={setTransferDate}
+                label="Ngày chuyển"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
+                Ghi chú
+              </label>
+              <input
+                type="text"
+                placeholder={`VD: Chuyển tiền sang ${targetWallet?.name || 'ví khác'}...`}
+                value={transferNote}
+                onChange={(e) => setTransferNote(e.target.value)}
+                className="input-ios"
+              />
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-medium">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setViewMode('LIST')}
+              className="touch-btn py-3.5 px-5 rounded-2xl bg-slate-800 text-slate-300 font-bold text-sm border-none cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleExecuteTransfer}
+              className="touch-btn flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 border-none py-3.5 rounded-2xl text-sm font-black cursor-pointer shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2"
+            >
+              <ArrowRightLeft size={16} />
+              <span>Xác nhận chuyển tiền</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // MÀN HÌNH PHẲNG CHÍNH: DANH SÁCH VÍ & NGÂN HÀNG
   // ==========================================
   return (
@@ -716,32 +1034,99 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex gap-1.5 shrink-0 ml-2">
+                  <div className="relative shrink-0 ml-2">
+                    {/* Nút 3 chấm mở Tùy chọn ví */}
                     <button
                       type="button"
-                      onClick={() => openAdjustModal(w)}
-                      title="Điều chỉnh số dư"
-                      className="touch-btn w-9 h-9 rounded-[10px] bg-sky-400/12 border border-sky-400/25 text-sky-400 flex items-center justify-center cursor-pointer hover:bg-sky-400/20"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuWallet(activeMenuWallet?.id === w.id ? null : w);
+                      }}
+                      title="Tùy chọn ví"
+                      className={`touch-btn w-9 h-9 rounded-[10px] border flex items-center justify-center cursor-pointer transition-colors ${
+                        activeMenuWallet?.id === w.id
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400 shadow-sm'
+                          : 'bg-slate-800/90 border-white/8 text-slate-300 hover:text-white hover:bg-slate-700'
+                      }`}
                     >
-                      <SlidersHorizontal size={16} />
+                      <MoreVertical size={18} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(w)}
-                      title="Chỉnh sửa ví & đổi logo ngân hàng"
-                      className="touch-btn w-9 h-9 rounded-[10px] bg-slate-800/90 border border-white/8 text-slate-400 flex items-center justify-center cursor-pointer hover:text-white"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    {sortedWallets.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteWallet(w)}
-                        title="Xóa ví"
-                        className="touch-btn w-9 h-9 rounded-[10px] bg-rose-500/12 border border-rose-500/25 text-rose-400 flex items-center justify-center cursor-pointer hover:bg-rose-500/20"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+
+                    {/* Menu Popover trên Desktop (>= md) */}
+                    {activeMenuWallet?.id === w.id && (
+                      <>
+                        <div
+                          className="hidden md:block fixed inset-0 z-30"
+                          onClick={() => setActiveMenuWallet(null)}
+                        />
+                        <div className="hidden md:block absolute right-0 top-full mt-1.5 w-60 bg-slate-900 border border-white/12 rounded-2xl shadow-2xl p-1.5 z-40 backdrop-blur-xl animate-fade-in divide-y divide-white/6">
+                          <div className="py-1 flex flex-col gap-0.5">
+                            {/* 1. Chuyển khoản */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuWallet(null);
+                                openTransferModal(w);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
+                                <ArrowRightLeft size={13} />
+                              </div>
+                              <span>Chuyển khoản (Chuyển ví)</span>
+                            </button>
+
+                            {/* 2. Điều chỉnh số dư */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuWallet(null);
+                                openAdjustModal(w);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                                <SlidersHorizontal size={13} />
+                              </div>
+                              <span>Điều chỉnh số dư</span>
+                            </button>
+
+                            {/* 3. Chỉnh sửa */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveMenuWallet(null);
+                                openEditModal(w);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                                <Edit3 size={13} />
+                              </div>
+                              <span>Chỉnh sửa tài khoản</span>
+                            </button>
+                          </div>
+
+                          {/* 4. Xóa (nếu còn > 1 ví) */}
+                          {sortedWallets.length > 1 && (
+                            <div className="pt-1 mt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuWallet(null);
+                                  handleDeleteWallet(w);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors cursor-pointer text-left"
+                              >
+                                <div className="w-6 h-6 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
+                                  <Trash2 size={13} />
+                                </div>
+                                <span>Xóa tài khoản</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -759,6 +1144,161 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
           <strong className="text-emerald-400">Sắp xếp</strong> ở góc phải để đưa các ví thường xuyên giao dịch (như Tiền mặt, Grab, MoMo) lên đầu trang, giúp việc chọn ví khi ghi chép nhanh hơn.
         </div>
       </div>
+
+      {/* 3. Popup Bottom Sheet Tác vụ Ví trên Mobile (< md) */}
+      {activeMenuWallet && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop tối mờ phía sau */}
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-fade-in"
+            onClick={() => setActiveMenuWallet(null)}
+          />
+
+          {/* Khung nội dung popup trồi từ dưới lên */}
+          <div className="relative bg-slate-900 border-t border-white/12 rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up flex flex-col gap-3 max-w-lg mx-auto w-full safe-nav-bottom">
+            {/* Thanh kéo nhỏ ở đỉnh */}
+            <div className="w-10 h-1 bg-white/25 rounded-full mx-auto mb-1" />
+
+            {/* Thông tin ví đang chọn */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/8">
+              <div className="flex items-center gap-3 min-w-0">
+                <CategoryIcon
+                  name={activeMenuWallet.icon}
+                  walletName={activeMenuWallet.name}
+                  size={26}
+                  color={activeMenuWallet.color}
+                />
+                <div className="min-w-0">
+                  <div className="text-base font-extrabold text-slate-100 truncate">
+                    {activeMenuWallet.name}
+                  </div>
+                  <div className="text-xs text-slate-400 font-medium">
+                    Số dư:{' '}
+                    <span className="text-emerald-400 font-bold">
+                      {formatVND(activeMenuWallet.balance)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveMenuWallet(null)}
+                className="touch-btn w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer border border-white/6"
+                title="Đóng"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Danh sách các chức năng */}
+            <div className="flex flex-col gap-2 pt-1">
+              {/* 1. Chuyển khoản */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = activeMenuWallet;
+                  setActiveMenuWallet(null);
+                  openTransferModal(target);
+                }}
+                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
+                    <ArrowRightLeft size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-100">Chuyển khoản (Chuyển ví)</div>
+                    <div className="text-xs text-slate-400">
+                      Chuyển tiền sang ví hoặc tài khoản khác
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+              </button>
+
+              {/* 2. Điều chỉnh số dư */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = activeMenuWallet;
+                  setActiveMenuWallet(null);
+                  openAdjustModal(target);
+                }}
+                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
+                    <SlidersHorizontal size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-100">Điều chỉnh số dư</div>
+                    <div className="text-xs text-slate-400">Cân đối lại số dư cho khớp với thực tế</div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+              </button>
+
+              {/* 3. Chỉnh sửa */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = activeMenuWallet;
+                  setActiveMenuWallet(null);
+                  openEditModal(target);
+                }}
+                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-400 flex items-center justify-center shrink-0">
+                    <Edit3 size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-100">Chỉnh sửa tài khoản</div>
+                    <div className="text-xs text-slate-400">
+                      Đổi tên, loại ví, màu sắc & logo ngân hàng
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+              </button>
+
+              {/* 4. Xóa (chỉ khi có nhiều hơn 1 ví) */}
+              {sortedWallets.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = activeMenuWallet;
+                    setActiveMenuWallet(null);
+                    handleDeleteWallet(target);
+                  }}
+                  className="touch-btn w-full p-3.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 flex items-center justify-between text-left cursor-pointer transition-colors mt-0.5"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0">
+                      <Trash2 size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-rose-300">Xóa tài khoản này</div>
+                      <div className="text-xs text-rose-400/80">Chỉ xóa được khi chưa có giao dịch</div>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-rose-500/60 shrink-0 ml-2" />
+                </button>
+              )}
+            </div>
+
+            {/* Nút Đóng */}
+            <button
+              type="button"
+              onClick={() => setActiveMenuWallet(null)}
+              className="touch-btn w-full py-3.5 rounded-2xl bg-slate-800 text-slate-300 font-bold text-sm mt-1 hover:bg-slate-700 cursor-pointer border border-white/6"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

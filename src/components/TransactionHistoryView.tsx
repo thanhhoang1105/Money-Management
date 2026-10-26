@@ -1,5 +1,5 @@
 // src/components/TransactionHistoryView.tsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Transaction, Category, Wallet, EventTrip } from '../types';
@@ -9,10 +9,10 @@ import {
   SYSTEM_ADJUSTMENT_CATEGORY_ID
 } from '../services/transactionService';
 import { GRAB_FEE_CAT_ID, GRAB_INCOME_CAT_ID } from '../db/seed';
-import { migrateLegacyGrabTransactions } from '../services/grabService';
 import { CategoryIcon } from './CategoryIcon';
 import { BankLogo, detectBankBrand } from './BankLogo';
 import { CustomSelect } from './ui/CustomSelect';
+import { CategoryFilterSelect } from './ui/CategoryFilterSelect';
 import {
   formatVND,
   formatFriendlyDate,
@@ -72,14 +72,10 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string>('');
 
-  // Tự động chuẩn hóa cuốc Grab cũ sang Vốn lưu động & Thu nhập ròng
-  useEffect(() => {
-    migrateLegacyGrabTransactions().catch(() => {});
-  }, []);
-
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const events = useLiveQuery(() => db.events.toArray()) || [];
+  const allTransactions = useLiveQuery(() => db.transactions.toArray()) || [];
 
   const allMonthTransactions =
     useLiveQuery(async () => {
@@ -119,7 +115,10 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
       }
 
       if (categoryFilter !== 'ALL') {
-        if (tx.categoryId !== categoryFilter) {
+        const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+        const matchesDirect = tx.categoryId === categoryFilter;
+        const matchesParent = txCat?.parentId === categoryFilter;
+        if (!matchesDirect && !matchesParent) {
           return false;
         }
       }
@@ -419,33 +418,11 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
               <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
                 Lọc theo Hạng mục
               </label>
-              <CustomSelect
+              <CategoryFilterSelect
                 value={categoryFilter}
                 onChange={setCategoryFilter}
-                groups={[
-                  {
-                    label: '',
-                    options: [{ value: 'ALL', label: 'Tất cả hạng mục' }]
-                  },
-                  {
-                    label: 'Khoản Chi',
-                    options: categories
-                      .filter((c) => c.type === 'EXPENSE')
-                      .map((c) => ({ value: c.id, label: c.name }))
-                  },
-                  {
-                    label: 'Khoản Thu',
-                    options: categories
-                      .filter((c) => c.type === 'INCOME')
-                      .map((c) => ({ value: c.id, label: c.name }))
-                  },
-                  {
-                    label: 'Vay / Nợ',
-                    options: categories
-                      .filter((c) => c.type === 'DEBT')
-                      .map((c) => ({ value: c.id, label: c.name }))
-                  }
-                ]}
+                categories={categories}
+                allTransactions={allTransactions}
                 triggerClassName="text-xs py-2 bg-slate-800"
               />
             </div>
