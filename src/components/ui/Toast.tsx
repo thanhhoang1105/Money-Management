@@ -100,7 +100,7 @@ export const Toast: React.FC<ToastProps> = ({
         >
           {renderIcon()}
         </div>
-        <div className="flex-1 min-w-0 text-white font-semibold leading-snug break-words text-xs sm:text-[13px]">
+        <div className="flex-1 min-w-0 text-current toast-message font-bold leading-snug break-words text-xs sm:text-[13px] border-none bg-transparent shadow-none outline-none">
           {message}
         </div>
       </div>
@@ -108,7 +108,7 @@ export const Toast: React.FC<ToastProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/15 active:scale-90 transition-all shrink-0 cursor-pointer"
+          className="p-1.5 rounded-xl text-current opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/15 active:scale-90 transition-all shrink-0 cursor-pointer border-none bg-transparent"
           aria-label="Đóng thông báo"
         >
           <X size={16} />

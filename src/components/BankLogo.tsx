@@ -303,6 +303,17 @@ export const BANK_BRANDS: BankBrandInfo[] = [
     keywords: ['shopeepay', 'shopee pay', 'airpay', 'shopee']
   },
   {
+    id: 'ewallet:spaylater',
+    code: 'SPAYLATER',
+    name: 'Shopee SPayLater (Mua trước trả sau)',
+    shortName: 'SPayLater',
+    category: 'EWALLET',
+    primaryColor: '#EE4D2D',
+    secondaryColor: '#C43619',
+    textColor: '#FFFFFF',
+    keywords: ['spaylater', 'spay later', 'shopee spaylater', 'shopee trả góp', 'mua trước trả sau', 'trả sau shopee', 'spay']
+  },
+  {
     id: 'ewallet:grab',
     code: 'GRAB',
     name: 'Ví Grab (Tài xế)',
@@ -614,6 +625,53 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
     );
   }
 
+  if (brand.code === 'SPAYLATER') {
+    if (isSmall) {
+      return (
+        <div
+          className={`rounded-md flex items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+          style={{
+            width: size,
+            height: size,
+            background: 'linear-gradient(135deg, #EE4D2D 0%, #C43619 100%)'
+          }}
+          title={brand.name}
+        >
+          <span
+            className="font-black text-white leading-none tracking-tighter"
+            style={{ fontSize: Math.round(size * 0.55) }}
+          >
+            SP
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+        style={{
+          width: size,
+          height: size,
+          background: 'linear-gradient(135deg, #EE4D2D 0%, #C43619 100%)'
+        }}
+        title={brand.name}
+      >
+        <span
+          className="font-black text-white leading-none"
+          style={{ fontSize: Math.max(10, Math.round(size * 0.32)) }}
+        >
+          S
+        </span>
+        <span
+          className="font-black text-amber-200 leading-none uppercase tracking-tighter"
+          style={{ fontSize: Math.max(5, Math.round(size * 0.16)) }}
+        >
+          Later
+        </span>
+      </div>
+    );
+  }
+
   if (brand.code === 'MASTERCARD') {
     return (
       <div
@@ -841,8 +899,8 @@ export const BankBrandAccordionPicker: React.FC<BankBrandAccordionPickerProps> =
     },
     {
       id: 'EWALLET',
-      title: 'Ví điện tử',
-      subtitle: 'MoMo, ZaloPay, VNPay, Viettel Money, ShopeePay',
+      title: 'Ví điện tử & Trả sau',
+      subtitle: 'MoMo, ZaloPay, VNPay, Viettel Money, ShopeePay, SPayLater',
       icon: Smartphone,
       items: BANK_BRANDS.filter((b) => b.category === 'EWALLET')
     },

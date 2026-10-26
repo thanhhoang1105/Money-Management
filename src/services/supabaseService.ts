@@ -14,6 +14,7 @@ import {
   deduplicateSyncPayload
 } from './syncService';
 import { getCurrentDate } from '../utils/formatters';
+import { sha256Hex } from '../utils/crypto';
 
 const ENV_SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || '';
 const ENV_SUPABASE_ANON_KEY =
@@ -139,6 +140,9 @@ export async function disconnectSupabase(): Promise<void> {
   clearLocalDataChanged();
   await db.settings.delete('supabase_sync_key');
   await db.settings.delete('supabase_user_email');
+  await db.settings.delete('supabase_pin_hash');
+  await db.settings.delete('supabase_recovery_question');
+  await db.settings.delete('supabase_recovery_answer_hash');
 }
 
 /**
@@ -524,5 +528,194 @@ export async function checkAndRunSupabaseAutoSync(
   } catch (err: any) {
     console.warn('[Supabase AutoSync] Bỏ qua đồng bộ tự động:', err);
     return { ran: false, message: err?.message || 'Lỗi đồng bộ ngầm Supabase' };
+  }
+}
+
+/**
+ * Kiểm tra trạng thái bảo mật của Mã đồng bộ trên Supabase (Đã có PIN hay chưa)
+ */
+export async function checkSyncKeySecurity(syncKey: string): Promise<{
+  exists: boolean;
+  hasPin: boolean;
+  recoveryQuestion?: string;
+  pinHash?: string;
+  recoveryAnswerHash?: string;
+  payload?: SyncDataPayload;
+}> {
+  const client = await getSupabaseClient();
+  if (!client) {
+    throw new Error('Chưa nhận được biến môi trường Supabase URL & Anon Key.');
+  }
+
+  const cleanKey = syncKey.trim();
+  const { data, error } = await client
+    .from('user_backups')
+    .select('payload')
+    .eq('sync_key', cleanKey)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Lỗi kiểm tra Supabase: ${error.message}`);
+  }
+
+  if (!data || !data.payload) {
+    return { exists: false, hasPin: false };
+  }
+
+  const payload = data.payload as SyncDataPayload;
+  const sec = payload.security;
+  const hasPin = Boolean(sec?.pinHash);
+
+  return {
+    exists: true,
+    hasPin,
+    recoveryQuestion: sec?.recoveryQuestion,
+    pinHash: sec?.pinHash,
+    recoveryAnswerHash: sec?.recoveryAnswerHash,
+    payload
+  };
+}
+
+/**
+ * Xác thực mã PIN với Supabase
+ */
+export async function verifySyncPin(syncKey: string, inputPin: string): Promise<boolean> {
+  const sec = await checkSyncKeySecurity(syncKey);
+  if (!sec.exists || !sec.hasPin || !sec.pinHash) {
+    return true; // Không có PIN thì coi như hợp lệ
+  }
+  const inputHash = await sha256Hex(inputPin.trim());
+  return inputHash === sec.pinHash;
+}
+
+/**
+ * Khôi phục mã PIN bằng câu trả lời bảo mật và cập nhật PIN mới
+ */
+export async function recoverSyncPinWithAnswer(
+  syncKey: string,
+  answer: string,
+  newPin: string
+): Promise<{ success: boolean; message: string }> {
+  const client = await getSupabaseClient();
+  if (!client) throw new Error('Chưa cấu hình Supabase URL.');
+
+  const sec = await checkSyncKeySecurity(syncKey);
+  if (!sec.exists || !sec.hasPin || !sec.recoveryAnswerHash || !sec.payload) {
+    throw new Error('Mã đồng bộ này không có thông tin khôi phục bảo mật.');
+  }
+
+  const cleanAnswer = answer.trim().toLowerCase();
+  const answerHash = await sha256Hex(cleanAnswer);
+
+  if (answerHash !== sec.recoveryAnswerHash) {
+    return { success: false, message: 'Câu trả lời bảo mật không chính xác. Vui lòng kiểm tra lại!' };
+  }
+
+  // Câu trả lời đúng -> Tạo hash cho PIN mới và cập nhật lên Cloud + Local
+  const newPinHash = await sha256Hex(newPin.trim());
+  const now = new Date().toISOString();
+
+  const updatedSecurity = {
+    ...sec.payload.security,
+    pinHash: newPinHash,
+    updatedAt: now
+  };
+
+  const updatedPayload: SyncDataPayload = {
+    ...sec.payload,
+    security: updatedSecurity
+  };
+
+  const { error } = await client.from('user_backups').upsert(
+    {
+      sync_key: syncKey.trim(),
+      payload: updatedPayload,
+      updated_at: now
+    },
+    { onConflict: 'sync_key' }
+  );
+
+  if (error) {
+    throw new Error(`Lỗi cập nhật mã PIN lên Supabase: ${error.message}`);
+  }
+
+  // Cập nhật local settings
+  await db.settings.put({ key: 'supabase_pin_hash', value: newPinHash });
+  if (sec.recoveryQuestion) {
+    await db.settings.put({ key: 'supabase_recovery_question', value: sec.recoveryQuestion });
+  }
+
+  return { success: true, message: 'Đã đặt lại mã PIN mới thành công!' };
+}
+
+/**
+ * Thiết lập hoặc thay đổi Mã PIN & Câu hỏi bảo mật cho Mã đồng bộ hiện tại
+ */
+export async function setupOrUpdateSyncSecurity(
+  pin: string,
+  question: string,
+  answer: string
+): Promise<void> {
+  const pinHash = await sha256Hex(pin.trim());
+  const answerHash = await sha256Hex(answer.trim().toLowerCase());
+  const cleanQuestion = question.trim();
+
+  // Lưu vào IndexedDB settings
+  await db.settings.put({ key: 'supabase_pin_hash', value: pinHash });
+  await db.settings.put({ key: 'supabase_recovery_question', value: cleanQuestion });
+  await db.settings.put({ key: 'supabase_recovery_answer_hash', value: answerHash });
+
+  // Đẩy cập nhật ngay lên Supabase
+  const client = await getSupabaseClient();
+  const { syncKey, email } = await getSupabaseConfig();
+  if (client && syncKey) {
+    const rawPayload = await getLocalSyncPayload();
+    const payload = deduplicateSyncPayload(rawPayload);
+    const now = new Date().toISOString();
+
+    payload.security = {
+      pinHash,
+      recoveryQuestion: cleanQuestion,
+      recoveryAnswerHash: answerHash,
+      updatedAt: now
+    };
+
+    await client.from('user_backups').upsert(
+      {
+        sync_key: syncKey,
+        user_email: email || syncKey,
+        payload,
+        updated_at: now
+      },
+      { onConflict: 'sync_key' }
+    );
+  }
+}
+
+/**
+ * Gỡ bỏ bảo vệ Mã PIN khỏi Mã đồng bộ
+ */
+export async function removeSyncSecurity(): Promise<void> {
+  await db.settings.delete('supabase_pin_hash');
+  await db.settings.delete('supabase_recovery_question');
+  await db.settings.delete('supabase_recovery_answer_hash');
+
+  const client = await getSupabaseClient();
+  const { syncKey, email } = await getSupabaseConfig();
+  if (client && syncKey) {
+    const rawPayload = await getLocalSyncPayload();
+    const payload = deduplicateSyncPayload(rawPayload);
+    delete payload.security;
+    const now = new Date().toISOString();
+
+    await client.from('user_backups').upsert(
+      {
+        sync_key: syncKey,
+        user_email: email || syncKey,
+        payload,
+        updated_at: now
+      },
+      { onConflict: 'sync_key' }
+    );
   }
 }

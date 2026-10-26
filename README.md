@@ -15,7 +15,8 @@
 | :--- | :--- | :--- |
 | **Giao diện & Logic** | **React 19 + TypeScript (Strict Mode)** | Tốc độ kết xuất vượt trội, quản lý kiểu dữ liệu chặt chẽ |
 | **Công cụ Build** | **Vite 8** | Khởi động dev server tức thì, tối ưu hóa bundle khi build |
-| **Styling** | **Tailwind CSS v4** | Hệ thống Design Tokens (`@theme`), Dark Theme `#090d16`, hiệu ứng kính mờ Glassmorphism |
+| **Styling** | **Tailwind CSS v4** | Hệ thống Design Tokens (`@theme`), Dark Theme `#090d16`, Light Theme `#f8fafc` tương phản cao, hiệu ứng kính mờ Glassmorphism, ẩn scrollbar toàn app |
+| **Chế độ Giao diện** | **Theme Engine (Dark / Light / Auto)** | Hỗ trợ nền Tối, Sáng hoặc Tự động chuyển đổi theo thời gian thực / múi giờ thiết bị |
 | **Cơ sở dữ liệu** | **Dexie.js v4 + IndexedDB** | Lưu trữ dữ liệu cục bộ chuẩn ACID, phản ứng thời gian thực với `useLiveQuery` |
 | **PWA & Offline** | **vite-plugin-pwa (Workbox)** | Tự động cache mã nguồn và tài nguyên, hỗ trợ offline 100%, tự động cập nhật bản mới |
 | **Đám mây** | **Supabase (Tùy chọn)** | Đồng bộ 2 chiều (Cloud Sync) thời gian thực, hợp nhất dữ liệu thông minh (Smart Merge) |
@@ -44,8 +45,8 @@
 ---
 
 ### 2. Quản lý Tài khoản & Ví tiền (Wallets)
-- **Đa dạng loại ví:** Tiền mặt, Tài khoản Ngân hàng, Ví điện tử (MoMo, ZaloPay, ViettelPay...), Thẻ tín dụng, Tài khoản đầu tư.
-- **Nhận diện Logo Ngân hàng tự động:** Tự động gắn logo thương hiệu tương ứng khi tên ví chứa tên ngân hàng phổ biến (Vietcombank, MB Bank, Techcombank, BIDV, ACB, TPBank, VPBank...).
+- **Đa dạng loại ví:** Tiền mặt, Tài khoản Ngân hàng, Ví điện tử (MoMo, ZaloPay, ViettelPay, Ví Grab...), Thẻ tín dụng, Mua trước trả sau (Shopee SPayLater), Tài khoản đầu tư.
+- **Nhận diện Logo Ngân hàng & Ví thông minh:** Tự động gắn logo thương hiệu tương ứng khi tên ví chứa tên ngân hàng phổ biến (Vietcombank, MB Bank, Techcombank, BIDV, ACB, TPBank, VPBank...) hoặc ví điện tử (Grab, MoMo, ShopeePay, SPayLater...). Tự động chuyển loại tài khoản sang `CREDIT` khi chọn SPayLater.
 - **Tùy chỉnh thứ tự hiển thị (Reorder Wallets):** Cho phép thay đổi vị trí các ví để gom các ví hay dùng lên đầu danh sách.
 - **Menu hành động 3 chấm gọn gàng:**
   - Hiển thị dạng **Bottom Sheet** trượt từ dưới lên trên Mobile và dạng **Popover** trên Desktop.
@@ -67,16 +68,21 @@
   - Tự động ẩn bớt các mục ít dùng kèm nút mũi tên **"Xem thêm"** để mở rộng khi cần.
   - Tích hợp thanh tìm kiếm nhanh danh mục.
   - Chọn danh mục Cha sẽ tự động lọc tất cả giao dịch thuộc các danh mục con của Cha đó.
+  - **Hỗ trợ toàn diện nhóm Vay nợ & Thu nợ:** Nhận diện cả nhóm cha ảo `cat_parent_debt` và từng mục con (`Cho vay`, `Thu nợ`, `Đi vay`, `Trả nợ`), tự động đối soát kép giữa mã danh mục và loại giao dịch (`tx.type`), đảm bảo không bỏ sót bất kỳ bản ghi công nợ nào.
 
 ---
 
 ### 4. Báo cáo & Phân tích Đa chiều (Analytics)
 - **Thẻ tổng quan tháng (Hero Summary Card):** Hiển thị Tổng thu, Tổng chi, Số dư ròng và Tỷ lệ tiết kiệm trong tháng.
+- **Biểu đồ kép Xu hướng 6 tháng:**
+  - **Chế độ Dòng tiền (Cashflow):** Biểu đồ cột đôi Thu (xanh) vs Chi (đỏ) qua 6 tháng, trực quan hóa các tháng thặng dư / thâm hụt.
+  - **Chế độ Tài sản ròng (Net Worth Trend):** Đồ thị diện tích sóng SVG mượt mà (Smooth Hermite/Bezier Curve) biểu diễn tăng trưởng của Tổng tài sản ròng qua 6 tháng (tự động tính toán ngược từ số dư ví và đối soát tất cả giao dịch trong quá khứ). Hiển thị % tăng trưởng 6 tháng, khoảng biến động và cho phép chạm vào từng mốc tháng để xem chi tiết mức chênh lệch `MoM`.
 - **Chuyển đổi 2 chế độ xem linh hoạt:**
   - **Theo Danh mục:** Biểu đồ cơ cấu trực quan, tỷ lệ phần trăm và chi tiết từng danh mục.
   - **Theo Từng ngày:** Liệt kê toàn bộ các ngày có phát sinh giao dịch trong tháng, thống kê thu, chi, số dư ròng và số lượng giao dịch của từng ngày. Bấm vào ngày bất kỳ để bung mở Accordion xem chi tiết từng giao dịch phát sinh.
 - **Bộ lọc ngày:** Cho phép chọn xem riêng một ngày cụ thể hoặc xem tổng thể cả tháng.
 - **Màn hình Drill-Down:** Bấm vào một danh mục để xem phân tích chuyên sâu, gom nhóm giao dịch theo từng ngày kèm sub-total theo ngày.
+- **Trạng thái rỗng thông minh (Empty State):** Khi tháng chưa có dữ liệu chi tiêu/thu nhập, hệ thống tự động ẩn bảng kê tỷ trọng & biến động MoM, chỉ hiển thị thông báo trạng thái rỗng tinh gọn.
 
 ---
 
@@ -109,9 +115,12 @@
 ---
 
 ### 9. Công cụ Chuyên biệt cho Tài xế Grab (Grab Driver Mode) 🛵
-- **Giao diện nhập cuốc xe tối ưu:**
-  - Hỗ trợ cuốc xe qua app hoặc nhận riêng ngoài app.
-  - Nhập cước khách trả, tiền bo (tip), tự động tính chiết khấu app (20%), phí nền tảng 2k, chi phí xăng xe và ăn uống theo ca chạy.
+- **Màn hình phẳng độc lập (Flat Screen):** Toàn bộ nghiệp vụ được đưa ra màn hình phẳng độc lập có thanh điều hướng Header và nút Back quay lại mượt mà, không dùng popup modal gò bó.
+- **Bật / Tắt linh hoạt trong Cài đặt:** Cho phép người dùng không chạy Grab tắt hoàn toàn để giao diện tinh gọn; tự động duy trì bật cho các tài xế đang sử dụng.
+- **3 Tab thao tác nhanh chuẩn Mobile:**
+  1. `Tiền mặt`: Ghi nhận khách trả tiền mặt hoặc chuyển khoản trực tiếp, tự động tính tip khách đưa thêm và khấu trừ tiền ví tín dụng.
+  2. `Thẻ / Ví Grab`: Ghi nhận cuốc trả thẻ, tiền tip app tự động cộng vào Ví Tiền Mặt Grab.
+  3. `Nạp / Rút`: Chuyển tiền nhanh giữa Ngân hàng và các ví nội bộ trên ứng dụng Grab Driver.
 - **Hạch toán dòng tiền chuẩn:**
   - Phí Grab trừ từ Ví Tín dụng thu hộ và chuyển sang Ví Tiền mặt dưới dạng **TRANSFER** (Vốn lưu động).
   - Thu nhập ròng đưa vào ví dưới dạng **INCOME**.
@@ -119,7 +128,19 @@
 
 ---
 
-### 10. Sao lưu, Phục hồi & Đồng bộ Đám mây (Backup & Sync)
+### 10. Chế độ Giao diện Dark / Light / Auto & Thẩm mỹ UI 🎨
+- **Động cơ Theme Engine 3 chế độ:**
+  - **Tối (Dark Mode):** Nền `#090d16` sâu thẳm, dịu mắt ban đêm, tiết kiệm pin cho màn hình OLED.
+  - **Sáng (Light Mode):** Nền `#f8fafc`, các thẻ card trắng `#ffffff` tinh tế, độ tương phản cao chuẩn WCAG (chữ Slate 900 `#0f172a`, các gam màu thu/chi bão hòa rõ nét).
+  - **Tự động (Auto Mode):** Tự động chuyển đổi theo múi giờ / thời gian thực của thiết bị (6h sáng đến 18h tối tự động bật theme Sáng, sau 18h chuyển về theme Tối) kết hợp đồng bộ theo thiết lập hệ thống.
+- **Thông báo nổi Glassmorphism (Floating Toast):**
+  - Hiệu ứng kính mờ thời thượng với `backdrop-blur-xl`, viền phát sáng nhẹ và icon động theo trạng thái (Success / Warning / Error).
+  - Tự động co giãn theo mọi kích thước màn hình và tự đóng sau 3.5 giây.
+- **Ẩn thanh cuộn (Hidden Scrollbar):** Thanh cuộn trình duyệt được ẩn hoàn toàn để tối đa hóa không gian hiển thị như ứng dụng Native, trong khi cử chỉ vuốt chạm và con lăn chuột vẫn hoạt động trơn tru 100%.
+
+---
+
+### 11. Sao lưu, Phục hồi & Đồng bộ Đám mây (Backup & Sync)
 - **Tự động sao lưu JSON hàng ngày (Daily Auto-Backup):** Tự động xuất file backup JSON lưu vào máy khi mở app lần đầu trong ngày.
 - **Sao lưu & Khôi phục thủ công:** Xuất/nhập file JSON toàn bộ dữ liệu (ví, danh mục, giao dịch, hạn mức, sự kiện, cài đặt).
 - **Xuất báo cáo Excel (.xlsx):** Xuất toàn bộ dữ liệu ra file Excel với đầy đủ thông tin để lưu trữ hoặc phân tích chuyên sâu.
@@ -169,6 +190,7 @@ money/
 │   │   ├── grabService.ts   # Nghiệp vụ dòng tiền Grab và chuẩn hóa dữ liệu
 │   │   ├── supabaseService.ts # Kết nối và cấu hình Supabase Cloud Sync
 │   │   ├── syncService.ts   # Thuật toán Smart Merge và đồng bộ 2 chiều
+│   │   ├── themeService.ts  # Động cơ Dark / Light / Auto Theme Engine
 │   │   └── transactionService.ts # Nghiệp vụ Thêm/Sửa/Xóa giao dịch, Hoàn tác số dư
 │   ├── types/               # Khai báo kiểu TypeScript dùng chung
 │   ├── utils/               # Tiện ích format tiền tệ VND, ngày tháng, sanitize biểu thức

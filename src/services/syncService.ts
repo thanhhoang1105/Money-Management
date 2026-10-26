@@ -85,22 +85,46 @@ export async function clearDeletedEntities(): Promise<void> {
  * Thu thập toàn bộ dữ liệu hiện tại của máy để chuẩn bị payload đồng bộ
  */
 export async function getLocalSyncPayload(): Promise<SyncDataPayload> {
-  const [wallets, categories, transactions, budgets, settings, recurringTransactions, events, deletedIds] =
-    await Promise.all([
-      db.wallets.toArray(),
-      db.categories.toArray(),
-      db.transactions.toArray(),
-      db.budgets.toArray(),
-      db.settings.toArray(),
-      db.recurringTransactions.toArray(),
-      db.events.toArray(),
-      getDeletedEntities()
-    ]);
+  const [
+    wallets,
+    categories,
+    transactions,
+    budgets,
+    settings,
+    recurringTransactions,
+    events,
+    deletedIds,
+    pinSetting,
+    questionSetting,
+    answerSetting
+  ] = await Promise.all([
+    db.wallets.toArray(),
+    db.categories.toArray(),
+    db.transactions.toArray(),
+    db.budgets.toArray(),
+    db.settings.toArray(),
+    db.recurringTransactions.toArray(),
+    db.events.toArray(),
+    getDeletedEntities(),
+    db.settings.get('supabase_pin_hash'),
+    db.settings.get('supabase_recovery_question'),
+    db.settings.get('supabase_recovery_answer_hash')
+  ]);
+
+  const security = pinSetting?.value
+    ? {
+        pinHash: String(pinSetting.value),
+        recoveryQuestion: questionSetting?.value ? String(questionSetting.value) : undefined,
+        recoveryAnswerHash: answerSetting?.value ? String(answerSetting.value) : undefined,
+        updatedAt: new Date().toISOString()
+      }
+    : undefined;
 
   return {
     version: '3.0',
     appName: 'SoThuChi',
     syncedAt: new Date().toISOString(),
+    security,
     data: {
       wallets,
       categories,
@@ -356,6 +380,7 @@ export function mergeTwoWayData(
     version: '3.0',
     appName: 'SoThuChi',
     syncedAt: nowIso,
+    security: localPayload.security || remotePayload.security,
     data: {
       wallets: finalMergedWallets,
       categories: mergedCategories,
@@ -678,6 +703,7 @@ export function deduplicateSyncPayload(payload: SyncDataPayload): SyncDataPayloa
     version: '3.0',
     appName: 'SoThuChi',
     syncedAt: nowIso,
+    security: payload.security,
     data: {
       wallets: finalWallets,
       categories: dedupedCategories,
@@ -780,6 +806,16 @@ export async function applyMergedDataToIndexedDB(mergedPayload: SyncDataPayload)
             key: DELETED_ENTITIES_SETTING_KEY,
             value: deletedIds
           });
+        }
+
+        if (cleanedPayload.security?.pinHash) {
+          await db.settings.put({ key: 'supabase_pin_hash', value: cleanedPayload.security.pinHash });
+          if (cleanedPayload.security.recoveryQuestion) {
+            await db.settings.put({ key: 'supabase_recovery_question', value: cleanedPayload.security.recoveryQuestion });
+          }
+          if (cleanedPayload.security.recoveryAnswerHash) {
+            await db.settings.put({ key: 'supabase_recovery_answer_hash', value: cleanedPayload.security.recoveryAnswerHash });
+          }
         }
       }
     );

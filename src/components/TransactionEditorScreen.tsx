@@ -742,6 +742,20 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     );
   }
 
+  // Nếu đang mở Nghiệp vụ GrabBike -> hiển thị dạng phẳng toàn màn hình
+  if (isGrabTripModalOpen) {
+    return (
+      <GrabTripModal
+        isOpen={true}
+        onClose={() => setIsGrabTripModalOpen(false)}
+        onSuccess={(msg) => {
+          setToastMsg(msg);
+          setTimeout(() => setToastMsg(''), 3500);
+        }}
+      />
+    );
+  }
+
   // Nếu đang mở màn hình Chọn & Quản lý Hạng mục -> hiển thị thẳng trên màn hình phẳng (không bật Popup)
   if (isCategoryManagerOpen) {
     return (
@@ -1811,16 +1825,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
         onKeyPress={handleKeyPress}
         currentWalletBalance={currentWallet?.balance}
         adjustDiff={adjustDiff}
-      />
-
-      {/* MODAL GHI CUỐC GRAB TỰ ĐỘNG PHÂN BỔ */}
-      <GrabTripModal
-        isOpen={isGrabTripModalOpen}
-        onClose={() => setIsGrabTripModalOpen(false)}
-        onSuccess={(msg) => {
-          setToastMsg(msg);
-          setTimeout(() => setToastMsg(''), 3500);
-        }}
       />
     </div>
   );

@@ -55,6 +55,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
   const [mainDailyFilter, setMainDailyFilter] = useState<string>('ALL');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
+  const [trendChartMode, setTrendChartMode] = useState<'CASHFLOW' | 'NET_WORTH'>('CASHFLOW');
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về báo cáo tổng quan chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -107,6 +108,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
           .filter((tx) => tx.date >= `${minMonth}-01` && tx.date <= `${selectedMonth}-31`)
           .toArray(),
       [selectedMonth, minMonth]
+    ) || [];
+
+  const postMinMonthTxs =
+    useLiveQuery(
+      () => db.transactions.where('date').aboveOrEqual(`${minMonth}-01`).toArray(),
+      [minMonth]
     ) || [];
 
   // Tính toán số liệu tháng hiện tại (Chuẩn MISA: Chỉ tính Thu/Chi thuần, loại trừ Vay nợ & excludeFromReport)
@@ -242,6 +249,154 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     });
     return max > 0 ? max : 1;
   }, [trendData]);
+
+  // Danh sách ID các ví được tính vào Tổng tài sản
+  const includedWalletIds = useMemo(() => {
+    return new Set(wallets.filter((w) => !w.isExcludedFromTotal).map((w) => w.id));
+  }, [wallets]);
+
+  // Tổng tài sản thực tế hiện tại
+  const currentIncludedNetWorth = useMemo(() => {
+    return wallets
+      .filter((w) => !w.isExcludedFromTotal)
+      .reduce((sum, w) => sum + w.balance, 0);
+  }, [wallets]);
+
+  // Tính toán Tài sản ròng tại cuối mỗi tháng trong 6 tháng (Rollback từ số dư hiện tại)
+  const netWorthTrendData = useMemo(() => {
+    return last6Months.map((mStr) => {
+      const monthEndStr = `${mStr}-31`;
+      let futureDelta = 0;
+
+      for (const tx of postMinMonthTxs) {
+        if (tx.date > monthEndStr) {
+          const isFromInc = includedWalletIds.has(tx.walletId);
+          const isToInc = tx.toWalletId ? includedWalletIds.has(tx.toWalletId) : false;
+
+          if (tx.type === 'TRANSFER') {
+            if (isFromInc && isToInc) {
+              if (tx.transferFee && tx.transferFee > 0) {
+                futureDelta -= tx.transferFee;
+              }
+            } else if (isFromInc && !isToInc) {
+              futureDelta -= tx.amount + (tx.transferFee || 0);
+            } else if (!isFromInc && isToInc) {
+              futureDelta += tx.amount;
+            }
+          } else if (isFromInc) {
+            if (
+              tx.type === 'INCOME' ||
+              tx.type === 'BORROW' ||
+              tx.type === 'COLLECT_DEBT'
+            ) {
+              futureDelta += tx.amount;
+            } else if (
+              tx.type === 'EXPENSE' ||
+              tx.type === 'LEND' ||
+              tx.type === 'PAY_DEBT'
+            ) {
+              futureDelta -= tx.amount;
+            }
+          }
+        }
+      }
+
+      let createdAfterInitial = 0;
+      for (const w of wallets) {
+        if (!w.isExcludedFromTotal && w.createdAt && w.createdAt.slice(0, 7) > mStr) {
+          createdAfterInitial += w.initialBalance || 0;
+        }
+      }
+
+      const netWorth = currentIncludedNetWorth - futureDelta - createdAfterInitial;
+      const monthNum = parseInt(mStr.split('-')[1], 10);
+
+      return {
+        monthStr: mStr,
+        label: `T${monthNum}`,
+        netWorth
+      };
+    });
+  }, [last6Months, postMinMonthTxs, includedWalletIds, currentIncludedNetWorth, wallets]);
+
+  // Toạ độ & đường cong SVG Hermite/Bezier mượt mà cho biểu đồ Tài sản ròng
+  const netWorthChartLayout = useMemo(() => {
+    if (netWorthTrendData.length === 0) return null;
+
+    const values = netWorthTrendData.map((d) => d.netWorth);
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const range = maxVal - minVal;
+    const padding = Math.max(range * 0.15, 100000);
+    const effMin = minVal - padding;
+    const effMax = maxVal + padding;
+    const effRange = Math.max(effMax - effMin, 1);
+
+    const svgWidth = 320;
+    const svgHeight = 100;
+    const marginX = 20;
+
+    const points = netWorthTrendData.map((d, i) => {
+      const x = marginX + (i * (svgWidth - marginX * 2)) / (netWorthTrendData.length - 1);
+      const normalized = (d.netWorth - effMin) / effRange;
+      const y = Math.round(85 - normalized * 70);
+      return {
+        ...d,
+        x,
+        y
+      };
+    });
+
+    let linePath = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(i - 1, 0)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(i + 2, points.length - 1)];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      linePath += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+
+    const lastPt = points[points.length - 1];
+    const firstPt = points[0];
+    const areaPath = `${linePath} L ${lastPt.x} ${svgHeight} L ${firstPt.x} ${svgHeight} Z`;
+
+    const startNW = values[0];
+    const endNW = values[values.length - 1];
+    const totalGrowth = endNW - startNW;
+    const totalGrowthPercent = startNW !== 0 ? (totalGrowth / Math.abs(startNW)) * 100 : 0;
+
+    return {
+      points,
+      linePath,
+      areaPath,
+      minVal,
+      maxVal,
+      startNW,
+      endNW,
+      totalGrowth,
+      totalGrowthPercent
+    };
+  }, [netWorthTrendData]);
+
+  const selectedNetWorthItem = useMemo(() => {
+    return netWorthTrendData.find((d) => d.monthStr === selectedMonth);
+  }, [netWorthTrendData, selectedMonth]);
+
+  const selectedNetWorthMoM = useMemo(() => {
+    const idx = netWorthTrendData.findIndex((d) => d.monthStr === selectedMonth);
+    if (idx <= 0) return null;
+    const prev = netWorthTrendData[idx - 1];
+    const curr = netWorthTrendData[idx];
+    const diff = curr.netWorth - prev.netWorth;
+    const percent = prev.netWorth !== 0 ? (diff / Math.abs(prev.netWorth)) * 100 : 0;
+    return { diff, percent };
+  }, [netWorthTrendData, selectedMonth]);
 
   // Danh mục phân loại theo chế độ chọn (EXPENSE: Chi tiết / Nhóm Cha 50-30-20; hoặc INCOME)
   const activeCatMap =
@@ -816,67 +971,255 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
         </div>
       </div>
 
-      {/* 3. BIỂU ĐỒ CỘT XU HƯỚNG 6 THÁNG GẦN NHẤT */}
+      {/* 3. BIỂU ĐỒ XU HƯỚNG 6 THÁNG: DÒNG TIỀN (THU/CHI) HOẶC TÀI SẢN RÒNG (NET WORTH) */}
       <div className="mx-4 my-3 rounded-3xl p-4 bg-slate-900/80 border border-white/10 shadow-lg">
-        <div className="flex items-center justify-between mb-3 px-1">
+        {/* Header khối biểu đồ & Pill switch chuyển đổi */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 px-1">
           <div className="flex items-center gap-2">
-            <BarChart3 size={17} className="text-sky-400" />
+            {trendChartMode === 'CASHFLOW' ? (
+              <BarChart3 size={17} className="text-sky-400" />
+            ) : (
+              <TrendingUp size={17} className="text-emerald-400" />
+            )}
             <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-              Xu hướng dòng tiền 6 tháng
+              {trendChartMode === 'CASHFLOW' ? 'Xu hướng dòng tiền 6 tháng' : 'Biến động tài sản ròng (Net Worth)'}
             </span>
           </div>
-          <div className="flex items-center gap-2.5 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Thu
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              Chi
-            </span>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-6 gap-2 pt-2 pb-1 border-b border-white/6 items-end h-28">
-          {trendData.map((d) => {
-            const isSelected = d.monthStr === selectedMonth;
-            const incomeHeight = d.income > 0 ? Math.max(6, Math.round((d.income / maxTrendValue) * 80)) : 0;
-            const expenseHeight = d.expense > 0 ? Math.max(6, Math.round((d.expense / maxTrendValue) * 80)) : 0;
-
-            return (
-              <div
-                key={d.monthStr}
-                onClick={() => setSelectedMonth(d.monthStr)}
-                className={`touch-btn flex flex-col items-center justify-end h-full cursor-pointer p-1 rounded-xl transition-all ${
-                  isSelected ? 'bg-white/8 border border-white/15' : 'hover:bg-white/4'
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            {/* Pill Switch */}
+            <div className="flex p-0.5 rounded-xl bg-slate-800/90 border border-white/8 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setTrendChartMode('CASHFLOW')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all flex items-center gap-1 border-none ${
+                  trendChartMode === 'CASHFLOW'
+                    ? 'bg-sky-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 bg-transparent'
                 }`}
-                title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}`}
               >
-                <div className="flex items-end gap-1 h-[80px] w-full justify-center">
-                  <div
-                    className="w-2.5 rounded-t-sm bg-emerald-500 transition-all duration-300"
-                    style={{ height: `${incomeHeight}px` }}
-                  />
-                  <div
-                    className="w-2.5 rounded-t-sm bg-rose-500 transition-all duration-300"
-                    style={{ height: `${expenseHeight}px` }}
-                  />
-                </div>
+                <BarChart3 size={12} />
+                <span>Dòng tiền</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTrendChartMode('NET_WORTH')}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all flex items-center gap-1 border-none ${
+                  trendChartMode === 'NET_WORTH'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                }`}
+              >
+                <TrendingUp size={12} />
+                <span>Tài sản ròng</span>
+              </button>
+            </div>
 
-                <span
-                  className={`text-[11px] font-bold mt-1.5 ${
-                    isSelected ? 'text-sky-400' : 'text-slate-400'
-                  }`}
-                >
-                  {d.label}
+            {/* Chú thích màu khi ở mode Dòng tiền */}
+            {trendChartMode === 'CASHFLOW' && (
+              <div className="hidden xs:flex items-center gap-2 text-[10px] text-slate-400 shrink-0">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Thu
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  Chi
                 </span>
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
-        <div className="text-[10px] text-slate-500 text-center mt-2">
-          Chạm vào cột tháng bất kỳ để xem phân tích chi tiết của tháng đó
-        </div>
+
+        {/* CHẾ ĐỘ 1: BIỂU ĐỒ CỘT DÒNG TIỀN (THU VS CHI) */}
+        {trendChartMode === 'CASHFLOW' && (
+          <>
+            <div className="grid grid-cols-6 gap-2 pt-2 pb-1 border-b border-white/6 items-end h-28">
+              {trendData.map((d) => {
+                const isSelected = d.monthStr === selectedMonth;
+                const incomeHeight = d.income > 0 ? Math.max(6, Math.round((d.income / maxTrendValue) * 80)) : 0;
+                const expenseHeight = d.expense > 0 ? Math.max(6, Math.round((d.expense / maxTrendValue) * 80)) : 0;
+
+                return (
+                  <div
+                    key={d.monthStr}
+                    onClick={() => setSelectedMonth(d.monthStr)}
+                    className={`touch-btn flex flex-col items-center justify-end h-full cursor-pointer p-1 rounded-xl transition-all ${
+                      isSelected ? 'bg-white/8 border border-white/15' : 'hover:bg-white/4'
+                    }`}
+                    title={`${formatMonthDisplay(d.monthStr)}: Thu ${formatVND(d.income)}, Chi ${formatVND(d.expense)}`}
+                  >
+                    <div className="flex items-end gap-1 h-[80px] w-full justify-center">
+                      <div
+                        className="w-2.5 rounded-t-sm bg-emerald-500 transition-all duration-300"
+                        style={{ height: `${incomeHeight}px` }}
+                      />
+                      <div
+                        className="w-2.5 rounded-t-sm bg-rose-500 transition-all duration-300"
+                        style={{ height: `${expenseHeight}px` }}
+                      />
+                    </div>
+
+                    <span
+                      className={`text-[11px] font-bold mt-1.5 ${
+                        isSelected ? 'text-sky-400' : 'text-slate-400'
+                      }`}
+                    >
+                      {d.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-slate-500 text-center mt-2">
+              Chạm vào cột tháng bất kỳ để xem phân tích chi tiết của tháng đó
+            </div>
+          </>
+        )}
+
+        {/* CHẾ ĐỘ 2: BIỂU ĐỒ ĐƯỜNG DIỆN TÍCH TÀI SẢN RÒNG (NET WORTH AREA/LINE CHART) */}
+        {trendChartMode === 'NET_WORTH' && netWorthChartLayout && (
+          <div className="flex flex-col gap-2 pt-1 animate-fade-in">
+            {/* Header tóm tắt tổng thể kỳ 6 tháng */}
+            <div className="flex items-center justify-between pb-1 px-1">
+              <div>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block">
+                  Tăng trưởng tài sản 6 tháng
+                </span>
+                <div
+                  className={`text-sm font-extrabold flex items-center gap-1 ${
+                    netWorthChartLayout.totalGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  <span>
+                    {netWorthChartLayout.totalGrowth >= 0 ? '▲ +' : '▼ '}
+                    {formatVND(Math.abs(netWorthChartLayout.totalGrowth))}
+                  </span>
+                  <span className="text-[11px] font-normal text-slate-400">
+                    ({netWorthChartLayout.totalGrowthPercent >= 0 ? '+' : ''}
+                    {netWorthChartLayout.totalGrowthPercent.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block">
+                  Khoảng giá trị
+                </span>
+                <span className="text-[11px] text-slate-300 font-medium">
+                  {formatVND(netWorthChartLayout.minVal)} ~ {formatVND(netWorthChartLayout.maxVal)}
+                </span>
+              </div>
+            </div>
+
+            {/* Khung đồ thị SVG Vector mượt mà */}
+            <div className="relative w-full h-28 pt-2">
+              <svg
+                viewBox="0 0 320 100"
+                className="w-full h-full overflow-visible"
+                preserveAspectRatio="none"
+              >
+                <defs>
+                  <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10B981" stopOpacity="0.4" />
+                    <stop offset="100%" stopColor="#10B981" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+
+                {/* Đường lưới tham chiếu ngang mờ */}
+                <line x1="16" y1="20" x2="304" y2="20" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                <line x1="16" y1="55" x2="304" y2="55" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                <line x1="16" y1="90" x2="304" y2="90" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+
+                {/* Vùng bóng đổ mờ Area */}
+                <path d={netWorthChartLayout.areaPath} fill="url(#netWorthGrad)" />
+
+                {/* Đường biểu diễn chính Stroke Line */}
+                <path
+                  d={netWorthChartLayout.linePath}
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+
+                {/* Các điểm dữ liệu 6 tháng */}
+                {netWorthChartLayout.points.map((pt) => {
+                  const isSelected = pt.monthStr === selectedMonth;
+                  return (
+                    <g key={pt.monthStr} className="cursor-pointer" onClick={() => setSelectedMonth(pt.monthStr)}>
+                      {/* Vùng chạm rộng hơn để dễ bấm trên mobile */}
+                      <circle cx={pt.x} cy={pt.y} r="14" fill="transparent" />
+
+                      {isSelected ? (
+                        <>
+                          <circle cx={pt.x} cy={pt.y} r="7" fill="#10B981" opacity="0.3" className="animate-ping" />
+                          <circle cx={pt.x} cy={pt.y} r="5" fill="#10B981" stroke="#ffffff" strokeWidth="2" />
+                        </>
+                      ) : (
+                        <circle cx={pt.x} cy={pt.y} r="3.5" fill="#10B981" stroke="#0f172a" strokeWidth="1.5" />
+                      )}
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+
+            {/* Các nhãn tháng tương ứng bên dưới */}
+            <div className="grid grid-cols-6 gap-1 border-b border-white/6 pb-2 text-center">
+              {netWorthTrendData.map((d) => {
+                const isSelected = d.monthStr === selectedMonth;
+                return (
+                  <button
+                    key={d.monthStr}
+                    type="button"
+                    onClick={() => setSelectedMonth(d.monthStr)}
+                    className={`py-1 rounded-xl text-[11px] font-bold cursor-pointer transition-colors border-none ${
+                      isSelected
+                        ? 'bg-emerald-500/25 text-emerald-300 font-extrabold shadow-sm'
+                        : 'text-slate-400 hover:text-white bg-transparent'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Thẻ kiểm tra chi tiết tháng đang chọn */}
+            <div className="mt-1 p-2.5 rounded-2xl bg-slate-800/70 border border-white/8 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                <span className="text-slate-400 font-medium truncate">
+                  Tài sản cuối {formatMonthDisplay(selectedMonth)}:
+                </span>
+                <span className="font-extrabold text-slate-100 font-heading shrink-0">
+                  {formatVND(selectedNetWorthItem?.netWorth || 0)}
+                </span>
+              </div>
+
+              {selectedNetWorthMoM && (
+                <div
+                  className={`text-[11px] font-bold shrink-0 ml-2 flex items-center gap-0.5 ${
+                    selectedNetWorthMoM.diff >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                  title={`So với tháng liền trước: ${formatVND(selectedNetWorthMoM.diff)}`}
+                >
+                  <span>{selectedNetWorthMoM.diff >= 0 ? '▲ +' : '▼ '}</span>
+                  <span>{formatVND(Math.abs(selectedNetWorthMoM.diff))}</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    ({selectedNetWorthMoM.percent >= 0 ? '+' : ''}{selectedNetWorthMoM.percent.toFixed(1)}%)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="text-[10px] text-slate-500 text-center">
+              Chạm vào mốc tháng để xem tài sản ròng và phân tích dòng tiền của tháng đó
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 4. CHUYỂN ĐỔI CHẾ ĐỘ XEM: THEO DANH MỤC VS THEO TỪNG NGÀY TRONG THÁNG */}
@@ -1239,87 +1582,89 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       )}
 
       {/* 6. DANH SÁCH DANH MỤC PHÂN TÍCH KÈM SO SÁNH MOM & DRILL-DOWN */}
-      <div className="px-4 mt-3">
-        <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5 px-1">
-          Bảng kê tỷ trọng & Biến động tháng (MoM)
-        </div>
+      {sortedCategories.length > 0 && (
+        <div className="px-4 mt-3">
+          <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5 px-1">
+            Bảng kê tỷ trọng & Biến động tháng (MoM)
+          </div>
 
-        <div className="flex flex-col gap-2.5">
-          {sortedCategories.map((item) => (
-            <div
-              key={item.catId}
-              onClick={() => setDrillDownCategory(item.category || null)}
-              className="touch-btn rounded-2xl p-3.5 bg-slate-900/70 border border-white/6 hover:border-white/15 cursor-pointer transition-all"
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="cat-badge shrink-0"
-                    style={{ backgroundColor: item.category?.color || '#3b82f6' }}
-                  >
-                    <CategoryIcon
-                      name={item.category?.icon || 'CircleDot'}
-                      size={20}
-                      color="#ffffff"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-100 truncate">
-                      {item.category?.name}
+          <div className="flex flex-col gap-2.5">
+            {sortedCategories.map((item) => (
+              <div
+                key={item.catId}
+                onClick={() => setDrillDownCategory(item.category || null)}
+                className="touch-btn rounded-2xl p-3.5 bg-slate-900/70 border border-white/6 hover:border-white/15 cursor-pointer transition-all"
+              >
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="cat-badge shrink-0"
+                      style={{ backgroundColor: item.category?.color || '#3b82f6' }}
+                    >
+                      <CategoryIcon
+                        name={item.category?.icon || 'CircleDot'}
+                        size={20}
+                        color="#ffffff"
+                      />
                     </div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                      {item.percentage.toFixed(1)}% tổng {reportType === 'EXPENSE' ? 'chi' : 'thu'}
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-slate-100 truncate">
+                        {item.category?.name}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        {item.percentage.toFixed(1)}% tổng {reportType === 'EXPENSE' ? 'chi' : 'thu'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 ml-3">
+                    <div
+                      className={`text-sm font-bold ${
+                        reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                      }`}
+                    >
+                      {reportType === 'EXPENSE'
+                        ? `-${formatVND(item.amount)}`
+                        : `+${formatVND(item.amount)}`}
+                    </div>
+
+                    <div className="mt-0.5">
+                      {item.prevAmount > 0 ? (
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            reportType === 'EXPENSE'
+                              ? item.diff > 0
+                                ? 'text-rose-400'
+                                : 'text-emerald-400'
+                              : item.diff >= 0
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          {item.diff >= 0 ? `▲ +${item.momPercent.toFixed(0)}%` : `▼ ${item.momPercent.toFixed(0)}%`}{' '}
+                          <span className="text-slate-500 font-normal">vs T trước</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 font-medium">Mới phát sinh</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-right shrink-0 ml-3">
+                <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
                   <div
-                    className={`text-sm font-bold ${
-                      reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
-                    }`}
-                  >
-                    {reportType === 'EXPENSE'
-                      ? `-${formatVND(item.amount)}`
-                      : `+${formatVND(item.amount)}`}
-                  </div>
-
-                  <div className="mt-0.5">
-                    {item.prevAmount > 0 ? (
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          reportType === 'EXPENSE'
-                            ? item.diff > 0
-                              ? 'text-rose-400'
-                              : 'text-emerald-400'
-                            : item.diff >= 0
-                            ? 'text-emerald-400'
-                            : 'text-rose-400'
-                        }`}
-                      >
-                        {item.diff >= 0 ? `▲ +${item.momPercent.toFixed(0)}%` : `▼ ${item.momPercent.toFixed(0)}%`}{' '}
-                        <span className="text-slate-500 font-normal">vs T trước</span>
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-500 font-medium">Mới phát sinh</span>
-                    )}
-                  </div>
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${item.percentage}%`,
+                      backgroundColor: item.category?.color || '#3b82f6'
+                    }}
+                  />
                 </div>
               </div>
-
-              <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${item.percentage}%`,
-                    backgroundColor: item.category?.color || '#3b82f6'
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </>
   )}
 </div>

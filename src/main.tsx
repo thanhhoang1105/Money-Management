@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register';
 import './index.css';
 import App from './App.tsx';
+import { applyTheme } from './services/themeService';
+
+// Áp dụng chủ đề giao diện ngay trước khi render để chống chớp nháy (Zero FOUC)
+applyTheme();
 
 // Đăng ký Service Worker cho PWA (Offline-First 100%, tự động làm mới khi có phiên bản mới)
 const updateSW = registerSW({

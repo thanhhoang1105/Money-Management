@@ -4,12 +4,6 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { BudgetsTab } from './BudgetsTab';
 import {
-  exportTransactionsToExcel,
-  exportFullBackupJSON,
-  downloadOrShareFile,
-  restoreBackupData
-} from '../services/backupService';
-import {
   createTransaction,
   deleteTransaction,
   computeNextRunDate,
@@ -30,9 +24,6 @@ import {
   HandCoins,
   Smartphone,
   Cloud,
-  Download,
-  Upload,
-  FileSpreadsheet,
   ChevronRight,
   ShieldCheck,
   Sparkles,
@@ -44,11 +35,15 @@ import {
   Play,
   CheckCircle2,
   Edit2,
-  ArrowLeft
+  ArrowLeft,
+  Sun,
+  Moon,
+  Clock
 } from 'lucide-react';
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
-import { useGrabDriverMode } from '../services/grabService';
+import { useGrabDriverMode, setGrabDriverModeEnabled } from '../services/grabService';
+import { useThemeMode } from '../services/themeService';
 
 interface MoreTabProps {
   onOpenSettings: () => void;
@@ -78,6 +73,24 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
   const isGrabDriverMode = useGrabDriverMode();
+  const { mode: themeMode, setMode: setThemeMode, description: themeDescription } = useThemeMode();
+  const [isPersistent, setIsPersistent] = useState<boolean>(true);
+
+  React.useEffect(() => {
+    if (navigator.storage && navigator.storage.persisted) {
+      navigator.storage.persisted().then(setIsPersistent);
+    }
+  }, []);
+
+  const handleToggleGrabDriverMode = async () => {
+    const next = !isGrabDriverMode;
+    await setGrabDriverModeEnabled(next);
+    showToast(
+      next
+        ? 'Đã bật tính năng Nghiệp vụ Tài xế GrabBike!'
+        : 'Đã tắt tính năng Nghiệp vụ Tài xế GrabBike!'
+    );
+  };
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về menu Khác chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -228,55 +241,19 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     };
   }, [transactions, savedContactsSetting?.value]);
 
-  const handleBackupJSON = async () => {
-    try {
-      const jsonStr = await exportFullBackupJSON();
-      const fileName = `SoThuChi_Backup_${getCurrentDate().replace(/-/g, '')}.json`;
-      await downloadOrShareFile(jsonStr, fileName, 'application/json');
-      showToast('Đã xuất file sao lưu JSON thành công!');
-    } catch (err: any) {
-      alert('Lỗi sao lưu JSON: ' + (err?.message || 'Thất bại'));
-    }
-  };
-
-  const handleRestoreJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (
-      !window.confirm(
-        'CẢNH BÁO: Ghi đè toàn bộ dữ liệu bằng file sao lưu. Bạn có chắc chắn muốn khôi phục?'
-      )
-    ) {
-      e.target.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const content = event.target?.result as string;
-        const res = await restoreBackupData(content);
-        showToast(
-          `Khôi phục thành công ${res.counts.transactions} giao dịch và ${res.counts.wallets} ví!`
-        );
-      } catch (err: any) {
-        alert('Lỗi đọc file: ' + (err?.message || 'Không hợp lệ'));
-      } finally {
-        e.target.value = '';
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleExportExcel = async () => {
-    try {
-      const res = await exportTransactionsToExcel();
-      showToast(`Đã xuất báo cáo Excel thành công (${res.transactionCount} giao dịch)!`);
-    } catch (err: any) {
-      alert('Lỗi xuất Excel: ' + (err?.message || 'Thất bại'));
-    }
-  };
+  // MÀN HÌNH NGHIỆP VỤ GRABBIKE (DẠNG PHẲNG TOÀN MÀN HÌNH)
+  if (isGrabModalOpen) {
+    return (
+      <GrabTripModal
+        isOpen={true}
+        onClose={() => setIsGrabModalOpen(false)}
+        onSuccess={(msg) => {
+          setNotice(msg);
+          setTimeout(() => setNotice(null), 3500);
+        }}
+      />
+    );
+  }
 
   // SUBVIEW 1: HẠN MỨC CHI TIÊU
   if (subView === 'BUDGETS') {
@@ -1639,10 +1616,81 @@ export const MoreTab: React.FC<MoreTabProps> = ({
       {/* NHÓM 2: GIAO DIỆN & TRẢI NGHIỆM */}
       <section className="flex flex-col gap-2">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-          Giao diện & Trải nghiệm
+          Giao diện & Tiện ích mở rộng
         </h3>
 
         <div className="bg-slate-900/90 rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+          {/* Mục 1: Chế độ giao diện (Dark / Light / Auto) */}
+          <div className="p-3.5 flex flex-col gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center text-sky-400 font-black text-sm shrink-0">
+                {themeMode === 'DARK' ? (
+                  <Moon size={18} />
+                ) : themeMode === 'LIGHT' ? (
+                  <Sun size={18} />
+                ) : (
+                  <Clock size={18} />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-100">
+                  Chế độ giao diện
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                  Tùy chỉnh sáng/tối hoặc tự động theo múi giờ thực tế của máy
+                </div>
+              </div>
+            </div>
+
+            {/* 3 Tabs Segmented Control: Tối / Sáng / Tự động */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-800/80 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setThemeMode('DARK')}
+                className={`py-2 px-1 rounded-lg text-xs font-bold cursor-pointer border-none transition-all flex items-center justify-center gap-1.5 ${
+                  themeMode === 'DARK'
+                    ? 'bg-sky-500 text-white shadow-md'
+                    : 'bg-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                <Moon size={14} />
+                <span>Tối (Dark)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setThemeMode('LIGHT')}
+                className={`py-2 px-1 rounded-lg text-xs font-bold cursor-pointer border-none transition-all flex items-center justify-center gap-1.5 ${
+                  themeMode === 'LIGHT'
+                    ? 'bg-amber-500 text-slate-950 font-extrabold shadow-md'
+                    : 'bg-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sun size={14} />
+                <span>Sáng (Light)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setThemeMode('AUTO')}
+                className={`py-2 px-1 rounded-lg text-xs font-bold cursor-pointer border-none transition-all flex items-center justify-center gap-1.5 ${
+                  themeMode === 'AUTO'
+                    ? 'bg-emerald-500 text-slate-950 font-extrabold shadow-md'
+                    : 'bg-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock size={14} />
+                <span>Tự động</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] text-slate-400 bg-slate-800/50 p-2 rounded-xl border border-white/5 flex items-center gap-2">
+              <Sparkles size={14} className="text-amber-400 shrink-0" />
+              <span className="leading-snug">{themeDescription}</span>
+            </div>
+          </div>
+
+          {/* Mục 2: Màn hình mở app đầu tiên */}
           <div className="p-3.5 flex flex-col gap-2">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
@@ -1676,6 +1724,43 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               />
             </div>
           </div>
+
+          {/* Mục 3: Nghiệp vụ Tài xế GrabBike (Toggle Switch bật/tắt) */}
+          <div className="p-3.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                <MotorcycleIcon size={20} strokeWidth={2.2} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-slate-100">
+                    Nghiệp vụ Tài xế GrabBike
+                  </span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
+                    Mở rộng
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                  Bật nút nhập nhanh cuốc xe, tự động tách vốn lưu động & thu nhập ròng
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleGrabDriverMode}
+              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer p-0.5 border-none shrink-0 ${
+                isGrabDriverMode ? 'bg-emerald-500' : 'bg-slate-700'
+              }`}
+              title={isGrabDriverMode ? 'Đang Bật' : 'Đang Tắt'}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white transition-transform shadow-md ${
+                  isGrabDriverMode ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -1685,97 +1770,104 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           Dữ liệu & Đồng bộ Đám mây
         </h3>
 
-        <div className="bg-slate-900/90 rounded-2xl border border-white/8 overflow-hidden divide-y divide-white/5">
+        <div className="bg-slate-900/90 rounded-2xl border border-white/8 overflow-hidden">
           <button
             type="button"
             onClick={onOpenSettings}
             className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
                 <Cloud size={19} />
               </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-                  <span>Đồng bộ đám mây Supabase 2 chiều</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5 flex-wrap">
+                  <span>Đồng bộ Supabase & Sao lưu dữ liệu</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold shrink-0">
                     PC & Điện thoại
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Kết nối tài khoản / Mã đồng bộ Supabase siêu tốc, không lo mất dữ liệu
+                <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                  Đồng bộ đám mây 2 chiều, tải tệp sao lưu JSON & Excel
                 </div>
               </div>
             </div>
-            <ChevronRight size={16} className="text-slate-500 shrink-0" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleBackupJSON}
-            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
-                <ShieldCheck size={19} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">
-                  Xuất file sao lưu Offline (JSON)
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Tải file JSON toàn bộ dữ liệu về thiết bị
-                </div>
-              </div>
-            </div>
-            <Download size={16} className="text-sky-400 shrink-0" />
-          </button>
-
-          <label className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors">
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleRestoreJSON}
-              className="hidden"
-            />
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                <Upload size={19} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">
-                  Khôi phục dữ liệu từ JSON
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Nhập file sao lưu để phục hồi toàn bộ giao dịch
-                </div>
-              </div>
-            </div>
-            <Upload size={16} className="text-amber-400 shrink-0" />
-          </label>
-
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="touch-btn w-full p-3.5 flex items-center justify-between text-left cursor-pointer hover:bg-slate-800/60 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center shrink-0">
-                <FileSpreadsheet size={19} />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-100">
-                  Xuất báo cáo Excel (.xlsx)
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Bảng tính 3 sheets chi tiết giao dịch & tài khoản
-                </div>
-              </div>
-            </div>
-            <Download size={16} className="text-teal-400 shrink-0" />
+            <ChevronRight size={16} className="text-slate-500 shrink-0 ml-2" />
           </button>
         </div>
       </section>
+
+      {/* THÔNG TIN BỘ NHỚ THIẾT BỊ (INDEXEDDB LOCAL-FIRST) */}
+      <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                isPersistent
+                  ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-400'
+                  : 'bg-amber-500/15 border-amber-500/25 text-amber-400'
+              }`}
+            >
+              <ShieldCheck size={20} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-slate-100 truncate">
+                Bộ nhớ thiết bị (Local-First)
+              </div>
+              <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                IndexedDB lưu trữ 100% trên máy
+              </div>
+            </div>
+          </div>
+
+          <div className="shrink-0">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-tight whitespace-nowrap border ${
+                isPersistent
+                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                  : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  isPersistent ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span>{isPersistent ? 'Bền vững chống xóa' : 'Lưu trữ cục bộ'}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* 3 Thẻ số liệu thống kê hiện đại */}
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="bg-slate-800/60 rounded-xl py-2 px-1 border border-white/5 flex flex-col items-center">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Giao dịch
+            </span>
+            <span className="text-sm font-extrabold text-slate-100 mt-0.5">
+              {transactions.length}
+            </span>
+          </div>
+
+          <div className="bg-slate-800/60 rounded-xl py-2 px-1 border border-white/5 flex flex-col items-center">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Ví tiền
+            </span>
+            <span className="text-sm font-extrabold text-slate-100 mt-0.5">
+              {wallets.length}
+            </span>
+          </div>
+
+          <div className="bg-slate-800/60 rounded-xl py-2 px-1 border border-white/5 flex flex-col items-center">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Hạng mục
+            </span>
+            <span className="text-sm font-extrabold text-slate-100 mt-0.5">
+              {categories.length}
+            </span>
+          </div>
+        </div>
+      </div>
 
       <div className="pt-2 text-center text-slate-500 text-[11px] flex flex-col items-center gap-1">
         <div className="flex items-center gap-1.5 font-semibold text-slate-400">
@@ -1784,16 +1876,6 @@ export const MoreTab: React.FC<MoreTabProps> = ({
         </div>
         <div>100% Offline • Dữ liệu lưu trữ bền vững trên thiết bị của bạn</div>
       </div>
-
-      {/* MODAL GHI CUỐC GRAB */}
-      <GrabTripModal
-        isOpen={isGrabModalOpen}
-        onClose={() => setIsGrabModalOpen(false)}
-        onSuccess={(msg) => {
-          setNotice(msg);
-          setTimeout(() => setNotice(null), 3500);
-        }}
-      />
     </div>
   );
 };

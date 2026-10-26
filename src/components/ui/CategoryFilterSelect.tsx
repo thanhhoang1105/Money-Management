@@ -216,7 +216,25 @@ export const CategoryFilterSelect: React.FC<CategoryFilterSelectProps> = ({
     setOpen(false);
   };
 
-  const selectedCategory = value !== 'ALL' ? categoryMap.get(value) : null;
+  const selectedCategory = useMemo(() => {
+    if (!value || value === 'ALL') return null;
+    const direct = categoryMap.get(value);
+    if (direct) return direct;
+    const allGroups = [...expenseGroups, ...incomeGroups, ...debtGroups];
+    const groupMatch = allGroups.find((g) => g.id === value);
+    if (groupMatch) {
+      return {
+        id: groupMatch.id,
+        name: groupMatch.name,
+        icon: groupMatch.icon,
+        color: groupMatch.color,
+        type: groupMatch.type,
+        isDefault: true,
+        createdAt: ''
+      } as Category;
+    }
+    return null;
+  }, [value, categoryMap, expenseGroups, incomeGroups, debtGroups]);
 
   // Lọc tìm kiếm nếu người dùng nhập ô tìm kiếm
   const q = searchQuery.trim().toLowerCase();

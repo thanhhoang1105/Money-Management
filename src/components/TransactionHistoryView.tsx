@@ -117,10 +117,36 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
 
       if (categoryFilter !== 'ALL') {
         const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
-        const matchesDirect = tx.categoryId === categoryFilter;
-        const matchesParent = txCat?.parentId === categoryFilter;
-        if (!matchesDirect && !matchesParent) {
-          return false;
+
+        if (categoryFilter === 'cat_parent_debt') {
+          const isDebtTx =
+            txCat?.type === 'DEBT' ||
+            tx.type === 'LEND' ||
+            tx.type === 'BORROW' ||
+            tx.type === 'COLLECT_DEBT' ||
+            tx.type === 'PAY_DEBT' ||
+            ['cat_debt_lend', 'cat_debt_borrow', 'cat_debt_collect', 'cat_debt_pay'].includes(
+              tx.categoryId || ''
+            );
+          if (!isDebtTx) return false;
+        } else if (categoryFilter === 'cat_debt_lend') {
+          if (tx.categoryId !== 'cat_debt_lend' && tx.type !== 'LEND') return false;
+        } else if (categoryFilter === 'cat_debt_borrow') {
+          if (tx.categoryId !== 'cat_debt_borrow' && tx.type !== 'BORROW') return false;
+        } else if (categoryFilter === 'cat_debt_collect') {
+          if (tx.categoryId !== 'cat_debt_collect' && tx.type !== 'COLLECT_DEBT') return false;
+        } else if (categoryFilter === 'cat_debt_pay') {
+          if (tx.categoryId !== 'cat_debt_pay' && tx.type !== 'PAY_DEBT') return false;
+        } else if (categoryFilter === 'cat_parent_expense_other') {
+          const isOrphanExpense =
+            txCat?.type === 'EXPENSE' && (!txCat.parentId || !categoryMap.has(txCat.parentId));
+          if (!isOrphanExpense) return false;
+        } else {
+          const matchesDirect = tx.categoryId === categoryFilter;
+          const matchesParent = txCat?.parentId === categoryFilter;
+          if (!matchesDirect && !matchesParent) {
+            return false;
+          }
         }
       }
 

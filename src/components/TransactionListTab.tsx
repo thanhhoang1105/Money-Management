@@ -446,6 +446,20 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     );
   }
 
+  // Khi người dùng bấm Ghi cuốc GrabBike -> hiển thị GrabTripModal dạng màn hình phẳng toàn màn hình
+  if (isGrabModalOpen) {
+    return (
+      <GrabTripModal
+        isOpen={true}
+        onClose={() => setIsGrabModalOpen(false)}
+        onSuccess={(msg) => {
+          setDuplicateFeedback(msg);
+          setTimeout(() => setDuplicateFeedback(''), 4000);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="pb-28">
       {duplicateFeedback && (
@@ -931,16 +945,6 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
           </div>
         )}
       </div>
-
-      {/* MODAL GHI CUỐC GRAB TỰ ĐỘNG PHÂN BỔ */}
-      <GrabTripModal
-        isOpen={isGrabModalOpen}
-        onClose={() => setIsGrabModalOpen(false)}
-        onSuccess={(msg) => {
-          setDuplicateFeedback(msg);
-          setTimeout(() => setDuplicateFeedback(''), 4000);
-        }}
-      />
     </div>
   );
 };

@@ -116,11 +116,19 @@ export interface DeletedEntitiesTracking {
   budgetIds: string[];
 }
 
+export interface SyncSecurityInfo {
+  pinHash?: string;
+  recoveryQuestion?: string;
+  recoveryAnswerHash?: string;
+  updatedAt?: string;
+}
+
 export interface SyncDataPayload {
   version: string;
   appName: string;
   syncedAt: string;
   deviceId?: string;
+  security?: SyncSecurityInfo;
   data: {
     wallets: Wallet[];
     categories: Category[];

@@ -17,11 +17,15 @@ import {
   backupToSupabase,
   getBackupFromSupabase,
   connectInitialSupabaseSync,
-  performSupabaseSmartSync
+  performSupabaseSmartSync,
+  checkSyncKeySecurity,
+  verifySyncPin,
+  recoverSyncPinWithAnswer,
+  setupOrUpdateSyncSecurity,
+  removeSyncSecurity
 } from '../services/supabaseService';
+import { PREDEFINED_SECURITY_QUESTIONS } from '../utils/crypto';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
-import { useGrabDriverMode, setGrabDriverModeEnabled } from '../services/grabService';
-import { MotorcycleIcon } from './MotorcycleIcon';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
 import {
@@ -30,15 +34,19 @@ import {
   FileSpreadsheet,
   Download,
   Upload,
-  ShieldCheck,
   AlertTriangle,
   RotateCw,
   CloudUpload,
   CloudDownload,
   LogOut,
-  Smartphone,
-  Sparkles,
-  UserCheck
+  UserCheck,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  HelpCircle,
+  Lock,
+  X
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -74,17 +82,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const supabaseAutoSyncSetting = useLiveQuery(() =>
     db.settings.get('supabase_auto_sync_enabled')
   );
+  const supabasePinHashSetting = useLiveQuery(() => db.settings.get('supabase_pin_hash'));
+  const supabaseQuestionSetting = useLiveQuery(() => db.settings.get('supabase_recovery_question'));
+  const hasConfiguredPin = Boolean(supabasePinHashSetting?.value);
 
   const txCount = useLiveQuery(() => db.transactions.count()) || 0;
-  const walletCount = useLiveQuery(() => db.wallets.count()) || 0;
-  const categoryCount = useLiveQuery(() => db.categories.count()) || 0;
 
   const [statusMsg, setStatusMsg] = useState<{
     text: string;
     type: 'success' | 'error' | 'info';
   } | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [isPersistent, setIsPersistent] = useState<boolean>(false);
 
   // Supabase States
   const [sbSyncKeyInput, setSbSyncKeyInput] = useState<string>('');
@@ -92,22 +100,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [sbPasswordInput, setSbPasswordInput] = useState<string>('');
   const [authMode, setAuthMode] = useState<'SYNC_KEY' | 'EMAIL_AUTH'>('SYNC_KEY');
   const [isAutoSync, setIsAutoSync] = useState<boolean>(true);
+  const [showSyncKey, setShowSyncKey] = useState<boolean>(false);
+  const [showInputSyncKey, setShowInputSyncKey] = useState<boolean>(false);
+
+  // States Quản lý Bảo mật (PIN & Câu hỏi bảo mật)
+  const [isSecurityFormOpen, setIsSecurityFormOpen] = useState(false);
+  const [formPin, setFormPin] = useState('');
+  const [formConfirmPin, setFormConfirmPin] = useState('');
+  const [formQuestion, setFormQuestion] = useState(PREDEFINED_SECURITY_QUESTIONS[0]);
+  const [formCustomQuestion, setFormCustomQuestion] = useState('');
+  const [formAnswer, setFormAnswer] = useState('');
+  const [showFormPin, setShowFormPin] = useState(false);
+
+  // State Xác thực PIN / Khôi phục PIN khi kết nối từ máy mới
+  const [pinPrompt, setPinPrompt] = useState<{
+    syncKey: string;
+    recoveryQuestion?: string;
+    mode: 'ENTER_PIN' | 'RECOVER_PIN';
+  } | null>(null);
+  const [verifyPinInput, setVerifyPinInput] = useState('');
+  const [recoverAnswerInput, setRecoverAnswerInput] = useState('');
+  const [recoverNewPinInput, setRecoverNewPinInput] = useState('');
+  const [showVerifyPin, setShowVerifyPin] = useState(false);
 
   // Xem trước khôi phục JSON (hiển thị phẳng không dùng Popup)
   const [restorePreview, setRestorePreview] = useState<RestorePreviewData | null>(null);
 
   // Phạm vi xuất Excel
   const [excelScope, setExcelScope] = useState<'all' | string>('all');
-  const isGrabModeEnabled = useGrabDriverMode();
-
-  // Màn hình mở app mặc định
-  const [defaultStartTab, setDefaultStartTab] = useState<string>(() => {
-    try {
-      return localStorage.getItem('app_default_tab') || 'overview';
-    } catch {
-      return 'overview';
-    }
-  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,19 +143,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setIsAutoSync(Boolean(supabaseAutoSyncSetting?.value));
     }
   }, [supabaseAutoSyncSetting]);
-
-  useEffect(() => {
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.storage &&
-      navigator.storage.persisted
-    ) {
-      navigator.storage
-        .persisted()
-        .then((persisted) => setIsPersistent(persisted))
-        .catch(() => setIsPersistent(false));
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -158,23 +165,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     '';
   const isSupabaseConnected = Boolean(activeSyncKey);
 
-  const handleSelectDefaultStartTab = (tabKey: string) => {
-    setDefaultStartTab(tabKey);
+  // Hoàn tất lưu cấu hình và đồng bộ sau khi vượt qua xác thực PIN
+  const doFinishConnect = async (cleanKey: string) => {
+    setIsProcessing(true);
+    setStatusMsg(null);
     try {
-      localStorage.setItem('app_default_tab', tabKey);
+      await saveSupabaseConfig({
+        syncKey: cleanKey,
+        email: cleanKey
+      });
+
+      const syncRes = await connectInitialSupabaseSync();
+      setPinPrompt(null);
       setStatusMsg({
-        text: 'Đã lưu màn hình mặc định khi mở app!',
+        text: `Đã kết nối Supabase! ${syncRes.message}`,
         type: 'success'
       });
-      setTimeout(() => setStatusMsg(null), 3000);
-    } catch {
-      // ignore
+    } catch (err: any) {
+      setStatusMsg({
+        text: err?.message || 'Không thể đồng bộ với Supabase',
+        type: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // Kết nối bằng Mã Đồng Bộ cá nhân (Sync Key)
+  // Kết nối bằng Mã Đồng Bộ cá nhân (Sync Key) với bước kiểm tra PIN
   const handleConnectWithSyncKey = async () => {
-    if (!sbSyncKeyInput.trim()) {
+    const cleanKey = sbSyncKeyInput.trim();
+    if (!cleanKey) {
       setStatusMsg({
         text: 'Vui lòng nhập Mã Đồng Bộ cá nhân (VD: email hoặc mật mã riêng của bạn).',
         type: 'error'
@@ -185,21 +205,156 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setIsProcessing(true);
     setStatusMsg(null);
     try {
-      await saveSupabaseConfig({
-        syncKey: sbSyncKeyInput.trim(),
-        email: sbSyncKeyInput.trim()
-      });
+      // 1. Kiểm tra xem mã này trên Supabase đã có PIN chưa
+      const sec = await checkSyncKeySecurity(cleanKey);
 
-      const syncRes = await connectInitialSupabaseSync();
+      if (sec.exists && sec.hasPin) {
+        // Mã này có PIN -> Yêu cầu nhập PIN xác thực!
+        setPinPrompt({
+          syncKey: cleanKey,
+          recoveryQuestion: sec.recoveryQuestion,
+          mode: 'ENTER_PIN'
+        });
+        setVerifyPinInput('');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Chưa có PIN (hoặc mã mới tinh) -> Kết nối bình thường
+      await doFinishConnect(cleanKey);
+    } catch (err: any) {
       setStatusMsg({
-        text: `Đã kết nối Supabase! ${syncRes.message}`,
+        text: err?.message || 'Không thể kiểm tra đồng bộ với Supabase',
+        type: 'error'
+      });
+      setIsProcessing(false);
+    }
+  };
+
+  // Xác thực mã PIN khi kết nối máy mới
+  const handleConfirmVerifyPin = async () => {
+    if (!pinPrompt) return;
+    if (!verifyPinInput.trim()) {
+      setStatusMsg({ text: 'Vui lòng nhập mã PIN bảo vệ', type: 'error' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const isValid = await verifySyncPin(pinPrompt.syncKey, verifyPinInput);
+      if (!isValid) {
+        setStatusMsg({
+          text: 'Mã PIN bảo vệ không chính xác! Vui lòng thử lại hoặc bấm "Quên mã PIN?"',
+          type: 'error'
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      // PIN đúng -> Hoàn tất kết nối
+      await doFinishConnect(pinPrompt.syncKey);
+    } catch (err: any) {
+      setStatusMsg({ text: err?.message || 'Lỗi xác thực mã PIN', type: 'error' });
+      setIsProcessing(false);
+    }
+  };
+
+  // Khôi phục mã PIN bằng câu hỏi bảo mật
+  const handleConfirmRecoverPin = async () => {
+    if (!pinPrompt) return;
+    const answer = recoverAnswerInput.trim();
+    const newPin = recoverNewPinInput.trim();
+
+    if (!answer) {
+      setStatusMsg({ text: 'Vui lòng nhập câu trả lời bảo mật', type: 'error' });
+      return;
+    }
+    if (!newPin || newPin.length < 4) {
+      setStatusMsg({ text: 'Mã PIN mới cần tối thiểu 4 ký tự', type: 'error' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const res = await recoverSyncPinWithAnswer(
+        pinPrompt.syncKey,
+        answer,
+        newPin
+      );
+
+      if (!res.success) {
+        setStatusMsg({ text: res.message, type: 'error' });
+        setIsProcessing(false);
+        return;
+      }
+
+      // Khôi phục thành công -> Kết nối luôn
+      await doFinishConnect(pinPrompt.syncKey);
+      setStatusMsg({
+        text: 'Khôi phục mã PIN thành công! Đã kết nối và đồng bộ dữ liệu.',
         type: 'success'
       });
     } catch (err: any) {
+      setStatusMsg({ text: err?.message || 'Lỗi khôi phục mã PIN', type: 'error' });
+      setIsProcessing(false);
+    }
+  };
+
+  // Lưu thiết lập Mã PIN & Câu hỏi bảo mật mới
+  const handleSaveSecuritySettings = async () => {
+    const pin = formPin.trim();
+    const confirm = formConfirmPin.trim();
+    const question =
+      formQuestion === 'Tự nhập câu hỏi riêng của bạn...'
+        ? formCustomQuestion.trim()
+        : formQuestion.trim();
+    const answer = formAnswer.trim();
+
+    if (!pin || pin.length < 4) {
+      setStatusMsg({ text: 'Mã PIN cần có tối thiểu 4 ký tự (số hoặc chữ).', type: 'error' });
+      return;
+    }
+    if (pin !== confirm) {
+      setStatusMsg({ text: 'Mã PIN nhập lại không khớp. Vui lòng kiểm tra lại.', type: 'error' });
+      return;
+    }
+    if (!question) {
+      setStatusMsg({ text: 'Vui lòng chọn hoặc nhập câu hỏi bảo mật.', type: 'error' });
+      return;
+    }
+    if (!answer) {
+      setStatusMsg({ text: 'Vui lòng nhập câu trả lời bảo mật để khôi phục khi quên PIN.', type: 'error' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await setupOrUpdateSyncSecurity(pin, question, answer);
+      setIsSecurityFormOpen(false);
       setStatusMsg({
-        text: err?.message || 'Không thể đồng bộ với Supabase',
-        type: 'error'
+        text: 'Đã kích hoạt Mã PIN & Câu hỏi khôi phục bảo vệ Mã đồng bộ thành công!',
+        type: 'success'
       });
+    } catch (err: any) {
+      setStatusMsg({ text: err?.message || 'Lỗi lưu bảo mật PIN', type: 'error' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Gỡ bỏ mã PIN
+  const handleRemovePin = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn gỡ bỏ Mã PIN bảo vệ? Bất kỳ ai có Mã đồng bộ sẽ có thể truy cập dữ liệu.')) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await removeSyncSecurity();
+      setIsSecurityFormOpen(false);
+      setStatusMsg({ text: 'Đã gỡ bỏ Mã PIN bảo vệ khỏi Mã đồng bộ.', type: 'info' });
+    } catch (err: any) {
+      setStatusMsg({ text: err?.message || 'Lỗi gỡ bỏ mã PIN', type: 'error' });
     } finally {
       setIsProcessing(false);
     }
@@ -327,17 +482,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     });
   };
 
-  const handleToggleGrabDriverMode = async () => {
-    const nextVal = !isGrabModeEnabled;
-    await setGrabDriverModeEnabled(nextVal);
-    setStatusMsg({
-      text: nextVal
-        ? 'Đã bật tính năng Tài xế GrabBike (Xuất hiện nút cuốc xe)'
-        : 'Đã tắt tính năng Tài xế GrabBike',
-      type: 'success'
-    });
-  };
-
   const handleExportManualJSON = async () => {
     setIsProcessing(true);
     setStatusMsg(null);
@@ -444,7 +588,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       : null;
 
   return (
-    <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
+    <div className="w-full max-w-2xl mx-auto pb-36 animate-fade-in font-body text-slate-100">
       {/* Header Màn hình phẳng cân đối */}
       <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3">
         <div className="w-9 shrink-0 flex items-center justify-start">
@@ -542,39 +686,187 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       <div className="p-4 flex flex-col gap-4">
         {/* PHẦN 1: ĐỒNG BỘ ĐÁM MÂY SUPABASE 2 CHIỀU TỨC THÌ */}
         <div className="bg-slate-900/95 rounded-3xl p-4 border border-emerald-500/25 flex flex-col gap-3.5 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-black text-sm">
-                <Database size={18} />
+          <div className="flex items-start gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-black text-sm shrink-0 mt-0.5">
+              <Database size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-bold text-slate-100">Đồng bộ đám mây Supabase</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold whitespace-nowrap shrink-0 border border-emerald-500/35">
+                  Khuyên dùng
+                </span>
               </div>
-              <div>
-                <div className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                  <span>Đồng bộ đám mây Supabase</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
-                    Khuyên dùng
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  Hoạt động trên mọi thiết bị Web PC & Điện thoại, không lỗi chặn tên miền
-                </div>
+              <div className="text-xs text-slate-400 mt-1 leading-snug">
+                Hoạt động trên mọi thiết bị Web PC & Điện thoại, không lỗi chặn tên miền
               </div>
             </div>
-
-            {isSupabaseConnected && (
-              <button
-                type="button"
-                onClick={handleDisconnectSupabase}
-                className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold px-2.5 py-1 rounded-xl bg-rose-500/10 border border-rose-500/20 cursor-pointer flex items-center gap-1"
-              >
-                <LogOut size={12} />
-                <span>Ngắt</span>
-              </button>
-            )}
           </div>
 
           {/* Nếu chưa kết nối tài khoản / Mã đồng bộ Supabase */}
           {!isSupabaseConnected ? (
-            <div className="flex flex-col gap-3 pt-1">
+            pinPrompt ? (
+              /* Khung Xác thực PIN hoặc Khôi phục PIN khi kết nối máy mới */
+              <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-500/40 flex flex-col gap-3 shadow-xl animate-fade-in">
+                {pinPrompt.mode === 'ENTER_PIN' ? (
+                  <>
+                    <div className="flex items-center gap-2.5 border-b border-white/8 pb-2">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                        <Lock size={16} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold text-white">
+                          Nhập Mã PIN bảo vệ
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Mã đồng bộ <b className="text-emerald-400">{pinPrompt.syncKey}</b> đã được khóa bằng mã PIN
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Mã PIN xác thực:
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showVerifyPin ? 'text' : 'password'}
+                          value={verifyPinInput}
+                          onChange={(e) => setVerifyPinInput(e.target.value)}
+                          placeholder="Nhập mã PIN..."
+                          className="input-ios w-full pr-10 text-sm font-bold tracking-wider"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleConfirmVerifyPin();
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowVerifyPin(!showVerifyPin)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white border-none bg-transparent cursor-pointer p-1"
+                        >
+                          {showVerifyPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPinPrompt({ ...pinPrompt, mode: 'RECOVER_PIN' });
+                          setRecoverAnswerInput('');
+                          setRecoverNewPinInput('');
+                        }}
+                        className="text-xs text-sky-400 hover:underline border-none bg-transparent cursor-pointer font-semibold"
+                      >
+                        Quên mã PIN?
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPinPrompt(null)}
+                          className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmVerifyPin}
+                          disabled={isProcessing}
+                          className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black border-none cursor-pointer hover:bg-emerald-400"
+                        >
+                          {isProcessing ? 'Đang xác thực...' : 'Xác nhận & Kết nối'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* Chế độ KHÔI PHỤC PIN bằng câu hỏi bảo mật */
+                  <>
+                    <div className="flex items-center gap-2.5 border-b border-white/8 pb-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                        <HelpCircle size={16} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold text-white">
+                          Khôi phục mã PIN bằng Câu hỏi bảo mật
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Trả lời đúng câu hỏi đã đặt để tạo mã PIN mới
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-800/80 p-3 rounded-xl border border-white/5 flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                        Câu hỏi bảo mật của bạn:
+                      </span>
+                      <span className="text-xs font-bold text-amber-300">
+                        {pinPrompt.recoveryQuestion || 'Câu hỏi bảo mật đã lưu của bạn'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Câu trả lời của bạn:
+                      </label>
+                      <input
+                        type="text"
+                        value={recoverAnswerInput}
+                        onChange={(e) => setRecoverAnswerInput(e.target.value)}
+                        placeholder="Nhập câu trả lời..."
+                        className="input-ios w-full text-xs"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Mã PIN mới bạn muốn đặt:
+                      </label>
+                      <input
+                        type="password"
+                        value={recoverNewPinInput}
+                        onChange={(e) => setRecoverNewPinInput(e.target.value)}
+                        placeholder="Tối thiểu 4 số/chữ..."
+                        className="input-ios w-full text-xs font-bold"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPinPrompt({ ...pinPrompt, mode: 'ENTER_PIN' })}
+                        className="text-xs text-slate-400 hover:text-white border-none bg-transparent cursor-pointer"
+                      >
+                        ← Quay lại nhập PIN
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPinPrompt(null)}
+                          className="px-3 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleConfirmRecoverPin}
+                          disabled={isProcessing}
+                          className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black border-none cursor-pointer hover:bg-emerald-400"
+                        >
+                          {isProcessing ? 'Đang kiểm tra...' : 'Đặt lại PIN & Kết nối'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 pt-1">
               {/* Chọn chế độ kết nối: Mã Đồng Bộ nhanh vs Email/Mật khẩu */}
               <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-800/80 rounded-xl">
                 <button
@@ -607,13 +899,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     Nhập Mã Đồng Bộ cá nhân (Dùng chung trên cả Máy tính & Điện thoại):
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={sbSyncKeyInput}
-                      onChange={(e) => setSbSyncKeyInput(e.target.value)}
-                      placeholder="VD: thanh2026 hoặc email của bạn..."
-                      className="input-ios flex-1 bg-slate-800 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white"
-                    />
+                    <div className="relative flex-1">
+                      <input
+                        type={showInputSyncKey ? 'text' : 'password'}
+                        value={sbSyncKeyInput}
+                        onChange={(e) => setSbSyncKeyInput(e.target.value)}
+                        placeholder="VD: thanh2026 hoặc email của bạn..."
+                        className="input-ios w-full bg-slate-800 border border-white/10 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowInputSyncKey((prev) => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 border-none bg-transparent cursor-pointer transition-colors"
+                        title={showInputSyncKey ? 'Ẩn mã' : 'Hiện mã'}
+                      >
+                        {showInputSyncKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                     <button
                       type="button"
                       disabled={isProcessing}
@@ -666,17 +968,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </div>
               )}
             </div>
+            )
           ) : (
             /* Trạng thái Đã kết nối Supabase */
             <div className="flex flex-col gap-3 pt-1">
-              <div className="bg-slate-800/80 rounded-2xl p-3 border border-white/8 flex items-center justify-between">
+              <div className="bg-slate-800/80 rounded-2xl p-3 border border-white/8 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
                     <UserCheck size={16} />
                   </div>
-                  <div className="truncate">
-                    <div className="text-xs font-bold text-white truncate">
-                      Mã đồng bộ: <span className="text-emerald-400">{activeEmail || activeSyncKey}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                      <span>Mã đồng bộ:</span>
+                      <span className="text-emerald-400 font-mono tracking-wider font-extrabold">
+                        {showSyncKey ? (activeEmail || activeSyncKey) : '••••••••••••'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSyncKey((prev) => !prev)}
+                        className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 cursor-pointer border-none transition-colors inline-flex items-center"
+                        title={showSyncKey ? 'Ẩn mã đồng bộ' : 'Hiện mã đồng bộ'}
+                      >
+                        {showSyncKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
                     </div>
                     <div className="text-[11px] text-slate-400 truncate">
                       Supabase Cloud • Đồng bộ 2 chiều
@@ -688,34 +1002,214 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </span>
               </div>
 
+              {/* Thẻ Quản lý Bảo mật Mã PIN & Câu hỏi khôi phục */}
+              <div className="bg-slate-800/80 rounded-2xl p-3 border border-white/8 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        hasConfiguredPin
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-amber-500/20 text-amber-400'
+                      }`}
+                    >
+                      <KeyRound size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
+                        <span>Bảo vệ Mã đồng bộ (PIN)</span>
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                            hasConfiguredPin
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}
+                        >
+                          {hasConfiguredPin ? 'Đang bật' : 'Chưa bật'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate">
+                        {hasConfiguredPin
+                          ? `Câu hỏi khôi phục: "${supabaseQuestionSetting?.value || 'Đã cài đặt'}"`
+                          : 'Khóa mã để tránh người khác kết nối trái phép'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSecurityFormOpen(!isSecurityFormOpen);
+                      setFormPin('');
+                      setFormConfirmPin('');
+                      setFormAnswer('');
+                    }}
+                    className={`text-xs font-bold px-3 py-1.5 rounded-xl border cursor-pointer transition-colors shrink-0 ${
+                      hasConfiguredPin
+                        ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-white/10'
+                        : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                    }`}
+                  >
+                    {hasConfiguredPin ? 'Đổi PIN' : '+ Cài đặt PIN'}
+                  </button>
+                </div>
+
+                {/* Form thiết lập / thay đổi mã PIN phẳng */}
+                {isSecurityFormOpen && (
+                  <div className="p-3 bg-slate-900/90 rounded-xl border border-white/10 flex flex-col gap-2.5 animate-fade-in mt-1">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                      <span className="text-xs font-extrabold text-slate-200">
+                        {hasConfiguredPin
+                          ? 'Đổi Mã PIN & Câu hỏi bảo mật'
+                          : 'Thiết lập Mã PIN bảo vệ'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsSecurityFormOpen(false)}
+                        className="text-slate-400 hover:text-white p-1 border-none bg-transparent cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                          Mã PIN mới (≥ 4 số/chữ) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showFormPin ? 'text' : 'password'}
+                            value={formPin}
+                            onChange={(e) => setFormPin(e.target.value)}
+                            placeholder="VD: 123456"
+                            className="input-ios w-full pr-8 text-xs font-bold tracking-wider"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowFormPin(!showFormPin)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white border-none bg-transparent cursor-pointer p-0.5"
+                          >
+                            {showFormPin ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                          Nhập lại mã PIN *
+                        </label>
+                        <input
+                          type={showFormPin ? 'text' : 'password'}
+                          value={formConfirmPin}
+                          onChange={(e) => setFormConfirmPin(e.target.value)}
+                          placeholder="Nhập lại PIN"
+                          className="input-ios w-full text-xs font-bold tracking-wider"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                        Câu hỏi bảo mật (Để khôi phục nếu quên PIN) *
+                      </label>
+                      <CustomSelect
+                        value={formQuestion}
+                        onChange={setFormQuestion}
+                        options={PREDEFINED_SECURITY_QUESTIONS.map((q) => ({
+                          value: q,
+                          label: q
+                        }))}
+                        triggerClassName="text-xs py-1.5 px-2 bg-slate-800"
+                      />
+                    </div>
+
+                    {formQuestion === 'Tự nhập câu hỏi riêng của bạn...' && (
+                      <input
+                        type="text"
+                        value={formCustomQuestion}
+                        onChange={(e) => setFormCustomQuestion(e.target.value)}
+                        placeholder="Nhập câu hỏi bảo mật riêng của bạn..."
+                        className="input-ios w-full text-xs"
+                      />
+                    )}
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                        Câu trả lời bảo mật của bạn *
+                      </label>
+                      <input
+                        type="text"
+                        value={formAnswer}
+                        onChange={(e) => setFormAnswer(e.target.value)}
+                        placeholder="VD: 8899 hoặc tên thú cưng..."
+                        className="input-ios w-full text-xs font-semibold text-emerald-400"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      {hasConfiguredPin ? (
+                        <button
+                          type="button"
+                          onClick={handleRemovePin}
+                          className="text-[11px] text-rose-400 hover:underline border-none bg-transparent cursor-pointer"
+                        >
+                          Gỡ bỏ mã PIN
+                        </button>
+                      ) : <span />}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsSecurityFormOpen(false)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold border-none cursor-pointer"
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveSecuritySettings}
+                          disabled={isProcessing}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-500 text-slate-950 text-xs font-bold border-none cursor-pointer hover:bg-emerald-400"
+                        >
+                          Lưu cài đặt PIN
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Nút chính: Sao lưu ngay lên Supabase */}
               <button
                 type="button"
                 onClick={handleBackupToSupabase}
                 disabled={isProcessing}
-                className="touch-btn w-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold p-3.5 rounded-2xl flex items-center justify-between cursor-pointer shadow-lg shadow-emerald-950/40 border border-emerald-400/30 transition-all"
+                className="touch-btn w-full bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-teal-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-500/35 hover:border-emerald-500/50 p-3.5 rounded-2xl flex items-center justify-between cursor-pointer shadow-lg shadow-emerald-950/20 transition-all text-left"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
                     {isProcessing ? (
-                      <RotateCw size={20} className="animate-spin text-white" />
+                      <RotateCw size={20} className="animate-spin text-emerald-400" />
                     ) : (
-                      <CloudUpload size={20} className="text-white" />
+                      <CloudUpload size={20} className="text-emerald-400" />
                     )}
                   </div>
-                  <div className="text-left">
-                    <div className="text-xs font-black text-white uppercase tracking-wide">
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-emerald-400 uppercase tracking-wide">
                       Sao lưu ngay lên Supabase Cloud
                     </div>
-                    <div className="text-[11px] text-emerald-100 mt-0.5">
+                    <div className="text-[11px] text-slate-300 mt-0.5 truncate">
                       Đẩy toàn bộ ví, hạng mục, sổ nợ & giao dịch lên đám mây
                     </div>
                     {lastSupabaseBackupVal && (
-                      <div className="text-[10px] text-emerald-200 font-medium mt-0.5">
+                      <div className="text-[10px] text-emerald-400/80 font-medium mt-0.5">
                         Sao lưu gần nhất: {formatFriendlyDate(lastSupabaseBackupVal)}
                       </div>
                     )}
                   </div>
+                </div>
+                <div className="w-6 h-6 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0 ml-2">
+                  <ChevronRight size={14} />
                 </div>
               </button>
 
@@ -781,80 +1275,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   />
                 </button>
               </div>
+
+              {/* Nút ngắt kết nối dạng thanh ngang dài phía dưới */}
+              <button
+                type="button"
+                onClick={handleDisconnectSupabase}
+                className="touch-btn w-full py-2.5 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 text-rose-400 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors mt-1"
+              >
+                <LogOut size={14} />
+                <span>Ngắt kết nối Supabase Cloud</span>
+              </button>
             </div>
           )}
         </div>
 
-        {/* PHẦN 2: MÀN HÌNH MỞ APP MẶC ĐỊNH */}
-        <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-3">
-          <div className="flex items-center gap-2.5">
-            <Smartphone size={20} className="text-indigo-400" />
-            <div>
-              <div className="text-sm font-bold text-slate-100">
-                Màn hình mở app mặc định
-              </div>
-              <div className="text-xs text-slate-400 mt-0.5">
-                Chọn màn hình phẳng xuất hiện đầu tiên khi mở ứng dụng
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-1">
-            <CustomSelect
-              value={defaultStartTab}
-              onChange={handleSelectDefaultStartTab}
-              options={[
-                { value: 'overview', label: '📊 Tổng quan (Sổ giao dịch)' },
-                { value: 'editor', label: '➕ Ghi giao dịch mới' },
-                { value: 'wallets', label: '🏦 Tài khoản & Ví tiền' },
-                { value: 'analytics', label: '📈 Báo cáo phân tích' },
-                { value: 'more', label: '⚙️ Tiện ích khác' }
-              ]}
-              triggerClassName="text-xs font-bold bg-slate-800"
-            />
-          </div>
-        </div>
-
-        {/* PHẦN 3: TÍNH NĂNG MỞ RỘNG (TÀI XẾ GRABBIKE) */}
-        <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                <MotorcycleIcon size={22} strokeWidth={2.2} />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-bold text-slate-100">
-                    Nghiệp vụ Tài xế GrabBike
-                  </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
-                    Mở rộng
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">
-                  Bật nút nhập nhanh cuốc xe, tự động tách vốn lưu động & thu nhập ròng
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleToggleGrabDriverMode}
-              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer p-0.5 border-none shrink-0 ${
-                isGrabModeEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-              }`}
-              title={isGrabModeEnabled ? 'Đang Bật' : 'Đang Tắt'}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white transition-transform shadow-md ${
-                  isGrabModeEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* PHẦN 4: SAO LƯU & XUẤT TỆP NGOẠI TUYẾN (JSON & EXCEL) */}
+        {/* PHẦN 2: SAO LƯU & XUẤT TỆP NGOẠI TUYẾN (JSON & EXCEL) */}
         <div className="bg-slate-900/90 rounded-2xl p-4 border border-white/8 flex flex-col gap-2.5">
           <div>
             <div className="text-xs font-bold text-slate-300 mb-0.5 tracking-wider uppercase">
@@ -947,36 +1382,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <span>Xuất tệp Excel (.xlsx)</span>
             </button>
           </div>
-        </div>
-
-        {/* PHẦN 4: THÔNG TIN BỘ NHỚ THIẾT BỊ */}
-        <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-white/8 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck
-              size={18}
-              className={isPersistent ? 'text-emerald-400' : 'text-amber-400'}
-            />
-            <div className="text-xs font-bold text-slate-100">
-              Bộ nhớ thiết bị (IndexedDB Local-First)
-            </div>
-          </div>
-
-          <div className="flex gap-4 pt-1 text-xs text-slate-300">
-            <div>
-              Giao dịch: <b className="text-white">{txCount}</b>
-            </div>
-            <div>
-              Ví: <b className="text-white">{walletCount}</b>
-            </div>
-            <div>
-              Hạng mục: <b className="text-white">{categoryCount}</b>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-1 text-center text-slate-500 text-[11px] flex items-center justify-center gap-1.5">
-          <Sparkles size={13} className="text-emerald-400" />
-          <span>Sổ Thu Chi V3.0 • Flat UI • Supabase Cloud Sync</span>
         </div>
       </div>
     </div>

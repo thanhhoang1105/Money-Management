@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import {
-  X,
+  ArrowLeft,
   Settings2,
   CreditCard,
   Banknote,
@@ -591,59 +591,53 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-    >
-      <div className="w-full max-w-lg max-h-[92dvh] sm:max-h-[85dvh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-white/10 shadow-2xl overflow-hidden">
-        {/* HEADER MODAL */}
-        <div className="p-4 border-b border-white/8 flex items-center justify-between bg-slate-950/70 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-              <MotorcycleIcon size={22} strokeWidth={2.2} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-extrabold text-slate-100 uppercase tracking-wide m-0">
-                  Nghiệp Vụ GrabBike
-                </h2>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Tài xế 4.0
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 m-0 mt-0.5">
-                Tự động tách vốn lưu động & thu nhập ròng
-              </p>
-            </div>
-          </div>
+    <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
+      {/* 1. HEADER BAR PHẲNG CÓ NÚT BACK */}
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3 sticky top-0 z-20 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors shrink-0"
+          title="Quay lại"
+        >
+          <ArrowLeft size={18} />
+        </button>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setIsConfigOpen(!isConfigOpen)}
-              className={`p-2 rounded-xl border cursor-pointer transition-colors ${
-                isConfigOpen
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
-                  : 'bg-slate-800 border-white/8 text-slate-400 hover:text-white'
-              }`}
-              title="Cài đặt 2 ví app Grab"
-            >
-              <Settings2 size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="p-2 rounded-xl bg-slate-800 border border-white/8 text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X size={16} />
-            </button>
+        <div className="flex-1 flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <MotorcycleIcon size={20} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h2 className="text-sm font-extrabold text-slate-100 uppercase tracking-wide m-0 truncate">
+                Nghiệp Vụ GrabBike
+              </h2>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                Tài xế 4.0
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 m-0 mt-0.5 truncate">
+              Tự động tách vốn lưu động & thu nhập ròng
+            </p>
           </div>
         </div>
 
-        {/* NỘI DUNG CUỘN CHÍNH */}
-        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-3.5">
+        <button
+          type="button"
+          onClick={() => setIsConfigOpen(!isConfigOpen)}
+          className={`touch-btn w-9 h-9 rounded-xl border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${
+            isConfigOpen
+              ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
+              : 'bg-slate-800/80 border-white/10 text-slate-300 hover:text-white'
+          }`}
+          title="Cài đặt 2 ví app Grab"
+        >
+          <Settings2 size={16} />
+        </button>
+      </div>
+
+      {/* 2. NỘI DUNG CUỘN CHÍNH */}
+      <div className="p-4 flex flex-col gap-3.5">
           {/* Thông báo phản hồi (Glassmorphism) */}
           {feedback && (
             <Toast
@@ -784,7 +778,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
               }`}
             >
               <Banknote size={15} />
-              <span>Khách trả trực tiếp</span>
+              <span>Tiền mặt</span>
             </button>
 
             <button
@@ -1595,7 +1589,6 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
             </>
           )}
         </div>
-      </div>
 
       {/* Bàn phím số Numpad ảo Web cho thiết bị di động */}
       {activeNumpadField && numpadInfo && (

@@ -185,10 +185,17 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
     if (!brand) return;
     setIcon(brand.id);
     setColor(brand.primaryColor);
-    if (brand.category === 'BANK') setWalletType('BANK');
-    else if (brand.category === 'EWALLET') setWalletType('E_WALLET');
-    else if (brand.category === 'CARD') setWalletType('CREDIT');
-    else setWalletType('CASH');
+    if (brand.id === 'ewallet:spaylater') {
+      setWalletType('CREDIT');
+    } else if (brand.category === 'BANK') {
+      setWalletType('BANK');
+    } else if (brand.category === 'EWALLET') {
+      setWalletType('E_WALLET');
+    } else if (brand.category === 'CARD') {
+      setWalletType('CREDIT');
+    } else {
+      setWalletType('CASH');
+    }
 
     // Tự động gợi ý tên ngân hàng/ví điện tử nếu ô tên đang trống hoặc đang là tên của 1 ngân hàng khác
     const isCurrentNameDefaultOrBrand =
@@ -199,7 +206,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
           b.name.toLowerCase() === name.trim().toLowerCase()
       );
     if (isCurrentNameDefaultOrBrand) {
-      setName(brand.shortName);
+      setName(brand.id === 'ewallet:spaylater' ? 'Shopee SPayLater' : brand.shortName);
     }
   };
 
@@ -411,7 +418,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                   { value: 'BANK', label: '🏦 Tài khoản Ngân hàng' },
                   { value: 'E_WALLET', label: '📱 Ví điện tử (MoMo, ZaloPay...)' },
                   { value: 'CASH', label: '💵 Tiền mặt' },
-                  { value: 'CREDIT', label: '💳 Thẻ tín dụng / Quốc tế' }
+                  { value: 'CREDIT', label: '💳 Thẻ tín dụng / Mua trước trả sau (SPayLater...)' }
                 ]}
                 triggerClassName="bg-slate-800 font-medium"
               />
