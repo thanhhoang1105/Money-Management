@@ -40,9 +40,9 @@ import {
   EyeOff,
   PlusCircle,
   Edit2,
-  History,
-  Car
+  History
 } from 'lucide-react';
+import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 
 const EMPTY_CATEGORIES: Category[] = [];
@@ -976,8 +976,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   className="touch-btn h-11 px-3.5 rounded-xl border flex items-center justify-between text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all col-span-2 bg-gradient-to-r from-emerald-500/20 via-slate-800 to-teal-500/15 border-emerald-500/40 text-emerald-300 hover:text-white"
                 >
                   <div className="flex items-center gap-2">
-                    <Car size={16} className="text-emerald-400 shrink-0" strokeWidth={2.5} />
-                    <span>Nghiệp vụ Chạy Grab (Tự động chia tiền mặt & ví tín dụng)</span>
+                    <MotorcycleIcon size={18} className="text-emerald-400 shrink-0" strokeWidth={2.2} />
+                    <span>Nghiệp vụ Chạy GrabBike (Tự động chia tiền mặt & tín dụng)</span>
                   </div>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">
                     Mở ➔
@@ -1031,7 +1031,13 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
           </div>
 
           <div
-            className={`font-heading text-4xl font-black tracking-tight leading-none ${
+            className={`font-heading ${
+              formatVND(currentComputedAmount).length > 14
+                ? 'text-2xl'
+                : formatVND(currentComputedAmount).length > 10
+                ? 'text-3xl'
+                : 'text-4xl'
+            } font-black tracking-tight leading-none truncate ${
               type === 'EXPENSE' || type === 'PAY_DEBT'
                 ? 'text-rose-400'
                 : type === 'INCOME' || type === 'COLLECT_DEBT'
@@ -1354,6 +1360,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                           }
                         }}
                         placeholder="Nhập tag..."
+                        maxLength={25}
                         className="bg-transparent border-none text-white text-xs outline-none min-w-[90px] max-w-[150px] py-0.5"
                         autoFocus
                       />
@@ -1494,6 +1501,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
               <input
                 type="text"
+                maxLength={50}
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
                 placeholder="Nhập tên người giao dịch (VD: Anh Nam, Chị Lan...)"
@@ -1530,6 +1538,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
+                      maxLength={50}
                       value={newContactInput}
                       onChange={(e) => setNewContactInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -1628,6 +1637,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
             <div>
               <input
                 type="text"
+                maxLength={100}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder={

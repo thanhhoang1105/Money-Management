@@ -8,25 +8,31 @@ import { formatVND } from '../utils/formatters';
 interface NumpadBottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  type: TransactionType;
+  type?: TransactionType;
   amountStr: string;
   computedAmount: number;
   hasOperator: boolean;
   onKeyPress: (key: string) => void;
   currentWalletBalance?: number;
   adjustDiff?: number;
+  badgeLabel?: string;
+  badgeStyle?: string;
+  amountColor?: string;
 }
 
 export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   isOpen,
   onClose,
-  type,
+  type = 'EXPENSE',
   amountStr,
   computedAmount,
   hasOperator,
   onKeyPress,
   currentWalletBalance,
-  adjustDiff = 0
+  adjustDiff = 0,
+  badgeLabel,
+  badgeStyle,
+  amountColor
 }) => {
   useEffect(() => {
     if (!isOpen) return;
@@ -62,6 +68,7 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   if (!isOpen || typeof document === 'undefined') return null;
 
   const getTypeLabel = () => {
+    if (badgeLabel) return badgeLabel;
     switch (type) {
       case 'EXPENSE':
         return 'Chi tiền';
@@ -85,6 +92,7 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   };
 
   const getTypeBadgeStyle = () => {
+    if (badgeStyle) return badgeStyle;
     switch (type) {
       case 'EXPENSE':
       case 'PAY_DEBT':
@@ -104,6 +112,7 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   };
 
   const getAmountColor = () => {
+    if (amountColor) return amountColor;
     switch (type) {
       case 'EXPENSE':
       case 'PAY_DEBT':
@@ -123,6 +132,18 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   };
 
   const getSaveButtonStyle = () => {
+    if (amountColor?.includes('amber') || badgeStyle?.includes('amber')) {
+      return 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-500/30';
+    }
+    if (amountColor?.includes('emerald') || badgeStyle?.includes('emerald')) {
+      return 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-emerald-500/30';
+    }
+    if (amountColor?.includes('purple') || badgeStyle?.includes('purple')) {
+      return 'bg-gradient-to-r from-purple-500 to-purple-600 shadow-purple-500/30';
+    }
+    if (amountColor?.includes('sky') || badgeStyle?.includes('sky')) {
+      return 'bg-gradient-to-r from-sky-500 to-sky-600 shadow-sky-500/30';
+    }
     switch (type) {
       case 'EXPENSE':
       case 'PAY_DEBT':

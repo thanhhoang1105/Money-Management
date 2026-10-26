@@ -1,5 +1,5 @@
 // src/components/TransactionHistoryView.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Transaction, Category, Wallet, EventTrip } from '../types';
@@ -8,6 +8,8 @@ import {
   deleteTransaction,
   SYSTEM_ADJUSTMENT_CATEGORY_ID
 } from '../services/transactionService';
+import { GRAB_FEE_CAT_ID, GRAB_INCOME_CAT_ID } from '../db/seed';
+import { migrateLegacyGrabTransactions } from '../services/grabService';
 import { CategoryIcon } from './CategoryIcon';
 import { BankLogo, detectBankBrand } from './BankLogo';
 import { CustomSelect } from './ui/CustomSelect';
@@ -69,6 +71,11 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string>('');
+
+  // Tự động chuẩn hóa cuốc Grab cũ sang Vốn lưu động & Thu nhập ròng
+  useEffect(() => {
+    migrateLegacyGrabTransactions().catch(() => {});
+  }, []);
 
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -651,121 +658,197 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
                           }`}
                         >
                           {/* Cột Trái: Icon & Tên Danh mục / Ghi chú */}
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div
-                              className="cat-badge shrink-0"
-                              style={{
-                                backgroundColor:
-                                  tx.type === 'TRANSFER'
-                                    ? '#3B82F6'
-                                    : cat?.color || '#6B7280'
-                              }}
-                            >
-                              <CategoryIcon
-                                name={
-                                  tx.type === 'TRANSFER'
-                                    ? 'ArrowRightLeft'
-                                    : cat?.icon || 'CircleDot'
+                          {(() => {
+                            const isGrabFee =
+                              tx.categoryId === GRAB_FEE_CAT_ID ||
+                              (tx.note && tx.note.toLowerCase().includes('chiết khấu phí grab'));
+                            const isGrabIncome =
+                              tx.categoryId === GRAB_INCOME_CAT_ID ||
+                              (tx.note && (tx.note.toLowerCase().includes('thu nhập chạy grab') || tx.note.toLowerCase().includes('[grab')));
+
+                            const badgeColor =
+                              tx.type === 'TRANSFER'
+                                ? '#3B82F6'
+                                : isGrabFee
+                                ? '#EF4444'
+                                : isGrabIncome
+                                ? '#00B14F'
+                                : cat?.color || '#6B7280';
+
+                            const badgeIcon =
+                              tx.type === 'TRANSFER'
+                                ? 'ArrowRightLeft'
+                                : isGrabFee
+                                ? 'Percent'
+                                : isGrabIncome
+                                ? 'Motorcycle'
+                                : cat?.icon || 'CircleDot';
+
+                            const titleText =
+                              tx.type === 'TRANSFER'
+                                ? 'Chuyển ví'
+                                : tx.type === 'LEND'
+                                ? 'Cho vay'
+                                : tx.type === 'BORROW'
+                                ? 'Đi vay'
+                                : tx.type === 'COLLECT_DEBT'
+                                ? 'Thu nợ'
+                                : tx.type === 'PAY_DEBT'
+                                ? 'Trả nợ'
+                                : tx.type === 'ADJUST'
+                                ? 'Điều chỉnh số dư'
+                                : isGrabFee
+                                ? 'Phí dịch vụ Grab'
+                                : isGrabIncome
+                                ? 'Thu nhập GrabBike'
+                                : cat?.name || 'Chưa phân loại';
+
+                            // Rút gọn thông minh tên ví & ghi chú để hiển thị đầy đủ, không bị cắt dở dang
+                            const formatWalletShort = (name?: string) => {
+                              if (!name) return '';
+                              return name.replace(/^Ví\s+/i, '').trim();
+                            };
+
+                            const parseNoteDetails = (rawNote?: string, txType?: string) => {
+                              if (!rawNote?.trim()) return { tags: [] as string[], text: '' };
+
+                              const parts = rawNote.split(',').map((p) => p.trim()).filter(Boolean);
+                              const tags: string[] = [];
+                              const remaining: string[] = [];
+
+                              for (const p of parts) {
+                                if (p.startsWith('#')) {
+                                  tags.push(p.replace(/^#+/, ''));
+                                } else if (
+                                  [
+                                    'GrabBike',
+                                    'GrabCar',
+                                    'GrabFood',
+                                    'GrabExpress',
+                                    'Tiền tip Grab',
+                                    'Thưởng cuốc',
+                                    'Tiền tip thêm'
+                                  ].includes(p)
+                                ) {
+                                  tags.push(p);
+                                } else {
+                                  remaining.push(p);
                                 }
-                                size={20}
-                                color="#ffffff"
-                              />
-                            </div>
+                              }
 
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-sm font-semibold text-slate-100 truncate">
-                                  {tx.type === 'TRANSFER'
-                                    ? 'Chuyển ví'
-                                    : tx.type === 'LEND'
-                                    ? 'Cho vay'
-                                    : tx.type === 'BORROW'
-                                    ? 'Đi vay'
-                                    : tx.type === 'COLLECT_DEBT'
-                                    ? 'Thu nợ'
-                                    : tx.type === 'PAY_DEBT'
-                                    ? 'Trả nợ'
-                                    : tx.type === 'ADJUST'
-                                    ? 'Điều chỉnh số dư'
-                                    : cat?.name || 'Chưa phân loại'}
-                                </span>
-                                {tx.contactName && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-0.5">
-                                    <UserCheck size={10} />
-                                    {tx.contactName}
-                                  </span>
-                                )}
-                                {event && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium flex items-center gap-0.5">
-                                    <Plane size={10} />
-                                    {event.name}
-                                  </span>
-                                )}
-                                {tx.excludeFromReport && (
-                                  <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 font-medium flex items-center gap-0.5"
-                                    title="Không tính vào báo cáo Thu/Chi"
-                                  >
-                                    <EyeOff size={10} />
-                                    Chi hộ
-                                  </span>
-                                )}
-                                {isSystemAdj && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
-                                    Hệ thống
-                                  </span>
-                                )}
-                              </div>
+                              let clean = remaining.join(', ');
 
-                              <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 min-w-0">
-                                {/* Ví xuất hiện ở phía trước */}
-                                <span className="inline-flex items-center gap-1.5 shrink-0 max-w-[160px] sm:max-w-[220px] text-slate-300 font-medium">
-                                  {walletBrand && (
-                                    <div className="w-4 h-4 shrink-0 rounded-md overflow-hidden flex items-center justify-center">
-                                      <BankLogo brand={walletBrand} size={16} />
+                              if (txType === 'ADJUST' || clean.includes('Điều chỉnh số dư ví')) {
+                                return { tags, text: 'Cân đối khớp số dư thực tế' };
+                              }
+
+                              clean = clean
+                                .replace(
+                                  /^\[(Thu nhập Grab|Vốn lưu động cuốc Grab|Vốn lưu động Grab|Grab Thẻ|Grab Tiền mặt)\]\s*/i,
+                                  ''
+                                )
+                                .replace(/\s*\(Vào [^)]+\)$/i, '')
+                                .trim();
+
+                              if (
+                                clean.includes('Hoàn vốn tín dụng') ||
+                                clean.includes('Luân chuyển ví tín dụng sang')
+                              ) {
+                                clean = 'Hoàn vốn tín dụng từ khách trả tiền mặt';
+                              }
+
+                              return { tags, text: clean };
+                            };
+
+                            const noteInfo = parseNoteDetails(tx.note, tx.type);
+
+                            return (
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div
+                                  className="cat-badge shrink-0"
+                                  style={{ backgroundColor: badgeColor }}
+                                >
+                                  <CategoryIcon
+                                    name={badgeIcon}
+                                    size={20}
+                                    color="#ffffff"
+                                  />
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-sm font-semibold text-slate-100 truncate">
+                                      {titleText}
+                                    </span>
+                                    {tx.contactName && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-0.5">
+                                        <UserCheck size={10} />
+                                        {tx.contactName}
+                                      </span>
+                                    )}
+                                    {event && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium flex items-center gap-0.5">
+                                        <Plane size={10} />
+                                        {event.name}
+                                      </span>
+                                    )}
+                                    {tx.excludeFromReport && (
+                                      <span
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 font-medium flex items-center gap-0.5"
+                                        title="Không tính vào báo cáo Thu/Chi"
+                                      >
+                                        <EyeOff size={10} />
+                                        Chi hộ
+                                      </span>
+                                    )}
+                                    {isSystemAdj && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
+                                        Hệ thống
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Hàng 2: Tên ví & Thẻ Tag */}
+                                  <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap min-w-0">
+                                    <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
+                                      {walletBrand && (
+                                        <div className="w-4 h-4 shrink-0 rounded-md overflow-hidden flex items-center justify-center">
+                                          <BankLogo brand={walletBrand} size={16} />
+                                        </div>
+                                      )}
+                                      <span>
+                                        {tx.type === 'TRANSFER'
+                                          ? `${formatWalletShort(wallet?.name) || 'Ví gửi'} ➔ ${
+                                              formatWalletShort(toWallet?.name) || 'Ví nhận'
+                                            }${
+                                              tx.transferFee
+                                                ? ` (Phí: ${formatVND(tx.transferFee)})`
+                                                : ''
+                                            }`
+                                          : wallet?.name || 'Ví'}
+                                      </span>
+                                    </span>
+
+                                    {noteInfo.tags.map((tag, idx) => (
+                                      <span
+                                        key={idx}
+                                        className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-slate-800 text-sky-300 border border-white/8 shrink-0"
+                                      >
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+
+                                  {/* Hàng 3: Ghi chú chi tiết (nếu có) - Hiển thị đầy đủ, không bị cắt dở dang */}
+                                  {noteInfo.text && (
+                                    <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 break-words leading-tight">
+                                      {noteInfo.text}
                                     </div>
                                   )}
-                                  <span className="truncate">
-                                    {tx.type === 'TRANSFER'
-                                      ? `${wallet?.name || 'Ví gửi'} ➔ ${
-                                          toWallet?.name || 'Ví nhận'
-                                        }${
-                                          tx.transferFee
-                                            ? ` (Phí: ${formatVND(tx.transferFee)})`
-                                            : ''
-                                        }`
-                                      : wallet?.name || 'Ví'}
-                                  </span>
-                                </span>
-
-                                {/* Ghi chú & Thẻ tag xuất hiện ở phía sau */}
-                                {tx.note ? (
-                                  <>
-                                    <span className="text-slate-600 shrink-0">•</span>
-                                    <div className="flex items-center gap-1.5 truncate min-w-0 flex-1">
-                                      {tx.note.split(',').map((part, idx) => {
-                                        const cleanTag = part.trim();
-                                        if (!cleanTag) return null;
-                                        const isShortTag = cleanTag.length <= 25 && !cleanTag.startsWith('[');
-                                        return (
-                                          <span
-                                            key={idx}
-                                            className={`inline-flex items-center text-[10px] truncate shrink-0 max-w-[150px] ${
-                                              isShortTag
-                                                ? 'font-medium px-1.5 py-0.5 rounded-md bg-slate-800 text-sky-300 border border-white/8'
-                                                : 'text-slate-400'
-                                            }`}
-                                          >
-                                            {isShortTag ? `#${cleanTag}` : cleanTag}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  </>
-                                ) : null}
-                              </div>
                             </div>
                           </div>
+                        );
+                      })()}
 
                           {/* Cột Phải: Số tiền & Giờ */}
                           <div className="text-right shrink-0 ml-3">

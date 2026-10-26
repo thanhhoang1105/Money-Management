@@ -57,11 +57,28 @@ export function App() {
   const [currentTab, setCurrentTab] = useState<TabType>(
     defaultInitialTab === 'editor' ? 'overview' : (defaultInitialTab as TabType)
   );
+  const [tabResetSignals, setTabResetSignals] = useState<Record<TabType, number>>({
+    overview: 0,
+    wallets: 0,
+    analytics: 0,
+    more: 0
+  });
   // Nếu màn mặc định là 'editor' (Ghi giao dịch), mở thẳng màn hình phẳng Ghi Giao Dịch
   const [isEditorOpen, setIsEditorOpen] = useState(defaultInitialTab === 'editor');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
+
+  const handleSelectTab = (tab: TabType) => {
+    setCurrentTab(tab);
+    setIsEditorOpen(false);
+    setIsSettingsOpen(false);
+    setEditingTransaction(null);
+    setTabResetSignals((prev) => ({
+      ...prev,
+      [tab]: prev[tab] + 1
+    }));
+  };
 
   // Đổi màn hình mặc định khi mở app
   const handleChangeDefaultTab = (tab: AppStartupTab) => {
@@ -218,11 +235,7 @@ export function App() {
           <nav className="hidden md:flex items-center gap-1 bg-slate-800/80 p-1 rounded-2xl border border-white/6 shadow-inner">
             <button
               type="button"
-              onClick={() => {
-                setCurrentTab('overview');
-                setIsEditorOpen(false);
-                setIsSettingsOpen(false);
-              }}
+              onClick={() => handleSelectTab('overview')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 !isEditorOpen && !isSettingsOpen && currentTab === 'overview'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
@@ -235,11 +248,7 @@ export function App() {
 
             <button
               type="button"
-              onClick={() => {
-                setCurrentTab('wallets');
-                setIsEditorOpen(false);
-                setIsSettingsOpen(false);
-              }}
+              onClick={() => handleSelectTab('wallets')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 !isEditorOpen && !isSettingsOpen && currentTab === 'wallets'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
@@ -252,11 +261,7 @@ export function App() {
 
             <button
               type="button"
-              onClick={() => {
-                setCurrentTab('analytics');
-                setIsEditorOpen(false);
-                setIsSettingsOpen(false);
-              }}
+              onClick={() => handleSelectTab('analytics')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 !isEditorOpen && !isSettingsOpen && currentTab === 'analytics'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
@@ -269,11 +274,7 @@ export function App() {
 
             <button
               type="button"
-              onClick={() => {
-                setCurrentTab('more');
-                setIsEditorOpen(false);
-                setIsSettingsOpen(false);
-              }}
+              onClick={() => handleSelectTab('more')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 !isEditorOpen && !isSettingsOpen && currentTab === 'more'
                   ? 'bg-emerald-500/20 text-emerald-400 shadow-sm border border-emerald-500/30'
@@ -416,13 +417,19 @@ export function App() {
                 <TransactionListTab
                   onEditTransaction={handleEditTransaction}
                   onOpenQuickAdd={handleOpenQuickAdd}
+                  resetSignal={tabResetSignals.overview}
                 />
               )}
 
-              {currentTab === 'wallets' && <WalletsTab />}
+              {currentTab === 'wallets' && (
+                <WalletsTab resetSignal={tabResetSignals.wallets} />
+              )}
 
               {currentTab === 'analytics' && (
-                <AnalyticsTab onEditTransaction={handleEditTransaction} />
+                <AnalyticsTab
+                  onEditTransaction={handleEditTransaction}
+                  resetSignal={tabResetSignals.analytics}
+                />
               )}
 
               {currentTab === 'more' && (
@@ -434,6 +441,7 @@ export function App() {
                   onEditTransaction={handleEditTransaction}
                   defaultInitialTab={defaultInitialTab}
                   onChangeDefaultTab={handleChangeDefaultTab}
+                  resetSignal={tabResetSignals.more}
                 />
               )}
             </>
@@ -445,12 +453,7 @@ export function App() {
       <BottomNav
         currentTab={currentTab}
         isEditorOpen={isEditorOpen}
-        onSelectTab={(tab) => {
-          setCurrentTab(tab);
-          setIsEditorOpen(false);
-          setIsSettingsOpen(false);
-          setEditingTransaction(null);
-        }}
+        onSelectTab={handleSelectTab}
         onOpenQuickAdd={() => {
           handleOpenQuickAdd();
         }}

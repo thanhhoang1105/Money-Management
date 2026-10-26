@@ -8,13 +8,15 @@ interface DatePickerProps {
   onChange: (value: string) => void;
   label?: string;
   className?: string;
+  compact?: boolean;
 }
 
 export const DatePicker: React.FC<DatePickerProps> = ({
   value,
   onChange,
   label = 'Ngày ghi chép',
-  className = ''
+  className = '',
+  compact = false
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -76,25 +78,42 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button
-          type="button"
-          className={`relative p-3 rounded-2xl bg-slate-900 border border-white/8 hover:border-sky-400/50 flex items-center justify-between text-left transition-all cursor-pointer outline-none focus:ring-2 focus:ring-sky-500/40 ${className}`}
-        >
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              {label}
+        {compact ? (
+          <button
+            type="button"
+            className={`h-11 px-3 rounded-2xl bg-slate-900 border border-white/8 hover:border-sky-400/50 flex items-center justify-between text-left transition-all cursor-pointer outline-none focus:ring-2 focus:ring-sky-500/40 w-full min-w-0 ${className}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <CalendarIcon size={15} className="text-sky-400 shrink-0" />
+              <div className="truncate text-xs font-bold text-white">
+                {formatDisplayDate(value)}
+              </div>
             </div>
-            <div className="text-xs font-bold text-white mt-0.5">
-              {formatDisplayDate(value)}
+            <span className="text-[10px] text-sky-400 font-medium ml-1 shrink-0">
+              {value === todayStr ? 'Hôm nay' : value === yesterdayStr ? 'Hôm qua' : 'Đổi'}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`relative p-3 rounded-2xl bg-slate-900 border border-white/8 hover:border-sky-400/50 flex items-center justify-between text-left transition-all cursor-pointer outline-none focus:ring-2 focus:ring-sky-500/40 ${className}`}
+          >
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {label}
+              </div>
+              <div className="text-xs font-bold text-white mt-0.5">
+                {formatDisplayDate(value)}
+              </div>
+              <div className="text-[10px] text-sky-400 font-medium mt-0.5">
+                {value === todayStr ? 'Hôm nay' : value === yesterdayStr ? 'Hôm qua' : 'Bấm để đổi'}
+              </div>
             </div>
-            <div className="text-[10px] text-sky-400 font-medium mt-0.5">
-              {value === todayStr ? 'Hôm nay' : value === yesterdayStr ? 'Hôm qua' : 'Bấm để đổi'}
+            <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0 ml-1.5 shadow-sm">
+              <CalendarIcon size={16} />
             </div>
-          </div>
-          <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0 ml-1.5 shadow-sm">
-            <CalendarIcon size={16} />
-          </div>
-        </button>
+          </button>
+        )}
       </Popover.Trigger>
 
       <Popover.Portal>

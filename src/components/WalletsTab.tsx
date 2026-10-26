@@ -41,11 +41,24 @@ const WALLET_COLORS = [
   '#6366F1'
 ];
 
-export const WalletsTab: React.FC = () => {
+interface WalletsTabProps {
+  resetSignal?: number;
+}
+
+export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
 
   const [viewMode, setViewMode] = useState<'LIST' | 'CREATE' | 'EDIT' | 'ADJUST'>('LIST');
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+
+  // Lắng nghe tín hiệu từ menu điều hướng để trở về danh sách ví chính
+  React.useEffect(() => {
+    if (resetSignal !== undefined && resetSignal > 0) {
+      setViewMode('LIST');
+      setSelectedWallet(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [resetSignal]);
 
   // Form states
   const [name, setName] = useState('');

@@ -17,7 +17,6 @@ export const GRAB_SETTING_PHYSICAL_CASH_WALLET = 'grab_physical_cash_wallet_id';
 export interface GrabWalletsConfig {
   creditWalletId: string;
   grabCashWalletId: string;
-  physicalCashWalletId: string;
   isReady: boolean;
 }
 
@@ -31,14 +30,20 @@ export async function ensureGrabCategories(): Promise<void> {
     if (!incomeCat) {
       await db.categories.put({
         id: GRAB_INCOME_CAT_ID,
-        name: 'Thu nhập chạy Grab',
+        name: 'Thu nhập GrabBike',
         type: 'INCOME',
-        icon: 'Car',
+        icon: 'Motorcycle',
         color: '#00B14F',
-        quickTags: ['Cuốc GrabBike', 'Cuốc GrabCar', 'Cuốc GrabFood', 'Tiền tip Grab', 'Thưởng cuốc'],
+        quickTags: ['Cuốc GrabBike', 'Cuốc GrabFood', 'Cuốc GrabExpress', 'Tiền tip Grab', 'Thưởng cuốc'],
         isDefault: true,
         isStarred: true,
         createdAt: now,
+        updatedAt: now
+      });
+    } else if (incomeCat.icon !== 'Motorcycle' || incomeCat.name !== 'Thu nhập GrabBike') {
+      await db.categories.update(GRAB_INCOME_CAT_ID, {
+        icon: 'Motorcycle',
+        name: 'Thu nhập GrabBike',
         updatedAt: now
       });
     }
@@ -83,7 +88,7 @@ export async function createDefaultGrabWallets(): Promise<{
     id: creditId,
     name: 'Ví Tín Dụng Grab',
     type: 'E_WALLET',
-    balance: 200000, // Số dư mẫu để chạy cuốc
+    balance: 200000,
     initialBalance: 200000,
     currency: 'VND',
     icon: 'Car',
@@ -121,19 +126,17 @@ export async function createDefaultGrabWallets(): Promise<{
 }
 
 /**
- * Lấy cấu hình các ví dành cho Grab
+ * Lấy cấu hình 2 ví nội bộ dành riêng cho App Grab
  */
 export async function getGrabWalletsConfig(): Promise<GrabWalletsConfig> {
-  const [creditSetting, grabCashSetting, physicalCashSetting, allWallets] = await Promise.all([
+  const [creditSetting, grabCashSetting, allWallets] = await Promise.all([
     db.settings.get(GRAB_SETTING_CREDIT_WALLET),
     db.settings.get(GRAB_SETTING_CASH_WALLET),
-    db.settings.get(GRAB_SETTING_PHYSICAL_CASH_WALLET),
     db.wallets.toArray()
   ]);
 
   let creditWalletId = (creditSetting?.value as string) || '';
   let grabCashWalletId = (grabCashSetting?.value as string) || '';
-  let physicalCashWalletId = (physicalCashSetting?.value as string) || '';
 
   // Tự động nhận diện nếu chưa được cấu hình
   if (!creditWalletId) {
@@ -152,33 +155,22 @@ export async function getGrabWalletsConfig(): Promise<GrabWalletsConfig> {
     if (found) grabCashWalletId = found.id;
   }
 
-  if (!physicalCashWalletId) {
-    const found = allWallets.find((w) => {
-      const n = w.name.toLowerCase();
-      return w.type === 'CASH' && !n.includes('grab');
-    }) || allWallets.find((w) => w.type === 'CASH');
-    if (found) physicalCashWalletId = found.id;
-  }
-
   const hasCredit = allWallets.some((w) => w.id === creditWalletId);
   const hasGrabCash = allWallets.some((w) => w.id === grabCashWalletId);
-  const hasPhysical = allWallets.some((w) => w.id === physicalCashWalletId);
 
   return {
     creditWalletId,
     grabCashWalletId,
-    physicalCashWalletId,
-    isReady: Boolean(hasCredit && hasGrabCash && hasPhysical)
+    isReady: Boolean(hasCredit && hasGrabCash)
   };
 }
 
 /**
- * Lưu cấu hình các ví được chọn cho Grab
+ * Lưu cấu hình 2 ví Grab nội bộ
  */
 export async function saveGrabWalletsConfig(config: {
   creditWalletId: string;
   grabCashWalletId: string;
-  physicalCashWalletId: string;
 }): Promise<void> {
   await db.transaction('rw', [db.settings], async () => {
     if (config.creditWalletId) {
@@ -187,21 +179,20 @@ export async function saveGrabWalletsConfig(config: {
     if (config.grabCashWalletId) {
       await db.settings.put({ key: GRAB_SETTING_CASH_WALLET, value: config.grabCashWalletId });
     }
-    if (config.physicalCashWalletId) {
-      await db.settings.put({ key: GRAB_SETTING_PHYSICAL_CASH_WALLET, value: config.physicalCashWalletId });
-    }
   });
 }
 
 export interface SaveGrabTripParams {
   paymentMethod: 'CASH' | 'CARD';
-  cashReceived: number;        // Tiền mặt khách đưa (đã bao gồm tip tiền mặt nếu có)
-  netIncome: number;           // Thu nhập ròng hiển thị trên app Grab
-  tipAmount?: number;          // Tiền tip khách cho (mặc định 0)
-  tipType?: 'CASH' | 'IN_APP'; // 'CASH' (tiền mặt đưa tận tay) hoặc 'IN_APP' (bo qua app)
-  creditWalletId: string;
-  grabCashWalletId: string;
-  physicalCashWalletId: string;
+  grabFare?: number;           // Giá cước cuốc xe hiển thị trên app Grab (vd 25.000₫)
+  cashReceived: number;        // Tiền khách thực tế đưa cho tài xế (vd 45.000₫ hoặc 25.000₫)
+  netIncome: number;           // Thu nhập ròng hiển thị trên app Grab (vd 20.000₫)
+  tipAmount?: number;          // Tiền tip khách cho (nếu không truyền, tự tính = max(0, cashReceived - grabFare))
+  tipType?: 'CASH' | 'IN_APP'; // 'CASH' (đưa trực tiếp/khỏi thối) hoặc 'IN_APP' (bo qua app)
+  creditWalletId: string;      // Ví Tín Dụng Grab
+  grabCashWalletId: string;    // Ví Tiền Mặt Grab trên app
+  receivingWalletId?: string;  // Ví nhận tiền thực tế từ khách (Tiền mặt, Vietcombank, MoMo...)
+  physicalCashWalletId?: string; // Tương thích ngược
   date: string;
   time: string;
   note?: string;
@@ -220,33 +211,35 @@ export interface SaveGrabTripResult {
  *
  * 1. Tiền phí chiết khấu / tiền ứng món ăn Grab trừ từ Ví Tín Dụng là VỐN LƯU ĐỘNG:
  *    - Grab trừ từ Ví Tín Dụng Grab.
- *    - Khách trả tiền mặt bù lại cho tài xế nhét vào túi.
- *    => Đây là luân chuyển vốn (TRANSFER) giữa Ví Tín Dụng và Ví Tiền Mặt.
+ *    - Khách trả bù lại vào ví tài xế nhận (Tiền mặt, Ngân hàng, Ví điện tử).
+ *    => Đây là luân chuyển vốn (TRANSFER) giữa Ví Tín Dụng Grab ➔ Ví nhận tiền.
  *    => KHÔNG TÍNH VÀO CHI TIÊU VÀ KHÔNG TÍNH VÀO THU NHẬP!
  *
  * 2. Chỉ có khoảng DƯ RA (Thu nhập ròng + Tip) mới là THU NHẬP THỰC TẾ:
- *    => Ghi giao dịch THU NHẬP (INCOME) đúng bằng số tiền thực tế kiếm được!
+ *    => Ghi giao dịch THU NHẬP (INCOME) vào Ví nhận tiền đúng bằng số tiền thực tế kiếm được!
  *
  * 3. Tiền TIP:
- *    - Tip tiền mặt: 100% vào túi tiền mặt của tài xế, Grab không thu phí.
+ *    - Tip đưa trực tiếp: 100% vào ví nhận tiền, Grab không thu phí.
  *    - Tip trên app Grab: 100% Grab chuyển vào Ví Tiền Mặt Grab (app), Grab không thu phí.
  */
 export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGrabTripResult> {
   const {
     paymentMethod,
+    grabFare,
     cashReceived,
     netIncome,
     tipAmount = 0,
     tipType = 'CASH',
     creditWalletId,
     grabCashWalletId,
+    receivingWalletId,
     physicalCashWalletId,
     date,
     time,
     note
   } = params;
 
-  if (netIncome <= 0 && cashReceived <= 0) {
+  if (netIncome <= 0 && cashReceived <= 0 && (!grabFare || grabFare <= 0)) {
     throw new Error('Số tiền phải lớn hơn 0');
   }
 
@@ -254,17 +247,26 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
 
   const now = new Date().toISOString();
   const txIds: string[] = [];
-  const tip = tipAmount > 0 ? tipAmount : 0;
   let workingCapital = 0;
   let totalEarned = 0;
 
+  // Cước cuốc xe theo app Grab
+  const appFare = grabFare && grabFare > 0 ? grabFare : cashReceived;
+
+  // Tính tiền tip:
+  // Nếu là cuốc tiền mặt và khách đưa nhiều hơn cước app: tự động tính tip = cashReceived - appFare
+  let tip = tipAmount > 0 ? tipAmount : 0;
+  if (paymentMethod === 'CASH' && appFare > 0 && cashReceived > appFare && tip === 0) {
+    tip = cashReceived - appFare;
+  }
+
   await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
     if (paymentMethod === 'CARD') {
-      // 1. Khách trả qua Thẻ/Ví: Tiền thu nhập ròng & Tip qua app vào Ví Tiền Mặt Grab
+      // 1. Khách trả qua Thẻ/Ví app Grab: Tiền thu nhập ròng & Tip qua app vào Ví Tiền Mặt Grab
       const grabCashWallet = await db.wallets.get(grabCashWalletId);
       if (!grabCashWallet) throw new Error('Ví Tiền Mặt Grab không tồn tại');
 
-      totalEarned = netIncome + tip;
+      totalEarned = netIncome + (tipType === 'IN_APP' ? tip : 0);
 
       await db.wallets.update(grabCashWalletId, {
         balance: grabCashWallet.balance + totalEarned,
@@ -274,7 +276,9 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
       const txId = generateUUID();
       const noteDetails: string[] = [];
       if (note?.trim()) noteDetails.push(note.trim());
-      if (tip > 0) noteDetails.push(`Đã gồm ${new Intl.NumberFormat('vi-VN').format(tip)}₫ tip app`);
+      if (tip > 0 && tipType === 'IN_APP') {
+        noteDetails.push(`Đã gồm ${new Intl.NumberFormat('vi-VN').format(tip)}₫ tip app`);
+      }
 
       const newTx: Transaction = {
         id: txId,
@@ -284,39 +288,82 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         amount: totalEarned,
         date,
         time,
-        note: `[Grab Thẻ] ${noteDetails.join(' • ') || 'Cuốc Grab - Khách trả thẻ/ví'}`,
+        note: `${noteDetails.join(' • ') || 'Cuốc Grab - Khách trả thẻ/ví'}${tip > 0 && tipType === 'IN_APP' ? ', Tiền tip Grab' : ''}`,
         createdAt: now,
         updatedAt: now
       };
       await db.transactions.add(newTx);
       txIds.push(txId);
+
+      // Nếu khách đi cuốc thẻ nhưng tip tiền mặt trực tiếp ngoài app:
+      if (tip > 0 && tipType === 'CASH') {
+        const targetWalletId = receivingWalletId || physicalCashWalletId || '';
+        let targetWallet = targetWalletId ? await db.wallets.get(targetWalletId) : undefined;
+        if (!targetWallet) {
+          const all = await db.wallets.toArray();
+          targetWallet = all.find((w) => w.type === 'CASH') || all[0];
+        }
+        if (targetWallet) {
+          totalEarned += tip;
+          await db.wallets.update(targetWallet.id, {
+            balance: targetWallet.balance + tip,
+            updatedAt: now
+          });
+          const tipTxId = generateUUID();
+          await db.transactions.add({
+            id: tipTxId,
+            walletId: targetWallet.id,
+            categoryId: GRAB_INCOME_CAT_ID,
+            type: 'INCOME',
+            amount: tip,
+            date,
+            time,
+            note: `Tiền tip khách đưa trực tiếp (Cuốc thẻ), Tiền tip Grab`,
+            createdAt: now,
+            updatedAt: now
+          });
+          txIds.push(tipTxId);
+        }
+      }
     } else {
-      // 2. Khách trả TIỀN MẶT:
-      const physicalCashWallet = await db.wallets.get(physicalCashWalletId);
-      if (!physicalCashWallet) throw new Error('Ví Tiền Mặt ngoài đời không tồn tại');
+      // 2. Khách trả TRỰC TIẾP (Tiền mặt / Chuyển khoản ngân hàng / Quét mã MoMo...):
+      const targetWalletId = receivingWalletId || physicalCashWalletId || '';
+      let targetWallet = targetWalletId ? await db.wallets.get(targetWalletId) : undefined;
+
+      if (!targetWallet) {
+        const all = await db.wallets.toArray();
+        targetWallet = all.find((w) => w.type === 'CASH') || all[0];
+        if (!targetWallet) throw new Error('Vui lòng chọn ví nhận tiền từ khách');
+      }
 
       const creditWallet = await db.wallets.get(creditWalletId);
       if (!creditWallet) throw new Error('Ví Tín Dụng Grab không tồn tại');
 
+      // Ghi nhớ ví nhận tiền gần nhất
+      await db.settings.put({
+        key: 'last_grab_receiving_wallet_id',
+        value: targetWallet.id
+      });
+
       const isCashTip = tip > 0 && tipType === 'CASH';
       const isInAppTip = tip > 0 && tipType === 'IN_APP';
 
-      // Cước cuốc xe thực tế (trừ tip tiền mặt nếu khách đưa gộp chung)
-      const tripFare = isCashTip ? Math.max(0, cashReceived - tip) : cashReceived;
+      // Cước cuốc xe thực tế dùng tính vốn lưu động từ ví tín dụng
+      const tripFare = appFare > 0 ? appFare : (isCashTip ? Math.max(0, cashReceived - tip) : cashReceived);
 
-      // Vốn lưu động Grab trừ từ ví tín dụng để bù cho tiền mặt khách đưa (phí chiết khấu + tiền món ăn ứng trước)
+      // Vốn lưu động Grab trừ từ ví tín dụng để bù cho tiền khách đưa (phí chiết khấu + tiền món ăn ứng trước)
       workingCapital = Math.max(0, tripFare - netIncome);
 
       // 2.1 Luân chuyển vốn lưu động (TRANSFER):
-      // Grab trừ từ Ví Tín Dụng, tài xế thu tiền mặt tương ứng từ khách bù vào ví tiền mặt.
+      // Grab trừ từ Ví Tín Dụng, tài xế thu tiền tương ứng từ khách bù vào ví nhận tiền.
       // Bản chất là luân chuyển giữa 2 ví, KHÔNG PHẢI chi tiêu hay thu nhập.
       if (workingCapital > 0) {
         await db.wallets.update(creditWalletId, {
           balance: creditWallet.balance - workingCapital,
           updatedAt: now
         });
-        await db.wallets.update(physicalCashWalletId, {
-          balance: physicalCashWallet.balance + workingCapital,
+        await db.wallets.update(targetWallet.id, {
+          balance: targetWallet.balance + workingCapital,
           updatedAt: now
         });
 
@@ -324,12 +371,12 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         const transferTx: Transaction = {
           id: transferTxId,
           walletId: creditWalletId,
-          toWalletId: physicalCashWalletId,
+          toWalletId: targetWallet.id,
           type: 'TRANSFER',
           amount: workingCapital,
           date,
           time,
-          note: `[Vốn lưu động Grab] Luân chuyển ví tín dụng sang tiền mặt (Vốn cuốc xe: ${new Intl.NumberFormat('vi-VN').format(workingCapital)}₫)`,
+          note: `Hoàn vốn tín dụng từ khách trả tiền mặt`,
           createdAt: now,
           updatedAt: now
         };
@@ -338,36 +385,46 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
       }
 
       // 2.2 Thu nhập thực tế bỏ túi (INCOME):
-      // Thu nhập thực sự kiếm được: Thu nhập ròng cuốc xe + Tip tiền mặt (nếu có)
-      const cashIncomeAmount = netIncome + (isCashTip ? tip : 0);
+      // Thu nhập thực sự kiếm được: Thu nhập ròng cuốc xe + Tip (nếu có)
+      // Nếu khách đưa hụt so với cước: trừ phần hụt vào thu nhập
+      const fareShortage = appFare > cashReceived ? (appFare - cashReceived) : 0;
+      const cashIncomeAmount = Math.max(0, netIncome - fareShortage) + (isCashTip ? tip : 0);
       totalEarned = cashIncomeAmount;
 
-      // Cập nhật số dư mới nhất của Ví tiền mặt ngoài đời
-      const currentPhysicalCash = await db.wallets.get(physicalCashWalletId);
-      const currentCashBalance = currentPhysicalCash ? currentPhysicalCash.balance : physicalCashWallet.balance;
+      // Cập nhật số dư mới nhất của Ví nhận tiền
+      const currentTarget = await db.wallets.get(targetWallet.id);
+      const currentBalance = currentTarget ? currentTarget.balance : targetWallet.balance;
 
-      await db.wallets.update(physicalCashWalletId, {
-        balance: currentCashBalance + cashIncomeAmount,
+      await db.wallets.update(targetWallet.id, {
+        balance: currentBalance + cashIncomeAmount,
         updatedAt: now
       });
 
       const incomeTxId = generateUUID();
       const incomeNoteParts: string[] = [];
       if (note?.trim()) incomeNoteParts.push(note.trim());
+      if (appFare > 0) {
+        incomeNoteParts.push(`Cước: ${new Intl.NumberFormat('vi-VN').format(appFare)}₫`);
+      }
       incomeNoteParts.push(`Ròng: +${new Intl.NumberFormat('vi-VN').format(netIncome)}₫`);
       if (isCashTip) {
-        incomeNoteParts.push(`Tip tiền mặt: +${new Intl.NumberFormat('vi-VN').format(tip)}₫`);
+        incomeNoteParts.push(`Tip thêm: +${new Intl.NumberFormat('vi-VN').format(tip)}₫`);
+      }
+
+      let incomeNoteStr = incomeNoteParts.join(' • ');
+      if (isCashTip) {
+        incomeNoteStr += ', Tiền tip Grab';
       }
 
       const incomeTx: Transaction = {
         id: incomeTxId,
-        walletId: physicalCashWalletId,
+        walletId: targetWallet.id,
         categoryId: GRAB_INCOME_CAT_ID,
         type: 'INCOME',
         amount: cashIncomeAmount,
         date,
         time,
-        note: `[Thu nhập Grab] ${incomeNoteParts.join(' • ')}`,
+        note: incomeNoteStr,
         createdAt: now,
         updatedAt: now
       };
@@ -394,7 +451,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
             amount: tip,
             date,
             time,
-            note: `[Grab Tip App] Tiền tip khách bo qua app (+${new Intl.NumberFormat('vi-VN').format(tip)}₫)`,
+            note: `[Grab Tip App] Tiền tip khách bo qua app (+${new Intl.NumberFormat('vi-VN').format(tip)}₫), Tiền tip Grab`,
             createdAt: now,
             updatedAt: now
           });
@@ -448,46 +505,99 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
  */
 export async function migrateLegacyGrabTransactions(): Promise<number> {
   let migratedCount = 0;
-  await db.transaction('rw', [db.transactions, db.categories, db.settings], async () => {
+  await db.transaction('rw', [db.transactions, db.categories, db.wallets, db.settings], async () => {
+    // Đảm bảo 2 danh mục Grab luôn tồn tại
+    const now = new Date().toISOString();
+    const incomeCat = await db.categories.get(GRAB_INCOME_CAT_ID);
+    if (!incomeCat) {
+      await db.categories.put({
+        id: GRAB_INCOME_CAT_ID,
+        name: 'Thu nhập GrabBike',
+        type: 'INCOME',
+        icon: 'Motorcycle',
+        color: '#00B14F',
+        quickTags: ['Cuốc GrabBike', 'Cuốc GrabFood', 'Cuốc GrabExpress', 'Tiền tip Grab', 'Thưởng cuốc'],
+        isDefault: true,
+        isStarred: true,
+        createdAt: now,
+        updatedAt: now
+      });
+    } else if (incomeCat.icon !== 'Motorcycle' || incomeCat.name !== 'Thu nhập GrabBike') {
+      await db.categories.update(GRAB_INCOME_CAT_ID, {
+        icon: 'Motorcycle',
+        name: 'Thu nhập GrabBike',
+        updatedAt: now
+      });
+    }
+
+    const feeCat = await db.categories.get(GRAB_FEE_CAT_ID);
+    if (!feeCat) {
+      await db.categories.put({
+        id: GRAB_FEE_CAT_ID,
+        name: 'Phí dịch vụ Grab',
+        type: 'EXPENSE',
+        parentId: PARENT_MUST_HAVE_ID,
+        icon: 'Percent',
+        color: '#EF4444',
+        quickTags: ['Chiết khấu Grab', 'Phí nền tảng Grab', 'Thuế Grab'],
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
     const allTxs = await db.transactions.toArray();
     // Tìm các giao dịch EXPENSE phí Grab cũ
     const feeTxs = allTxs.filter(
       (tx) =>
         tx.type === 'EXPENSE' &&
         (tx.categoryId === GRAB_FEE_CAT_ID ||
-          (tx.note && tx.note.toLowerCase().includes('chiết khấu phí grab')))
+          (tx.note && (tx.note.toLowerCase().includes('chiết khấu phí grab') || tx.note.toLowerCase().includes('chiết khấu'))))
     );
 
-    if (feeTxs.length === 0) return 0;
+    if (feeTxs.length === 0) return;
 
     const allIncomes = allTxs.filter((t) => t.type === 'INCOME');
-    const now = new Date().toISOString();
+    const allWallets = await db.wallets.toArray();
+    const defaultCashWallet = allWallets.find((w) => w.type === 'CASH') || allWallets[0];
 
     for (const feeTx of feeTxs) {
-      // Trích xuất số tiền cuốc nếu có trong note: "Chiết khấu phí Grab (25.588₫) - Cuốc 36.000₫"
+      // 1. Trích xuất số tiền cuốc nếu có trong note: "Chiết khấu phí Grab (25.588₫) - Cuốc 36.000₫"
       let expectedCashReceived = 0;
       const match = feeTx.note?.match(/Cuốc\s+([0-9.,]+)/i);
       if (match && match[1]) {
         expectedCashReceived = Number(match[1].replace(/\D/g, ''));
       }
 
-      // Tìm giao dịch INCOME tương ứng: cùng ngày
+      // Candidate incomes cùng ngày
       const candidateIncomes = allIncomes.filter(
-        (t) =>
-          t.date === feeTx.date &&
-          t.amount > feeTx.amount &&
-          (t.categoryId === GRAB_INCOME_CAT_ID ||
-            (t.note && (t.note.includes('Grab') || t.note.includes('Cuốc'))))
+        (t) => t.date === feeTx.date && t.amount > feeTx.amount
       );
 
       let matchedIncome: Transaction | undefined;
+      // Khớp theo expectedCashReceived
       if (expectedCashReceived > 0) {
-        matchedIncome = candidateIncomes.find((t) => t.amount === expectedCashReceived);
+        matchedIncome = candidateIncomes.find((t) => Math.abs(t.amount - expectedCashReceived) <= 10);
       }
-      if (!matchedIncome && candidateIncomes.length === 1) {
-        matchedIncome = candidateIncomes[0];
-      } else if (!matchedIncome && candidateIncomes.length > 1) {
-        // Tìm transaction gần nhất theo giờ
+      // Khớp theo Ròng trong note của income:
+      if (!matchedIncome) {
+        matchedIncome = candidateIncomes.find((t) => {
+          const rMatch = t.note?.match(/Ròng:\s*\+?([0-9.,]+)/i);
+          if (rMatch && rMatch[1]) {
+            const expNet = Number(rMatch[1].replace(/\D/g, ''));
+            return Math.abs(t.amount - feeTx.amount - expNet) <= 10;
+          }
+          return false;
+        });
+      }
+      // Khớp theo category / note Grab
+      if (!matchedIncome) {
+        matchedIncome = candidateIncomes.find(
+          (t) => t.categoryId === GRAB_INCOME_CAT_ID || (t.note && t.note.includes('Grab'))
+        );
+      }
+      // Khớp theo giờ gần nhất
+      if (!matchedIncome && candidateIncomes.length > 0) {
         matchedIncome = [...candidateIncomes].sort((a, b) => {
           const diffA = Math.abs((a.time || '').localeCompare(feeTx.time || ''));
           const diffB = Math.abs((b.time || '').localeCompare(feeTx.time || ''));
@@ -496,17 +606,17 @@ export async function migrateLegacyGrabTransactions(): Promise<number> {
       }
 
       if (matchedIncome) {
-        // 1. Chuyển feeTx thành TRANSFER (Vốn lưu động) từ ví tín dụng sang ví tiền mặt
+        // Chuyển feeTx thành TRANSFER (Vốn lưu động) từ ví tín dụng sang ví nhận tiền
         await db.transactions.update(feeTx.id, {
           type: 'TRANSFER',
           walletId: feeTx.walletId,
           toWalletId: matchedIncome.walletId,
           categoryId: undefined,
-          note: `[Vốn lưu động Grab] Luân chuyển ví tín dụng sang tiền mặt (Vốn cuốc: ${new Intl.NumberFormat('vi-VN').format(feeTx.amount)}₫)`,
+          note: `[Vốn lưu động Grab] Luân chuyển ví tín dụng sang ví nhận (Vốn cuốc: ${new Intl.NumberFormat('vi-VN').format(feeTx.amount)}₫)`,
           updatedAt: now
         });
 
-        // 2. Chuyển matchedIncome về đúng Thu nhập ròng
+        // Chuyển matchedIncome về đúng Thu nhập ròng
         const trueNet = matchedIncome.amount - feeTx.amount;
         let cleanNote = matchedIncome.note || '';
         cleanNote = cleanNote.replace(/\[Grab Tiền mặt\]/, '[Thu nhập Grab]');
@@ -520,10 +630,20 @@ export async function migrateLegacyGrabTransactions(): Promise<number> {
           updatedAt: now
         });
 
-        // Loại bỏ matchedIncome khỏi danh sách để không bị ghép trùng
         const idx = allIncomes.indexOf(matchedIncome);
         if (idx !== -1) allIncomes.splice(idx, 1);
 
+        migratedCount++;
+      } else if (defaultCashWallet) {
+        // Nếu không tìm thấy income matching, vẫn đổi feeTx thành TRANSFER để không bị âm vào Chi tiêu!
+        await db.transactions.update(feeTx.id, {
+          type: 'TRANSFER',
+          walletId: feeTx.walletId,
+          toWalletId: defaultCashWallet.id,
+          categoryId: undefined,
+          note: `[Vốn lưu động Grab] Luân chuyển ví tín dụng (${new Intl.NumberFormat('vi-VN').format(feeTx.amount)}₫)`,
+          updatedAt: now
+        });
         migratedCount++;
       }
     }

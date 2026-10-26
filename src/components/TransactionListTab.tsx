@@ -28,19 +28,21 @@ import {
   ChevronDown,
   ChevronUp,
   History,
-  X,
-  Car
+  X
 } from 'lucide-react';
+import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 
 interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
   onOpenQuickAdd: () => void;
+  resetSignal?: number;
 }
 
 export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   onEditTransaction,
-  onOpenQuickAdd: _onOpenQuickAdd
+  onOpenQuickAdd: _onOpenQuickAdd,
+  resetSignal
 }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -67,6 +69,17 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [isSettling, setIsSettling] = useState<boolean>(false);
   const [expandedDebtContact, setExpandedDebtContact] = useState<string | null>(null);
   const [showSettledDebts, setShowSettledDebts] = useState<boolean>(false);
+
+  // Lắng nghe tín hiệu từ menu điều hướng (BottomNav / TopNav) để trở về màn hình Tổng quan gốc
+  React.useEffect(() => {
+    if (resetSignal !== undefined && resetSignal > 0) {
+      setIsHistoryOpen(false);
+      setIsGrabModalOpen(false);
+      setIsAddingDebtQuick(false);
+      setSettleDebtInline(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [resetSignal]);
 
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -519,7 +532,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
               </span>
             </div>
             <div className="text-xs text-slate-400 mt-0.5 truncate">
-              {formatMonthDisplay(selectedMonth)} • Xem toàn bộ, tìm kiếm & bộ lọc
+              {formatMonthDisplay(selectedMonth)} • {allMonthTransactions.length} giao dịch
             </div>
           </div>
         </div>
@@ -538,19 +551,19 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
       <div className="mx-4 my-3 p-4 rounded-3xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/35 shadow-lg flex items-center justify-between gap-3">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-sm">
-            <Car size={22} strokeWidth={2.5} />
+            <MotorcycleIcon size={24} strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-extrabold text-slate-100 truncate">
-                Chạy Grab
+                Chạy GrabBike
               </span>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 uppercase tracking-wider shrink-0">
                 Tự động chia
               </span>
             </div>
             <div className="text-xs text-slate-400 mt-0.5 truncate">
-              Nhập tiền khách đưa & thu nhập ròng • Xong trong 5s
+              Tự tách vốn & thu nhập ròng
             </div>
           </div>
         </div>

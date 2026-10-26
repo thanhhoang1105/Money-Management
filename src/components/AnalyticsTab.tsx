@@ -33,18 +33,27 @@ import {
 
 interface AnalyticsTabProps {
   onEditTransaction?: (tx: Transaction) => void;
+  resetSignal?: number;
 }
 
 type ReportType = 'EXPENSE' | 'INCOME';
 type ExpenseGroupingMode = 'DETAIL' | 'PARENT';
 
-export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction }) => {
+export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, resetSignal }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
   const [groupingMode, setGroupingMode] = useState<ExpenseGroupingMode>('DETAIL');
   const [drillDownCategory, setDrillDownCategory] = useState<Category | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
+
+  // Lắng nghe tín hiệu từ menu điều hướng để trở về báo cáo tổng quan chính
+  React.useEffect(() => {
+    if (resetSignal !== undefined && resetSignal > 0) {
+      setDrillDownCategory(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [resetSignal]);
 
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];

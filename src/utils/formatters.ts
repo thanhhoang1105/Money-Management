@@ -119,3 +119,90 @@ export function formatDisplayDate(dateStr: string): string {
   }
   return `${d}/${m}/${y}`;
 }
+
+
+/**
+ * Tính toán an toàn giá trị biểu thức toán học (+, -, *, /)
+ */
+export function evaluateExpression(rawExpr: string): number {
+  if (!rawExpr || rawExpr === '0') return 0;
+  const cleaned = rawExpr.replace(/[+\-*/]+$/, '').trim();
+  if (!cleaned) return 0;
+
+  const sanitized = cleaned.replace(/[^0-9+\-*/.]/g, '');
+  if (!sanitized) return 0;
+
+  try {
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${sanitized})`)();
+    if (typeof result !== 'number' || isNaN(result) || !isFinite(result)) {
+      return 0;
+    }
+    const rounded = Math.round(result);
+    if (rounded < 0) return 0;
+    if (rounded > 999_999_999_999) return 999_999_999_999;
+    return rounded;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Xử lý phím bấm Numpad trên chuỗi số / biểu thức
+ */
+export function applyNumpadKey(currentStr: string, key: string): string {
+  const str = currentStr || '0';
+
+  if (key === 'C' || key === 'CLEAR') {
+    return '0';
+  }
+
+  if (key === 'BACKSPACE') {
+    if (str.length <= 1) {
+      return '0';
+    }
+    const nextStr = str.slice(0, -1);
+    return nextStr === '' ? '0' : nextStr;
+  }
+
+  const currentDigits = str.split(/[+\-*/]/).pop() || '';
+
+  if (key === '000') {
+    if (str === '0') return '0';
+    if (/[+\-*/]$/.test(str)) return str;
+    if (/[+\-*/]0$/.test(str)) return str;
+    if (currentDigits.length > 9 || str.length >= 24) return str;
+    return str + '000';
+  }
+
+  if (['+', '-', '×', '÷', '*', '/'].includes(key)) {
+    const op = key === '×' ? '*' : key === '÷' ? '/' : key;
+    if (str === '0') return '0';
+    if (/[+\-*/]$/.test(str)) {
+      return str.slice(0, -1) + op;
+    }
+    if (str.length >= 26) return str;
+    return str + op;
+  }
+
+  if (key === '=') {
+    const evaluated = evaluateExpression(str);
+    return evaluated.toString();
+  }
+
+  // Chặn không cho nhập số vượt quá 12 chữ số để không tràn giao diện
+  if (currentDigits.length >= 12) return str;
+
+  if (str === '0') {
+    if (key === '0') return '0';
+    return key;
+  }
+
+  if (/[+\-*/]0$/.test(str)) {
+    if (key === '0') return str;
+    return str.slice(0, -1) + key;
+  }
+
+  if (str.length >= 28) return str;
+  return str + key;
+}

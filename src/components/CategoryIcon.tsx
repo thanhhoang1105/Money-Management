@@ -100,6 +100,7 @@ import {
   FolderTree,
   Target
 } from 'lucide-react';
+import { MotorcycleIcon } from './MotorcycleIcon';
 import { BankLogo, detectBankBrand } from './BankLogo';
 
 export interface CategoryIconProps {
@@ -116,6 +117,9 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Soup,
   ShoppingBag,
   Car,
+  Motorcycle: MotorcycleIcon,
+  Motorbike: MotorcycleIcon,
+  GrabBike: MotorcycleIcon,
   Home,
   HeartPulse,
   Gamepad2,

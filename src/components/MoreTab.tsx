@@ -44,9 +44,9 @@ import {
   Play,
   CheckCircle2,
   Edit2,
-  ArrowLeft,
-  Car
+  ArrowLeft
 } from 'lucide-react';
+import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 
 interface MoreTabProps {
@@ -54,6 +54,7 @@ interface MoreTabProps {
   onEditTransaction?: (tx: Transaction) => void;
   defaultInitialTab: AppStartupTab;
   onChangeDefaultTab: (tab: AppStartupTab) => void;
+  resetSignal?: number;
 }
 
 type SubViewType = 'MAIN' | 'BUDGETS' | 'CATEGORIES' | 'DEBTS' | 'RECURRING' | 'EVENTS';
@@ -69,11 +70,21 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   onOpenSettings,
   onEditTransaction,
   defaultInitialTab,
-  onChangeDefaultTab
+  onChangeDefaultTab,
+  resetSignal
 }) => {
   const [subView, setSubView] = useState<SubViewType>('MAIN');
   const [notice, setNotice] = useState<string | null>(null);
   const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
+
+  // Lắng nghe tín hiệu từ menu điều hướng để trở về menu Khác chính
+  React.useEffect(() => {
+    if (resetSignal !== undefined && resetSignal > 0) {
+      setSubView('MAIN');
+      setIsGrabModalOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [resetSignal]);
 
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const wallets = useLiveQuery(() => db.wallets.toArray()) || [];
@@ -1592,17 +1603,17 @@ export const MoreTab: React.FC<MoreTabProps> = ({
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <Car size={19} strokeWidth={2.5} />
+                <MotorcycleIcon size={20} strokeWidth={2.2} />
               </div>
               <div>
                 <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
-                  <span>Nghiệp vụ Tài xế Grab</span>
+                  <span>Nghiệp vụ Tài xế GrabBike</span>
                   <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
                     Tự động
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  Ghi cuốc xe, tự động trừ ví tín dụng, nạp & rút ví Grab
+                  Ghi cuốc xe máy, tự động trừ ví tín dụng, nạp & rút ví Grab
                 </div>
               </div>
             </div>
