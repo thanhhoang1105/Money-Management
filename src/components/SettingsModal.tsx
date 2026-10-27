@@ -567,7 +567,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     try {
       const result = await restoreBackupData(restorePreview.jsonContent);
       setStatusMsg({
-        text: `Khôi phục thành công: ${result.counts.transactions} giao dịch, ${result.counts.wallets} ví, ${result.counts.categories} danh mục!`,
+        text: result.cloudSynced
+          ? `Đã đẩy lên Cloud & khôi phục thành công: ${result.counts.transactions} giao dịch, ${result.counts.wallets} ví, ${result.counts.categories} danh mục!`
+          : `Khôi phục thành công: ${result.counts.transactions} giao dịch, ${result.counts.wallets} ví, ${result.counts.categories} danh mục!`,
         type: 'success'
       });
       setRestorePreview(null);
@@ -662,6 +664,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
+          {activeSyncKey && (
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-2.5 flex items-start gap-2 text-left">
+              <CloudUpload size={16} className="text-sky-400 shrink-0 mt-0.5" />
+              <div className="text-[11px] text-sky-200">
+                <span className="font-semibold text-white">Bảo vệ đồng bộ Cloud:</span> Dữ liệu tệp này sẽ được đẩy thẳng lên Supabase Cloud làm bản gốc mới nhất trước rồi mới nạp vào máy, đảm bảo Cloud không lấy dữ liệu cũ đè lên dữ liệu vừa khôi phục.
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2.5">
             <button
               type="button"
@@ -677,7 +688,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               onClick={handleConfirmRestore}
               className="touch-btn flex-1 py-2.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-extrabold cursor-pointer border-none"
             >
-              {isProcessing ? 'Đang khôi phục...' : 'Xác nhận khôi phục ngay'}
+              {isProcessing ? 'Đang đẩy lên Cloud & khôi phục...' : 'Xác nhận khôi phục ngay'}
             </button>
           </div>
         </div>

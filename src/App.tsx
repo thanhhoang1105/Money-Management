@@ -11,6 +11,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { Toast } from './components/ui/Toast';
 import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
+import { repairCorruptedGrabBalances } from './services/grabService';
 import type { Transaction, AppStartupTab } from './types';
 import {
   Share,
@@ -136,6 +137,9 @@ export function App() {
     requestPersistentStorage();
     initializeSeedData()
       .then(async () => {
+        // Tự động cân đối và sửa số dư các ví Grab về trạng thái chuẩn xác thực tế
+        await repairCorruptedGrabBalances();
+
         const recurringExecuted = await processDueRecurringTransactions();
         if (recurringExecuted > 0) {
           setAutoBackupNotice(`Đã tự động ghi ${recurringExecuted} giao dịch định kỳ đến hạn!`);

@@ -493,9 +493,9 @@ export async function checkAndRunSupabaseAutoSync(
           : 0;
       const remoteTime = new Date(remoteRecord.updatedAt).getTime();
 
-      // Nếu Cloud có bản cập nhật mới hơn thời điểm đồng bộ trước của máy này:
+      // Nếu Cloud có bản cập nhật mới hơn thời điểm đồng bộ trước của máy này (> 1.5s):
       // Tải và nạp ngay dữ liệu mới nhất vào IndexedDB
-      if (remoteTime > localSyncTime) {
+      if (remoteTime - localSyncTime > 1500) {
         const localPayload = await getLocalSyncPayload();
         const mergedResult = mergeTwoWayData(localPayload, remoteRecord.payload);
         await applyMergedDataToIndexedDB(mergedResult.mergedPayload);
