@@ -1,5 +1,5 @@
 // src/services/backupService.ts
-import { db } from '../db';
+import { db, clearLocalDataChanged } from '../db';
 import type {
   Wallet,
   Category,
@@ -7,9 +7,16 @@ import type {
   Budget,
   Setting,
   RecurringTransaction,
-  EventTrip
+  EventTrip,
+  SyncDataPayload
 } from '../types';
 import { getCurrentDate, getCurrentTime } from '../utils/formatters';
+import { getSupabaseConfig, getSupabaseClient } from './supabaseService';
+import {
+  applyMergedDataToIndexedDB,
+  deduplicateSyncPayload,
+  clearDeletedEntities
+} from './syncService';
 import * as XLSX from 'xlsx';
 
 export interface FullBackupPayload {
@@ -166,12 +173,23 @@ export async function downloadOrShareFile(
 }
 
 /**
- * Khôi phục toàn bộ dữ liệu từ file JSON vào IndexedDB trong 1 Transaction nguyên tử (FR-E-03)
+ * Khôi phục toàn bộ dữ liệu từ file JSON vào IndexedDB và đồng bộ Cloud (FR-E-03).
+ * NGUYÊN TẮC QUAN TRỌNG:
+ * Nếu thiết bị đang có kết nối Supabase Cloud:
+ * 1. Đẩy toàn bộ payload từ tệp khôi phục lên Supabase Cloud TRƯỚC TIÊN (làm bản gốc mới nhất).
+ * 2. Sau đó nạp vào IndexedDB thiết bị thông qua applyMergedDataToIndexedDB (chống xung đột, giữ nguyên config kết nối).
+ * 3. Cập nhật last_supabase_sync_time và last_supabase_backup_date đồng bộ với timestamp đẩy Cloud.
+ * 4. Xóa sạch tombstone (sync_deleted_entities) và xóa cờ dirty (clearLocalDataChanged).
+ * => Ngăn chặn triệt để tình trạng vừa nạp file local xong thì AutoSync lại kéo dữ liệu lỗi/cũ trên Cloud về đè lên!
  */
-export async function restoreBackupData(jsonString: string): Promise<{
+export async function restoreBackupData(
+  jsonString: string,
+  options?: { pushToCloudFirst?: boolean }
+): Promise<{
   success: boolean;
   message: string;
   counts: { wallets: number; categories: number; transactions: number; budgets: number };
+  cloudSynced: boolean;
 }> {
   const validation = validateBackupJSON(jsonString);
   if (!validation.isValid || !validation.payload) {
@@ -188,48 +206,95 @@ export async function restoreBackupData(jsonString: string): Promise<{
     events = []
   } = validation.payload.data;
 
-  // Ghi đè vào IndexedDB trong 1 Transaction nguyên tử
-  await db.transaction(
-    'rw',
-    [
-      db.wallets,
-      db.categories,
-      db.transactions,
-      db.budgets,
-      db.settings,
-      db.recurringTransactions,
-      db.events
-    ],
-    async () => {
-      await db.wallets.clear();
-      await db.categories.clear();
-      await db.transactions.clear();
-      await db.budgets.clear();
-      await db.recurringTransactions.clear();
-      await db.events.clear();
+  const now = new Date().toISOString();
+  const shouldPushCloud = options?.pushToCloudFirst !== false;
+  let cloudSynced = false;
 
-      if (wallets.length > 0) await db.wallets.bulkPut(wallets);
-      if (categories.length > 0) await db.categories.bulkPut(categories);
-      if (transactions.length > 0) await db.transactions.bulkPut(transactions);
-      if (budgets.length > 0) await db.budgets.bulkPut(budgets);
-      if (recurringTransactions.length > 0) await db.recurringTransactions.bulkPut(recurringTransactions);
-      if (events.length > 0) await db.events.bulkPut(events);
+  const protectedSettingKeys = new Set([
+    'supabase_url',
+    'supabase_anon_key',
+    'supabase_sync_key',
+    'supabase_user_email',
+    'supabase_auto_sync_enabled'
+  ]);
 
-      for (const s of settings) {
-        await db.settings.put(s);
-      }
+  // Chuẩn hóa payload hợp nhất để đẩy lên Cloud và nạp IndexedDB
+  const cleanSyncPayload: SyncDataPayload = deduplicateSyncPayload({
+    version: '3.0',
+    appName: 'SoThuChi',
+    syncedAt: now,
+    data: {
+      wallets,
+      categories,
+      transactions,
+      budgets,
+      settings: settings.filter((s) => !protectedSettingKeys.has(s.key)),
+      recurringTransactions,
+      events
+    },
+    deletedIds: {
+      transactionIds: [],
+      walletIds: [],
+      categoryIds: [],
+      budgetIds: []
     }
-  );
+  });
+
+  // 1. Nếu có kết nối Supabase Cloud: ĐẨY LÊN CLOUD TRƯỚC TIÊN để Cloud làm chuẩn gốc
+  if (shouldPushCloud) {
+    try {
+      const { url, anonKey, syncKey, email } = await getSupabaseConfig();
+      const client = await getSupabaseClient();
+      if (client && syncKey && url && anonKey) {
+        const { error } = await client.from('user_backups').upsert(
+          {
+            sync_key: syncKey,
+            user_email: email || syncKey,
+            payload: cleanSyncPayload,
+            updated_at: now
+          },
+          { onConflict: 'sync_key' }
+        );
+
+        if (error) {
+          throw new Error(`Lỗi cập nhật Cloud: ${error.message}`);
+        }
+        cloudSynced = true;
+      }
+    } catch (err: any) {
+      console.error('[restoreBackupData] Lỗi khi đẩy lên Cloud trước khi khôi phục:', err);
+      throw new Error(`Không thể đẩy file lên Cloud trước khi khôi phục: ${err?.message || err}`);
+    }
+  }
+
+  // 2. Nạp dữ liệu vào IndexedDB máy (dùng applyMergedDataToIndexedDB để bảo vệ config và chạy trong runWithoutDirtyTracking)
+  await applyMergedDataToIndexedDB(cleanSyncPayload);
+
+  // 3. Cập nhật mốc thời gian đồng bộ trùng khớp với Cloud
+  if (cloudSynced) {
+    const today = getCurrentDate();
+    await db.settings.put({ key: 'last_supabase_backup_date', value: today });
+    await db.settings.put({ key: 'last_supabase_sync_time', value: now });
+  }
+
+  // 4. Xóa sạch tombstone thực thể đã xóa để không xóa nhầm dữ liệu vừa khôi phục
+  await clearDeletedEntities();
+
+  // 5. Xóa sạch cờ dirty để AutoSync không bị kích hoạt ngược lại
+  clearLocalDataChanged();
 
   return {
     success: true,
-    message: 'Khôi phục toàn bộ dữ liệu thành công!',
+    message: cloudSynced
+      ? 'Đã tải lên Cloud và khôi phục toàn bộ dữ liệu vào thiết bị thành công!'
+      : 'Khôi phục toàn bộ dữ liệu vào thiết bị thành công!',
     counts: {
       wallets: wallets.length,
       categories: categories.length,
       transactions: transactions.length,
       budgets: budgets.length
-    }
+    },
+    cloudSynced
   };
 }
 

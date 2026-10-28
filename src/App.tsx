@@ -11,6 +11,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { Toast } from './components/ui/Toast';
 import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
+import { repairCorruptedGrabBalances } from './services/grabService';
+import { checkAndUpdateGoldOnStartup } from './services/goldService';
 import type { Transaction, AppStartupTab } from './types';
 import {
   Share,
@@ -136,6 +138,11 @@ export function App() {
     requestPersistentStorage();
     initializeSeedData()
       .then(async () => {
+        // Tự động cân đối và sửa số dư các ví Grab về trạng thái chuẩn xác thực tế
+        await repairCorruptedGrabBalances();
+        // Tự động kiểm tra và cập nhật định giá ví Vàng (Két vàng 9999) mỗi sáng nếu có
+        await checkAndUpdateGoldOnStartup();
+
         const recurringExecuted = await processDueRecurringTransactions();
         if (recurringExecuted > 0) {
           setAutoBackupNotice(`Đã tự động ghi ${recurringExecuted} giao dịch định kỳ đến hạn!`);

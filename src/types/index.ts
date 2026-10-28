@@ -2,6 +2,14 @@
 
 export type WalletType = 'CASH' | 'BANK' | 'E_WALLET' | 'CREDIT' | 'INVESTMENT' | 'OTHER';
 
+export interface GoldDetails {
+  weightChi: number;           // Tổng khối lượng vàng theo đơn vị Chỉ (VD: 1.5 chỉ = 1 chỉ 5 phân)
+  goldType?: string;           // 'NHAN_9999' | 'SJC' | 'DOJI' | 'PNJ' | 'BTMC' | 'OTHER'
+  goldTypeName?: string;       // Tên loại vàng: 'Vàng nhẫn 9999 (24K)'
+  currentPricePerChi?: number; // Giá thị trường hiện tại (VNĐ/chỉ)
+  lastUpdated?: string;        // ISO 8601
+}
+
 export interface Wallet {
   id: string;               // UUID
   name: string;             // Ví dụ: 'Tiền mặt', 'Vietcombank', 'Ví MoMo'
@@ -15,6 +23,7 @@ export interface Wallet {
   order?: number;           // Thứ tự hiển thị tùy chỉnh của ví
   createdAt: string;        // ISO 8601
   updatedAt: string;
+  goldDetails?: GoldDetails; // Thông tin Két vàng (nếu là tài sản vàng)
 }
 
 export type CategoryType = 'EXPENSE' | 'INCOME' | 'DEBT';
@@ -29,6 +38,7 @@ export interface Category {
   quickTags?: string[];     // Danh sách gợi ý ghi chú nhanh
   isDefault: boolean;
   isStarred?: boolean;      // true: Được gắn sao ưu tiên trong mục Hay dùng
+  order?: number;           // Thứ tự hiển thị tùy chỉnh của hạng mục
   createdAt: string;
   updatedAt?: string;
 }

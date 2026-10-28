@@ -2,7 +2,7 @@
 import { db, requestPersistentStorage, runWithoutDirtyTracking } from './index';
 import type { Wallet } from '../types';
 import { generateUUID } from '../utils/uuid';
-import { ensureGrabCategories, migrateLegacyGrabTransactions } from '../services/grabService';
+import { ensureGrabCategories } from '../services/grabService';
 
 // 3 HẠNG MỤC CHA MẶC ĐỊNH CỦA KHOẢN CHI (EXPENSE)
 export const PARENT_MUST_HAVE_ID = 'cat_parent_must_have';
@@ -344,7 +344,6 @@ export async function initializeSeedData(): Promise<void> {
     await ensureDefaultWallets();
     await ensureHierarchicalCategories();
     await ensureGrabCategories();
-    await migrateLegacyGrabTransactions();
 
     const isInitialized = await db.settings.get('has_seeded_v3');
     if (isInitialized?.value) {

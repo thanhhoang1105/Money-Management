@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Category, Transaction, Wallet } from '../types';
-import { CategoryIcon } from './CategoryIcon';
+import { CategoryIcon, ICON_MAP } from './CategoryIcon';
 import {
   formatVND,
   formatMonthDisplay,
@@ -32,7 +32,8 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  CircleDot
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -136,17 +137,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
       if (tx.type === 'INCOME') {
         inc += tx.amount;
-        if (tx.categoryId) {
-          catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
-        }
+        const key = tx.categoryId || 'system_uncategorized';
+        catIncMap[key] = (catIncMap[key] || 0) + tx.amount;
       } else if (tx.type === 'EXPENSE') {
         exp += tx.amount;
-        if (tx.categoryId) {
-          catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
-          const cat = categoryMap.get(tx.categoryId);
-          const groupKey = cat?.parentId || tx.categoryId;
-          parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
-        }
+        const key = tx.categoryId || 'system_uncategorized';
+        catExpMap[key] = (catExpMap[key] || 0) + tx.amount;
+        const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+        const groupKey = cat?.parentId || key;
+        parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
       } else if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
         exp += tx.transferFee;
       }
@@ -181,17 +180,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
       if (tx.type === 'INCOME') {
         inc += tx.amount;
-        if (tx.categoryId) {
-          catIncMap[tx.categoryId] = (catIncMap[tx.categoryId] || 0) + tx.amount;
-        }
+        const key = tx.categoryId || 'system_uncategorized';
+        catIncMap[key] = (catIncMap[key] || 0) + tx.amount;
       } else if (tx.type === 'EXPENSE') {
         exp += tx.amount;
-        if (tx.categoryId) {
-          catExpMap[tx.categoryId] = (catExpMap[tx.categoryId] || 0) + tx.amount;
-          const cat = categoryMap.get(tx.categoryId);
-          const groupKey = cat?.parentId || tx.categoryId;
-          parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
-        }
+        const key = tx.categoryId || 'system_uncategorized';
+        catExpMap[key] = (catExpMap[key] || 0) + tx.amount;
+        const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+        const groupKey = cat?.parentId || key;
+        parentExpMap[groupKey] = (parentExpMap[groupKey] || 0) + tx.amount;
       } else if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
         exp += tx.transferFee;
       }
@@ -319,7 +316,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     });
   }, [last6Months, postMinMonthTxs, includedWalletIds, currentIncludedNetWorth, wallets]);
 
-  // Toạ độ & đường cong SVG Hermite/Bezier mượt mà cho biểu đồ Tài sản ròng
+  // Toạ độ & đường cong SVG Bezier mượt mà cho biểu đồ Tài sản ròng
   const netWorthChartLayout = useMemo(() => {
     if (netWorthTrendData.length === 0) return null;
 
@@ -332,14 +329,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     const effMax = maxVal + padding;
     const effRange = Math.max(effMax - effMin, 1);
 
-    const svgWidth = 320;
-    const svgHeight = 100;
-    const marginX = 20;
+    const svgWidth = 600;
+    const svgHeight = 120;
+    const count = netWorthTrendData.length;
 
+    // Toạ độ mỗi điểm nằm chính xác tại tâm của cột tháng: ((i + 0.5) / count) * svgWidth
     const points = netWorthTrendData.map((d, i) => {
-      const x = marginX + (i * (svgWidth - marginX * 2)) / (netWorthTrendData.length - 1);
+      const x = ((i + 0.5) / count) * svgWidth;
       const normalized = (d.netWorth - effMin) / effRange;
-      const y = Math.round(85 - normalized * 70);
+      const y = Math.round(100 - normalized * 75);
       return {
         ...d,
         x,
@@ -347,7 +345,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       };
     });
 
-    let linePath = `M ${points[0].x} ${points[0].y}`;
+    const firstPt = points[0];
+    const lastPt = points[points.length - 1];
+
+    // Tạo đường cong Bezier trải đều từ cạnh trái đến cạnh phải
+    let curveCommands = '';
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = points[Math.max(i - 1, 0)];
       const p1 = points[i];
@@ -359,17 +361,26 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       const cp2x = p2.x - (p3.x - p1.x) / 6;
       const cp2y = p2.y - (p3.y - p1.y) / 6;
 
-      linePath += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      curveCommands += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
     }
 
-    const lastPt = points[points.length - 1];
-    const firstPt = points[0];
-    const areaPath = `${linePath} L ${lastPt.x} ${svgHeight} L ${firstPt.x} ${svgHeight} Z`;
+    // Đường line chính nối từ mép trái qua các điểm đến mép phải
+    const linePath = `M 0 ${firstPt.y.toFixed(1)} L ${firstPt.x.toFixed(1)} ${firstPt.y.toFixed(1)}${curveCommands} L ${svgWidth} ${lastPt.y.toFixed(1)}`;
+
+    // Vùng fill diện tích phủ xuống đáy biểu đồ
+    const areaPath = `${linePath} L ${svgWidth} ${svgHeight} L 0 ${svgHeight} Z`;
 
     const startNW = values[0];
     const endNW = values[values.length - 1];
     const totalGrowth = endNW - startNW;
-    const totalGrowthPercent = startNW !== 0 ? (totalGrowth / Math.abs(startNW)) * 100 : 0;
+    const totalGrowthPercent =
+      startNW > 0
+        ? (totalGrowth / startNW) * 100
+        : startNW < 0
+        ? (totalGrowth / Math.abs(startNW)) * 100
+        : endNW > 0
+        ? 100
+        : 0;
 
     return {
       points,
@@ -394,8 +405,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     const prev = netWorthTrendData[idx - 1];
     const curr = netWorthTrendData[idx];
     const diff = curr.netWorth - prev.netWorth;
-    const percent = prev.netWorth !== 0 ? (diff / Math.abs(prev.netWorth)) * 100 : 0;
-    return { diff, percent };
+    const percent =
+      prev.netWorth !== 0
+        ? (diff / Math.abs(prev.netWorth)) * 100
+        : curr.netWorth > 0
+        ? 100
+        : 0;
+    return { diff, percent, isPrevZero: prev.netWorth === 0 };
   }, [netWorthTrendData, selectedMonth]);
 
   // Danh mục phân loại theo chế độ chọn (EXPENSE: Chi tiết / Nhóm Cha 50-30-20; hoặc INCOME)
@@ -414,14 +430,36 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
   const activeTotal = reportType === 'EXPENSE' ? thisExpense : thisIncome;
 
   const sortedCategories = useMemo(() => {
+    // Tổng số tiền thực tế của các danh mục hiển thị
+    const totalClassified = Object.values(activeCatMap).reduce((s, v) => s + v, 0);
+    const effTotal = totalClassified > 0 ? totalClassified : activeTotal;
+
     return Object.entries(activeCatMap)
       .map(([catId, amount]) => {
-        const cat = categoryMap.get(catId);
+        let cat = categoryMap.get(catId);
+        if (!cat) {
+          cat = {
+            id: catId,
+            name:
+              catId === 'system_uncategorized'
+                ? 'Chưa phân loại'
+                : catId.startsWith('parent_')
+                ? 'Khác'
+                : 'Chưa phân loại',
+            type: reportType === 'EXPENSE' ? 'EXPENSE' : 'INCOME',
+            color: '#64748B',
+            icon: 'HelpCircle',
+            isDefault: false,
+            createdAt: '',
+            updatedAt: ''
+          };
+        }
         const prevCatAmount = prevActiveCatMap[catId] || 0;
         const catDiff = amount - prevCatAmount;
         const catMoMPercent =
           prevCatAmount > 0 ? (catDiff / prevCatAmount) * 100 : amount > 0 ? 100 : 0;
-        const percentage = activeTotal > 0 ? (amount / activeTotal) * 100 : 0;
+        // Luôn tính % trên tổng thực tế của các mục để tổng các lát cắt luôn đạt đủ 100%
+        const percentage = effTotal > 0 ? (amount / effTotal) * 100 : 0;
 
         return {
           catId,
@@ -433,23 +471,243 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
           percentage
         };
       })
-      .filter((item) => item.category !== undefined)
+      .filter((item) => item.amount > 0)
       .sort((a, b) => b.amount - a.amount);
-  }, [activeCatMap, prevActiveCatMap, activeTotal, categoryMap]);
+  }, [activeCatMap, prevActiveCatMap, activeTotal, categoryMap, reportType]);
 
-  const donutSegments = useMemo(() => {
-    const segments: Array<(typeof sortedCategories)[0] & { startAngle: number; angle: number }> = [];
-    let currentAngle = 0;
-    for (const item of sortedCategories) {
-      const angle = (item.percentage / 100) * 360;
-      segments.push({
-        ...item,
-        startAngle: currentAngle,
-        angle
-      });
-      currentAngle += angle;
+  const pieChartData = useMemo(() => {
+    if (sortedCategories.length === 0) {
+      return { slices: [], isSingleFull: false };
     }
-    return segments;
+
+    const cx = 195;
+    const cy = 125;
+    const R_out = 66;
+    const R_in = 40;
+
+    if (sortedCategories.length === 1) {
+      const single = sortedCategories[0];
+      const pctText = '100%';
+      const badgeW = 52;
+      const badgeH = 20;
+      const badgeX = 314;
+      const endX = badgeX - 5;
+      const endY = cy;
+      const badgeY = endY - badgeH / 2;
+
+      return {
+        slices: [
+          {
+            ...single,
+            startAngle: 0,
+            endAngle: 360,
+            midAngle: 90,
+            angle: 360,
+            pathD: '',
+            isSingle: true,
+            isRight: true,
+            startX: cx + R_out + 1,
+            startY: cy,
+            elbowX: 276,
+            elbowY: cy,
+            endX,
+            endY,
+            badgeX,
+            badgeY,
+            badgeW,
+            badgeH,
+            iconX: badgeX + 6,
+            iconY: badgeY + 4.5,
+            textX: badgeX + 20,
+            textY: badgeY + 10,
+            nameX: badgeX + 2,
+            nameY: badgeY + badgeH + 11,
+            textAnchor: 'start' as const,
+            pctText,
+            showLeader: true
+          }
+        ],
+        isSingleFull: true
+      };
+    }
+
+    let currentAngle = 0;
+    const rawSlices = sortedCategories.map((item, idx) => {
+      const angle = (item.percentage / 100) * 360;
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + angle;
+      const midAngle = startAngle + angle / 2;
+      currentAngle += angle;
+
+      const rad1 = ((startAngle - 90) * Math.PI) / 180;
+      const rad2 = ((endAngle - 90) * Math.PI) / 180;
+
+      const x_out1 = cx + R_out * Math.cos(rad1);
+      const y_out1 = cy + R_out * Math.sin(rad1);
+      const x_out2 = cx + R_out * Math.cos(rad2);
+      const y_out2 = cy + R_out * Math.sin(rad2);
+
+      const x_in1 = cx + R_in * Math.cos(rad1);
+      const y_in1 = cy + R_in * Math.sin(rad1);
+      const x_in2 = cx + R_in * Math.cos(rad2);
+      const y_in2 = cy + R_in * Math.sin(rad2);
+
+      const largeArc = angle > 180 ? 1 : 0;
+      // Đường vẽ lát cắt Donut (Annular sector path)
+      const pathD = `M ${x_out1.toFixed(2)} ${y_out1.toFixed(2)} A ${R_out} ${R_out} 0 ${largeArc} 1 ${x_out2.toFixed(2)} ${y_out2.toFixed(2)} L ${x_in2.toFixed(2)} ${y_in2.toFixed(2)} A ${R_in} ${R_in} 0 ${largeArc} 0 ${x_in1.toFixed(2)} ${y_in1.toFixed(2)} Z`;
+
+      const midRad = ((midAngle - 90) * Math.PI) / 180;
+      const isRight = Math.cos(midRad) >= 0;
+
+      const startX = cx + (R_out + 1) * Math.cos(midRad);
+      const startY = cy + (R_out + 1) * Math.sin(midRad);
+
+      const elbowR = R_out + 16;
+      const elbowX = cx + elbowR * Math.cos(midRad);
+      const elbowY = cy + elbowR * Math.sin(midRad);
+
+      const pctText =
+        item.percentage < 1
+          ? `${item.percentage.toFixed(1)}%`
+          : `${Math.round(item.percentage)}%`;
+
+      // Hiển thị nhãn cho tất cả các danh mục có chi tiêu (tối đa 10 danh mục lớn nhất, tỷ trọng >= 0.5%)
+      const showLeader = idx < 10 && item.percentage >= 0.5;
+
+      return {
+        ...item,
+        startAngle,
+        endAngle,
+        midAngle,
+        angle,
+        pathD,
+        isSingle: false,
+        isRight,
+        startX,
+        startY,
+        elbowX,
+        elbowY,
+        endY: elbowY,
+        endX: elbowX,
+        badgeX: 0,
+        badgeY: 0,
+        badgeW: 48,
+        badgeH: 20,
+        iconX: 0,
+        iconY: 0,
+        textX: 0,
+        textY: 0,
+        nameX: 0,
+        nameY: 0,
+        textAnchor: 'start' as const,
+        pctText,
+        showLeader
+      };
+    });
+
+    // Bước 1: Gán hướng mặc định dựa trên midAngle (0° là 12h, 90° là 3h, 180° là 6h, 270° là 9h)
+    rawSlices.forEach((s) => {
+      s.isRight = s.midAngle >= 0 && s.midAngle < 180;
+    });
+
+    // Bước 2: Cân bằng thông minh: Nếu bên Trái quá đông mà bên Phải còn trống
+    // Lát cắt nằm sát đỉnh (midAngle >= 348° hoặc startX >= cx - 8) chuyển sang bên Phải
+    const rightCount = rawSlices.filter((s) => s.isRight && s.showLeader).length;
+    const leftCount = rawSlices.filter((s) => !s.isRight && s.showLeader).length;
+
+    if (leftCount > rightCount) {
+      const topCand = rawSlices.find(
+        (s) => !s.isRight && s.showLeader && (s.midAngle >= 348 || s.startX >= cx - 8)
+      );
+      if (topCand) {
+        topCand.isRight = true;
+      }
+    }
+
+    // Chống đè nhãn (Y-collision avoidance) cho nhãn bên phải và nhãn bên trái
+    ['right', 'left'].forEach((side) => {
+      const isRight = side === 'right';
+      const list = rawSlices
+        .filter((s) => s.isRight === isRight && s.showLeader)
+        .sort((a, b) => b.percentage - a.percentage); // Ưu tiên các danh mục lớn
+
+      // Hiển thị tối đa 6 nhãn mỗi bên (tổng cộng tối đa 12 nhãn)
+      const visibleList = list.slice(0, 6);
+      const hiddenList = list.slice(6);
+      hiddenList.forEach((s) => {
+        s.showLeader = false;
+      });
+
+      visibleList.sort((a, b) => a.elbowY - b.elbowY);
+
+      const minGap = visibleList.length >= 6 ? 32 : visibleList.length >= 5 ? 35 : 38;
+      // Pass 1: từ trên xuống dưới
+      for (let i = 1; i < visibleList.length; i++) {
+        if (visibleList[i].endY - visibleList[i - 1].endY < minGap) {
+          visibleList[i].endY = visibleList[i - 1].endY + minGap;
+        }
+      }
+
+      // Pass 2: chống tràn mép dưới (dành chỗ cho tên danh mục ở dòng 2)
+      const maxY = 222;
+      if (visibleList.length > 0 && visibleList[visibleList.length - 1].endY > maxY) {
+        visibleList[visibleList.length - 1].endY = maxY;
+        for (let i = visibleList.length - 2; i >= 0; i--) {
+          if (visibleList[i + 1].endY - visibleList[i].endY < minGap) {
+            visibleList[i].endY = visibleList[i + 1].endY - minGap;
+          }
+        }
+      }
+
+      // Pass 3: chống tràn mép trên
+      const minY = 26;
+      if (visibleList.length > 0 && visibleList[0].endY < minY) {
+        visibleList[0].endY = minY;
+        for (let i = 1; i < visibleList.length; i++) {
+          if (visibleList[i].endY - visibleList[i - 1].endY < minGap) {
+            visibleList[i].endY = visibleList[i - 1].endY + minGap;
+          }
+        }
+      }
+
+      visibleList.forEach((s) => {
+        const badgeW = Math.max(46, 22 + s.pctText.length * 7);
+        const badgeH = 20;
+
+        if (isRight) {
+          s.badgeX = 314;
+          s.badgeW = badgeW;
+          s.badgeH = badgeH;
+          s.endX = s.badgeX - 5;
+          s.elbowX = Math.min(s.endX - 8, Math.max(s.startX + 12, 276));
+          s.badgeY = s.endY - badgeH / 2;
+          s.iconX = s.badgeX + 6;
+          s.iconY = s.badgeY + 4.5;
+          s.textX = s.badgeX + 20;
+          s.textY = s.badgeY + 10;
+          s.nameX = s.badgeX + 2;
+          s.nameY = s.badgeY + badgeH + 11;
+        } else {
+          s.badgeX = 18;
+          s.badgeW = badgeW;
+          s.badgeH = badgeH;
+          s.endX = s.badgeX + badgeW + 5;
+          s.elbowX = Math.max(s.endX + 8, Math.min(s.startX - 12, 114));
+          s.badgeY = s.endY - badgeH / 2;
+          s.iconX = s.badgeX + 6;
+          s.iconY = s.badgeY + 4.5;
+          s.textX = s.badgeX + 20;
+          s.textY = s.badgeY + 10;
+          s.nameX = s.badgeX + 2;
+          s.nameY = s.badgeY + badgeH + 11;
+        }
+      });
+    });
+
+    return {
+      slices: rawSlices,
+      isSingleFull: false
+    };
   }, [sortedCategories]);
 
   // Các giao dịch thuộc danh mục đang Drill-down (Hỗ trợ cả Hạng mục Cha và Hạng mục Con)
@@ -1087,7 +1345,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                   Tăng trưởng tài sản 6 tháng
                 </span>
                 <div
-                  className={`text-sm font-extrabold flex items-center gap-1 ${
+                  className={`text-sm font-extrabold flex items-center gap-1.5 ${
                     netWorthChartLayout.totalGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
@@ -1095,10 +1353,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                     {netWorthChartLayout.totalGrowth >= 0 ? '▲ +' : '▼ '}
                     {formatVND(Math.abs(netWorthChartLayout.totalGrowth))}
                   </span>
-                  <span className="text-[11px] font-normal text-slate-400">
-                    ({netWorthChartLayout.totalGrowthPercent >= 0 ? '+' : ''}
-                    {netWorthChartLayout.totalGrowthPercent.toFixed(1)}%)
-                  </span>
+                  {netWorthChartLayout.startNW !== 0 ? (
+                    <span className="text-[11px] font-normal text-slate-400">
+                      ({netWorthChartLayout.totalGrowthPercent >= 0 ? '+' : ''}
+                      {netWorthChartLayout.totalGrowthPercent.toFixed(1)}%)
+                    </span>
+                  ) : netWorthChartLayout.endNW > 0 ? (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 font-semibold">
+                      Kỳ đầu ghi chép
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -1112,58 +1376,93 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
               </div>
             </div>
 
-            {/* Khung đồ thị SVG Vector mượt mà */}
-            <div className="relative w-full h-28 pt-2">
+            {/* Khung đồ thị Vector mượt mà, căn chỉnh hoàn hảo trên cả Mobile & Desktop */}
+            <div className="relative w-full h-32 sm:h-36 pt-2 select-none">
+              {/* 1. Lưới cột bấm chọn tương ứng 6 tháng */}
+              <div className="grid grid-cols-6 absolute inset-0 z-0">
+                {netWorthTrendData.map((d) => {
+                  const isSelected = d.monthStr === selectedMonth;
+                  return (
+                    <div
+                      key={d.monthStr}
+                      onClick={() => setSelectedMonth(d.monthStr)}
+                      className={`h-full cursor-pointer transition-colors rounded-xl ${
+                        isSelected ? 'bg-white/4' : 'hover:bg-white/2'
+                      }`}
+                      title={`${d.label}: ${formatVND(d.netWorth)}`}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* 2. Đồ thị SVG đường cong mượt mà & diện tích bóng đổ */}
               <svg
-                viewBox="0 0 320 100"
-                className="w-full h-full overflow-visible"
+                viewBox="0 0 600 120"
+                className="w-full h-full overflow-visible relative z-10 pointer-events-none"
                 preserveAspectRatio="none"
               >
                 <defs>
                   <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10B981" stopOpacity="0.4" />
+                    <stop offset="0%" stopColor="#10B981" stopOpacity="0.35" />
                     <stop offset="100%" stopColor="#10B981" stopOpacity="0.0" />
                   </linearGradient>
                 </defs>
 
-                {/* Đường lưới tham chiếu ngang mờ */}
-                <line x1="16" y1="20" x2="304" y2="20" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-                <line x1="16" y1="55" x2="304" y2="55" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-                <line x1="16" y1="90" x2="304" y2="90" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                {/* Đường lưới tham chiếu ngang */}
+                <line x1="0" y1="25" x2="600" y2="25" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                <line x1="0" y1="65" x2="600" y2="65" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                <line x1="0" y1="105" x2="600" y2="105" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
 
                 {/* Vùng bóng đổ mờ Area */}
                 <path d={netWorthChartLayout.areaPath} fill="url(#netWorthGrad)" />
 
-                {/* Đường biểu diễn chính Stroke Line */}
+                {/* Đường biểu diễn chính Stroke Line với độ dày đồng nhất */}
                 <path
                   d={netWorthChartLayout.linePath}
                   fill="none"
                   stroke="#10B981"
-                  strokeWidth="2.5"
+                  strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                 />
+              </svg>
 
-                {/* Các điểm dữ liệu 6 tháng */}
-                {netWorthChartLayout.points.map((pt) => {
+              {/* 3. Điểm dữ liệu dạng HTML Overlay (luôn tròn 100%, không bị méo hạt gạo hay văng ra) */}
+              <div className="absolute inset-0 pointer-events-none z-20">
+                {netWorthChartLayout.points.map((pt, idx) => {
                   const isSelected = pt.monthStr === selectedMonth;
-                  return (
-                    <g key={pt.monthStr} className="cursor-pointer" onClick={() => setSelectedMonth(pt.monthStr)}>
-                      {/* Vùng chạm rộng hơn để dễ bấm trên mobile */}
-                      <circle cx={pt.x} cy={pt.y} r="14" fill="transparent" />
+                  const leftPercent = ((idx + 0.5) / 6) * 100;
+                  const topPercent = (pt.y / 120) * 100;
 
-                      {isSelected ? (
-                        <>
-                          <circle cx={pt.x} cy={pt.y} r="7" fill="#10B981" opacity="0.3" className="animate-ping" />
-                          <circle cx={pt.x} cy={pt.y} r="5" fill="#10B981" stroke="#ffffff" strokeWidth="2" />
-                        </>
-                      ) : (
-                        <circle cx={pt.x} cy={pt.y} r="3.5" fill="#10B981" stroke="#0f172a" strokeWidth="1.5" />
-                      )}
-                    </g>
+                  return (
+                    <div
+                      key={pt.monthStr}
+                      style={{
+                        left: `${leftPercent}%`,
+                        top: `${topPercent}%`
+                      }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer"
+                      onClick={() => setSelectedMonth(pt.monthStr)}
+                      title={`${pt.label}: ${formatVND(pt.netWorth)}`}
+                    >
+                      {/* Vùng chạm rộng 32x32px */}
+                      <div className="w-8 h-8 flex items-center justify-center">
+                        {isSelected ? (
+                          <div className="relative flex items-center justify-center">
+                            {/* Vòng lan tỏa (ping ring) - chuẩn tâm 100%, không bị văng */}
+                            <span className="absolute w-5 h-5 rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                            {/* Điểm chính */}
+                            <span className="relative w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white shadow-lg shadow-emerald-500/50" />
+                          </div>
+                        ) : (
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 border border-slate-900 hover:scale-150 hover:bg-emerald-400 transition-all duration-150" />
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </svg>
+              </div>
             </div>
 
             {/* Các nhãn tháng tương ứng bên dưới */}
@@ -1208,9 +1507,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                 >
                   <span>{selectedNetWorthMoM.diff >= 0 ? '▲ +' : '▼ '}</span>
                   <span>{formatVND(Math.abs(selectedNetWorthMoM.diff))}</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    ({selectedNetWorthMoM.percent >= 0 ? '+' : ''}{selectedNetWorthMoM.percent.toFixed(1)}%)
-                  </span>
+                  {!selectedNetWorthMoM.isPrevZero && (
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      ({selectedNetWorthMoM.percent >= 0 ? '+' : ''}{selectedNetWorthMoM.percent.toFixed(1)}%)
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -1523,10 +1824,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
         </div>
       )}
 
-      {/* 5. INTERACTIVE DONUT CHART */}
+      {/* 5. INTERACTIVE PIE CHART WITH CALLOUT LEADER LINES (HÌNH 3) */}
       {sortedCategories.length > 0 ? (
-        <div className="mx-4 my-2.5 rounded-3xl p-5 bg-slate-900/80 border border-white/10 shadow-lg text-center">
-          <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+        <div className="mx-4 my-2.5 rounded-3xl p-4 sm:p-5 bg-slate-900/80 border border-white/10 shadow-lg text-center">
+          <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
             {reportType === 'EXPENSE'
               ? groupingMode === 'PARENT'
                 ? 'Tỷ trọng theo Nhóm Cha (Must have / Nice to have / Wasted)'
@@ -1534,45 +1835,130 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
               : 'Tỷ trọng các nguồn thu nhập'}
           </div>
 
-          <div className="relative w-48 h-48 mx-auto">
-            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              {donutSegments.map((item) => {
-                const strokeDasharray = `${(item.percentage * 251.327) / 100} 251.327`;
-                const strokeDashoffset = -((item.startAngle * 251.327) / 360);
-                return (
-                  <circle
-                    key={item.catId}
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="transparent"
-                    stroke={item.category?.color || '#64748b'}
-                    strokeWidth="15"
-                    strokeDasharray={strokeDasharray}
-                    strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="butt"
-                    className="cursor-pointer transition-all hover:opacity-80"
-                    onClick={() => setDrillDownCategory(item.category || null)}
+          <div className="text-[11px] text-slate-400 mb-2">
+            Tổng {reportType === 'EXPENSE' ? 'chi' : 'thu'}:{' '}
+            <span
+              className={`font-extrabold ${
+                reportType === 'EXPENSE' ? 'text-rose-400' : 'text-emerald-400'
+              }`}
+            >
+              {new Intl.NumberFormat('vi-VN').format(activeTotal)} ₫
+            </span>
+          </div>
+
+          <div className="relative w-full max-w-sm sm:max-w-md mx-auto aspect-[39/25]">
+            <svg viewBox="0 0 390 250" className="w-full h-full overflow-visible">
+              {/* Biểu đồ Donut (Vành khuyên rỗng ở giữa) */}
+              {pieChartData.isSingleFull ? (
+                <circle
+                  cx="195"
+                  cy="125"
+                  r="53"
+                  fill="none"
+                  stroke={pieChartData.slices[0]?.category?.color || '#38bdf8'}
+                  strokeWidth="26"
+                  className="cursor-pointer transition-all hover:opacity-90 hover:brightness-105"
+                  onClick={() => setDrillDownCategory(pieChartData.slices[0]?.category || null)}
+                />
+              ) : (
+                /* Các lát cắt Donut với khoảng cách tách lát sắc nét (stroke) */
+                pieChartData.slices.map((slice) => (
+                  <path
+                    key={slice.catId}
+                    d={slice.pathD}
+                    fill={slice.category?.color || '#64748b'}
+                    stroke="#090d16"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                    className="cursor-pointer transition-all hover:opacity-90 hover:brightness-110"
+                    onClick={() => setDrillDownCategory(slice.category || null)}
                   />
+                ))
+              )}
+
+              {/* Đường gióng nét đứt & Nhãn Pill Badge kèm Icon, %, Tên danh mục */}
+              {pieChartData.slices.map((slice) => {
+                if (!slice.showLeader) return null;
+                const color = slice.category?.color || '#38bdf8';
+                const catName = slice.category?.name || 'Khác';
+                const truncatedName = catName.length > 11 ? `${catName.slice(0, 10)}…` : catName;
+                const IconComp = (slice.category?.icon && ICON_MAP[slice.category.icon]) || CircleDot;
+
+                return (
+                  <g
+                    key={`callout-${slice.catId}`}
+                    className="cursor-pointer transition-all hover:opacity-85"
+                    onClick={() => setDrillDownCategory(slice.category || null)}
+                  >
+                    {/* 1. Điểm neo nhỏ trên viền donut */}
+                    <circle cx={slice.startX} cy={slice.startY} r="1.8" fill={color} />
+
+                    {/* 2. Đường gióng nét đứt gập góc ngang (Dashed leader line) */}
+                    <polyline
+                      points={`${slice.startX.toFixed(1)},${slice.startY.toFixed(1)} ${slice.elbowX.toFixed(1)},${slice.endY.toFixed(1)} ${slice.endX.toFixed(1)},${slice.endY.toFixed(1)}`}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth="1.2"
+                      strokeDasharray="3.5 2.5"
+                      strokeOpacity="0.65"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* 3. Khung Pill Badge bo góc tròn */}
+                    <rect
+                      x={slice.badgeX}
+                      y={slice.badgeY}
+                      width={slice.badgeW}
+                      height={slice.badgeH}
+                      rx="10"
+                      ry="10"
+                      fill={color}
+                      fillOpacity="0.18"
+                      stroke={color}
+                      strokeWidth="0.8"
+                      strokeOpacity="0.4"
+                    />
+
+                    {/* 4. Icon danh mục bên trong Pill Badge */}
+                    <g transform={`translate(${slice.iconX}, ${slice.iconY})`}>
+                      <IconComp size={11} color={color} strokeWidth={2.4} />
+                    </g>
+
+                    {/* 5. Tỷ lệ phần trăm bên trong Pill Badge */}
+                    <text
+                      x={slice.textX}
+                      y={slice.textY}
+                      fill={color}
+                      fontSize="10"
+                      fontWeight="800"
+                      textAnchor="start"
+                      className="select-none font-mono"
+                      dominantBaseline="central"
+                    >
+                      {slice.pctText}
+                    </text>
+
+                    {/* 6. Tên danh mục bên dưới Pill Badge (Dòng 2) */}
+                    <text
+                      x={slice.nameX}
+                      y={slice.nameY}
+                      fill="#cbd5e1"
+                      fontSize="9.5"
+                      fontWeight="600"
+                      textAnchor="start"
+                      className="select-none tracking-tight"
+                    >
+                      {truncatedName}
+                    </text>
+                  </g>
                 );
               })}
             </svg>
-
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4">
-              <span className="text-[10px] text-slate-400 font-medium">Chiếm lớn nhất</span>
-              <span
-                className="text-sm font-extrabold max-w-[120px] truncate"
-                style={{ color: sortedCategories[0]?.category?.color || '#38BDF8' }}
-              >
-                {sortedCategories[0]?.category?.name}
-              </span>
-              <span className="text-xs font-bold text-slate-100">
-                {sortedCategories[0]?.percentage.toFixed(1)}%
-              </span>
-            </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-3">
-            Chạm vào danh mục bên dưới để xem toàn bộ giao dịch chi tiết
+
+          <div className="text-[11px] text-slate-500 mt-2">
+            Chạm vào lát cắt hoặc nhãn để xem toàn bộ giao dịch chi tiết
           </div>
         </div>
       ) : (

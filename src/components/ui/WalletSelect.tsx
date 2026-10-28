@@ -70,7 +70,9 @@ export const WalletSelect: React.FC<WalletSelectProps> = ({
     const initialBalance = rawDigits ? parseInt(rawDigits, 10) : 0;
 
     const walletType: WalletType =
-      selectedBrand.category === 'BANK'
+      selectedBrand.id === 'other:gold_9999' || selectedBrand.id === 'other:sjc'
+        ? 'INVESTMENT'
+        : selectedBrand.category === 'BANK'
         ? 'BANK'
         : selectedBrand.category === 'EWALLET'
         ? 'E_WALLET'

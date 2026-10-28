@@ -10,7 +10,6 @@ import {
   ArrowRightLeft,
   Sparkles,
   Gift,
-  RefreshCw,
   Smartphone,
   Wallet as WalletIcon,
   Clock,
@@ -32,8 +31,7 @@ import {
   getGrabWalletsConfig,
   saveGrabWalletsConfig,
   createDefaultGrabWallets,
-  recordGrabTrip,
-  migrateLegacyGrabTransactions
+  recordGrabTrip
 } from '../services/grabService';
 import { transferFunds, sortWallets } from '../services/transactionService';
 
@@ -115,18 +113,12 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     onClose();
   };
 
-  // Load configuration & tự động chuẩn hóa cuốc Grab cũ về Vốn lưu động
+  // Load configuration 2 ví Grab
   useEffect(() => {
     if (!isOpen) return;
     // Tự động dọn dẹp trắng form mỗi lần mở modal
     resetTripForm();
     (async () => {
-      try {
-        await migrateLegacyGrabTransactions();
-      } catch {
-        // Im lặng nếu đã được chuẩn hóa trước đó
-      }
-
       const config = await getGrabWalletsConfig();
       setCreditWalletId(config.creditWalletId);
       setGrabCashWalletId(config.grabCashWalletId);
@@ -200,12 +192,11 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     return cardTip;
   }, [mode, grabFare, cashReceived, cardTip]);
 
-  // Vốn lưu động Grab khấu trừ từ ví tín dụng:
+  // Cước xe Grab khấu trừ từ ví tín dụng để hoàn vào ví nhận:
   const workingCapital = useMemo(() => {
     if (mode !== 'CASH') return 0;
-    const baseFare = grabFare > 0 ? grabFare : cashReceived;
-    return Math.max(0, baseFare - netIncome);
-  }, [mode, grabFare, cashReceived, netIncome]);
+    return grabFare > 0 ? grabFare : cashReceived;
+  }, [mode, grabFare, cashReceived]);
 
   // Thu nhập thực tế tài xế giữ được từ cuốc xe
   const totalEarned = useMemo(() => {
@@ -258,21 +249,6 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     setIsConfigOpen(false);
     setFeedback('Đã cập nhật liên kết 2 ví Grab!');
     setTimeout(() => setFeedback(''), 2500);
-  };
-
-  // Nút chạy chuẩn hóa cuốc cũ thủ công
-  const handleManualMigrate = async () => {
-    try {
-      const count = await migrateLegacyGrabTransactions();
-      if (count > 0) {
-        setFeedback(`Đã chuẩn hóa ${count} cuốc Grab cũ về Vốn lưu động & Thu nhập ròng!`);
-      } else {
-        setFeedback('Dữ liệu các cuốc Grab đã chuẩn 100%!');
-      }
-      setTimeout(() => setFeedback(''), 3000);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi chuẩn hóa');
-    }
   };
 
   // Xử lý khi nhấn phím trên Bàn phím số Numpad ảo (Web)
@@ -514,7 +490,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
       const successText =
         mode === 'CASH'
-          ? `Đã ghi cuốc Grab: +${formatVND(res.totalEarned)} thu nhập thực nhận${res.tipAmount > 0 ? ` (Tip: +${formatVND(res.tipAmount)})` : ''} (Vốn luân chuyển: ${formatVND(res.workingCapital)})`
+          ? `Đã ghi cuốc Grab: +${formatVND(netIncome)} vào Ví TM Grab${res.tipAmount > 0 ? ` (+${formatVND(res.tipAmount)} tip vào ${receivingWallet?.name})` : ''} (Grab trừ ${formatVND(res.workingCapital)} Tín Dụng ➔ hoàn vào ${receivingWallet?.name})`
           : `Đã ghi cuốc Grab thẻ: +${formatVND(res.totalEarned)} vào Ví Tiền Mặt Grab`;
 
       if (onSuccess) onSuccess(successText);
@@ -711,32 +687,21 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-between items-center gap-2 pt-2 border-t border-white/6">
+              <div className="flex justify-end items-center gap-2 pt-2 border-t border-white/6">
                 <button
                   type="button"
-                  onClick={handleManualMigrate}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-semibold cursor-pointer border border-sky-500/20 text-xs flex items-center gap-1.5"
-                  title="Chuyển đổi toàn bộ cuốc Grab cũ sang chuẩn Vốn lưu động & Thu nhập ròng"
+                  onClick={() => setIsConfigOpen(false)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 font-semibold cursor-pointer border-none"
                 >
-                  <RefreshCw size={13} />
-                  Chuẩn hóa cuốc cũ
+                  Đóng
                 </button>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsConfigOpen(false)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 font-semibold cursor-pointer border-none"
-                  >
-                    Đóng
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveConfig}
-                    className="px-4 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold cursor-pointer border-none"
-                  >
-                    Lưu cấu hình
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveConfig}
+                  className="px-4 py-1.5 rounded-xl bg-sky-500 text-slate-950 font-bold cursor-pointer border-none"
+                >
+                  Lưu cấu hình
+                </button>
               </div>
             </div>
           )}
@@ -1154,9 +1119,9 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
                     <div className="flex flex-col">
-                      <span className="text-slate-400">💼 Vốn lưu động luân chuyển:</span>
+                      <span className="text-slate-400">💼 Cước xe trừ Ví Tín Dụng:</span>
                       <span className="text-[10px] text-slate-500">
-                        (Grab trừ Ví Tín Dụng ➔ Bù vào {receivingWallet?.name}, KHÔNG tính chi tiêu)
+                        (Grab trừ Tín Dụng ➔ Hoàn vào {receivingWallet?.name}, KHÔNG tính chi tiêu)
                       </span>
                     </div>
                     <span className="font-extrabold text-sky-400 text-sm">
@@ -1165,15 +1130,20 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   </div>
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
-                    <span className="text-slate-400">✨ Thu nhập ròng theo App:</span>
-                    <span className="font-extrabold text-emerald-400">+{formatVND(netIncome)}</span>
+                    <div className="flex flex-col">
+                      <span className="text-slate-400">✨ Thu nhập ròng theo App:</span>
+                      <span className="text-[10px] text-slate-500">
+                        (Cộng vào Ví Tiền Mặt Grab trên app)
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-emerald-400 text-sm">+{formatVND(netIncome)}</span>
                   </div>
 
                   {autoTip > 0 && (
                     <div className="flex justify-between items-center text-purple-300 py-0.5 animate-fade-in font-bold">
                       <span className="flex items-center gap-1">
                         <Gift size={13} />
-                        Tiền Tip khách cho thêm (Tự tính):
+                        Tiền Tip khách cho thêm (Vào {receivingWallet?.name}):
                       </span>
                       <span className="text-purple-300 text-sm">
                         +{formatVND(autoTip)}
@@ -1183,9 +1153,9 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
                   <div className="flex justify-between items-center pt-2 mt-0.5 border-t border-white/8 font-extrabold">
                     <div className="flex flex-col">
-                      <span className="text-slate-100 text-xs">💰 Tổng thu nhập thực tế bạn nhận:</span>
+                      <span className="text-slate-100 text-xs">💰 Tổng thu nhập thực nhận:</span>
                       <span className="text-[10px] text-emerald-400/80 font-normal">
-                        Ròng app {formatVND(netIncome)} {autoTip > 0 ? `+ Tip ${formatVND(autoTip)}` : ''}
+                        Ròng app {formatVND(netIncome)} (Ví TM Grab) {autoTip > 0 ? `+ Tip ${formatVND(autoTip)} (${receivingWallet?.name})` : ''}
                       </span>
                     </div>
                     <span className="text-base font-heading font-black text-income">

@@ -367,6 +367,17 @@ export const BANK_BRANDS: BankBrandInfo[] = [
     secondaryColor: '#F59E0B',
     textColor: '#FFFFFF',
     keywords: ['vàng', 'vang', 'sjc', 'doji', 'pnj']
+  },
+  {
+    id: 'other:gold_9999',
+    code: 'GOLD9999',
+    name: 'Vàng nhẫn 9999 (24K)',
+    shortName: 'Nhẫn 9999',
+    category: 'OTHER',
+    primaryColor: '#F59E0B',
+    secondaryColor: '#D97706',
+    textColor: '#000000',
+    keywords: ['vàng nhẫn', 'nhẫn 9999', 'nhan 9999', '24k', 'mi hồng', 'mihong', 'vàng 9999', 'vang 9999', 'nhẫn trơn', 'vàng']
   }
 ];
 
@@ -816,6 +827,34 @@ export const BankLogo: React.FC<BankLogoProps> = ({ brand, size = 36, className 
     );
   }
 
+  if (brand.code === 'GOLD9999') {
+    return (
+      <div
+        className={`rounded-xl flex flex-col items-center justify-center shrink-0 select-none shadow-sm overflow-hidden ${className}`}
+        style={{
+          width: size,
+          height: size,
+          background: 'linear-gradient(135deg, #FDE68A 0%, #F59E0B 50%, #D97706 100%)',
+          border: '1px solid rgba(251, 191, 36, 0.4)'
+        }}
+        title={brand.name}
+      >
+        <span
+          className="font-black text-amber-950 leading-none tracking-tight"
+          style={{ fontSize: Math.max(8, Math.round(size * 0.28)) }}
+        >
+          9999
+        </span>
+        <span
+          className="font-extrabold text-amber-900 leading-none mt-0.5"
+          style={{ fontSize: Math.max(6, Math.round(size * 0.16)) }}
+        >
+          24K
+        </span>
+      </div>
+    );
+  }
+
   // 2. Render Logo chính thức của các Ngân hàng Việt Nam trên nền trắng cao cấp, fallback sang Vector Badge nếu offline chưa cache
   if (brand.logoUrl && !imgFailed) {
     return (
@@ -907,7 +946,7 @@ export const BankBrandAccordionPicker: React.FC<BankBrandAccordionPickerProps> =
     {
       id: 'CARD',
       title: 'Thẻ Quốc tế, Tiền mặt & Vàng',
-      subtitle: 'Tiền mặt, Thẻ Visa, Mastercard, Vàng SJC',
+      subtitle: 'Tiền mặt, Vàng nhẫn 9999, SJC, Visa, Mastercard',
       icon: CreditCard,
       items: BANK_BRANDS.filter((b) => b.category === 'CARD' || b.category === 'OTHER')
     }
