@@ -315,7 +315,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     });
   }, [last6Months, postMinMonthTxs, includedWalletIds, currentIncludedNetWorth, wallets]);
 
-  // Toạ độ & đường cong SVG Hermite/Bezier mượt mà cho biểu đồ Tài sản ròng
+  // Toạ độ & đường cong SVG Bezier mượt mà cho biểu đồ Tài sản ròng
   const netWorthChartLayout = useMemo(() => {
     if (netWorthTrendData.length === 0) return null;
 
@@ -328,14 +328,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     const effMax = maxVal + padding;
     const effRange = Math.max(effMax - effMin, 1);
 
-    const svgWidth = 320;
-    const svgHeight = 100;
-    const marginX = 20;
+    const svgWidth = 600;
+    const svgHeight = 120;
+    const count = netWorthTrendData.length;
 
+    // Toạ độ mỗi điểm nằm chính xác tại tâm của cột tháng: ((i + 0.5) / count) * svgWidth
     const points = netWorthTrendData.map((d, i) => {
-      const x = marginX + (i * (svgWidth - marginX * 2)) / (netWorthTrendData.length - 1);
+      const x = ((i + 0.5) / count) * svgWidth;
       const normalized = (d.netWorth - effMin) / effRange;
-      const y = Math.round(85 - normalized * 70);
+      const y = Math.round(100 - normalized * 75);
       return {
         ...d,
         x,
@@ -343,7 +344,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       };
     });
 
-    let linePath = `M ${points[0].x} ${points[0].y}`;
+    const firstPt = points[0];
+    const lastPt = points[points.length - 1];
+
+    // Tạo đường cong Bezier trải đều từ cạnh trái đến cạnh phải
+    let curveCommands = '';
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = points[Math.max(i - 1, 0)];
       const p1 = points[i];
@@ -355,17 +360,26 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       const cp2x = p2.x - (p3.x - p1.x) / 6;
       const cp2y = p2.y - (p3.y - p1.y) / 6;
 
-      linePath += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      curveCommands += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
     }
 
-    const lastPt = points[points.length - 1];
-    const firstPt = points[0];
-    const areaPath = `${linePath} L ${lastPt.x} ${svgHeight} L ${firstPt.x} ${svgHeight} Z`;
+    // Đường line chính nối từ mép trái qua các điểm đến mép phải
+    const linePath = `M 0 ${firstPt.y.toFixed(1)} L ${firstPt.x.toFixed(1)} ${firstPt.y.toFixed(1)}${curveCommands} L ${svgWidth} ${lastPt.y.toFixed(1)}`;
+
+    // Vùng fill diện tích phủ xuống đáy biểu đồ
+    const areaPath = `${linePath} L ${svgWidth} ${svgHeight} L 0 ${svgHeight} Z`;
 
     const startNW = values[0];
     const endNW = values[values.length - 1];
     const totalGrowth = endNW - startNW;
-    const totalGrowthPercent = startNW !== 0 ? (totalGrowth / Math.abs(startNW)) * 100 : 0;
+    const totalGrowthPercent =
+      startNW > 0
+        ? (totalGrowth / startNW) * 100
+        : startNW < 0
+        ? (totalGrowth / Math.abs(startNW)) * 100
+        : endNW > 0
+        ? 100
+        : 0;
 
     return {
       points,
@@ -390,8 +404,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     const prev = netWorthTrendData[idx - 1];
     const curr = netWorthTrendData[idx];
     const diff = curr.netWorth - prev.netWorth;
-    const percent = prev.netWorth !== 0 ? (diff / Math.abs(prev.netWorth)) * 100 : 0;
-    return { diff, percent };
+    const percent =
+      prev.netWorth !== 0
+        ? (diff / Math.abs(prev.netWorth)) * 100
+        : curr.netWorth > 0
+        ? 100
+        : 0;
+    return { diff, percent, isPrevZero: prev.netWorth === 0 };
   }, [netWorthTrendData, selectedMonth]);
 
   // Danh mục phân loại theo chế độ chọn (EXPENSE: Chi tiết / Nhóm Cha 50-30-20; hoặc INCOME)
@@ -1205,7 +1224,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                   Tăng trưởng tài sản 6 tháng
                 </span>
                 <div
-                  className={`text-sm font-extrabold flex items-center gap-1 ${
+                  className={`text-sm font-extrabold flex items-center gap-1.5 ${
                     netWorthChartLayout.totalGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
@@ -1213,10 +1232,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                     {netWorthChartLayout.totalGrowth >= 0 ? '▲ +' : '▼ '}
                     {formatVND(Math.abs(netWorthChartLayout.totalGrowth))}
                   </span>
-                  <span className="text-[11px] font-normal text-slate-400">
-                    ({netWorthChartLayout.totalGrowthPercent >= 0 ? '+' : ''}
-                    {netWorthChartLayout.totalGrowthPercent.toFixed(1)}%)
-                  </span>
+                  {netWorthChartLayout.startNW !== 0 ? (
+                    <span className="text-[11px] font-normal text-slate-400">
+                      ({netWorthChartLayout.totalGrowthPercent >= 0 ? '+' : ''}
+                      {netWorthChartLayout.totalGrowthPercent.toFixed(1)}%)
+                    </span>
+                  ) : netWorthChartLayout.endNW > 0 ? (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 font-semibold">
+                      Kỳ đầu ghi chép
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -1230,58 +1255,93 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
               </div>
             </div>
 
-            {/* Khung đồ thị SVG Vector mượt mà */}
-            <div className="relative w-full h-28 pt-2">
+            {/* Khung đồ thị Vector mượt mà, căn chỉnh hoàn hảo trên cả Mobile & Desktop */}
+            <div className="relative w-full h-32 sm:h-36 pt-2 select-none">
+              {/* 1. Lưới cột bấm chọn tương ứng 6 tháng */}
+              <div className="grid grid-cols-6 absolute inset-0 z-0">
+                {netWorthTrendData.map((d) => {
+                  const isSelected = d.monthStr === selectedMonth;
+                  return (
+                    <div
+                      key={d.monthStr}
+                      onClick={() => setSelectedMonth(d.monthStr)}
+                      className={`h-full cursor-pointer transition-colors rounded-xl ${
+                        isSelected ? 'bg-white/4' : 'hover:bg-white/2'
+                      }`}
+                      title={`${d.label}: ${formatVND(d.netWorth)}`}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* 2. Đồ thị SVG đường cong mượt mà & diện tích bóng đổ */}
               <svg
-                viewBox="0 0 320 100"
-                className="w-full h-full overflow-visible"
+                viewBox="0 0 600 120"
+                className="w-full h-full overflow-visible relative z-10 pointer-events-none"
                 preserveAspectRatio="none"
               >
                 <defs>
                   <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10B981" stopOpacity="0.4" />
+                    <stop offset="0%" stopColor="#10B981" stopOpacity="0.35" />
                     <stop offset="100%" stopColor="#10B981" stopOpacity="0.0" />
                   </linearGradient>
                 </defs>
 
-                {/* Đường lưới tham chiếu ngang mờ */}
-                <line x1="16" y1="20" x2="304" y2="20" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-                <line x1="16" y1="55" x2="304" y2="55" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
-                <line x1="16" y1="90" x2="304" y2="90" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                {/* Đường lưới tham chiếu ngang */}
+                <line x1="0" y1="25" x2="600" y2="25" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                <line x1="0" y1="65" x2="600" y2="65" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                <line x1="0" y1="105" x2="600" y2="105" stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
 
                 {/* Vùng bóng đổ mờ Area */}
                 <path d={netWorthChartLayout.areaPath} fill="url(#netWorthGrad)" />
 
-                {/* Đường biểu diễn chính Stroke Line */}
+                {/* Đường biểu diễn chính Stroke Line với độ dày đồng nhất */}
                 <path
                   d={netWorthChartLayout.linePath}
                   fill="none"
                   stroke="#10B981"
-                  strokeWidth="2.5"
+                  strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                 />
+              </svg>
 
-                {/* Các điểm dữ liệu 6 tháng */}
-                {netWorthChartLayout.points.map((pt) => {
+              {/* 3. Điểm dữ liệu dạng HTML Overlay (luôn tròn 100%, không bị méo hạt gạo hay văng ra) */}
+              <div className="absolute inset-0 pointer-events-none z-20">
+                {netWorthChartLayout.points.map((pt, idx) => {
                   const isSelected = pt.monthStr === selectedMonth;
-                  return (
-                    <g key={pt.monthStr} className="cursor-pointer" onClick={() => setSelectedMonth(pt.monthStr)}>
-                      {/* Vùng chạm rộng hơn để dễ bấm trên mobile */}
-                      <circle cx={pt.x} cy={pt.y} r="14" fill="transparent" />
+                  const leftPercent = ((idx + 0.5) / 6) * 100;
+                  const topPercent = (pt.y / 120) * 100;
 
-                      {isSelected ? (
-                        <>
-                          <circle cx={pt.x} cy={pt.y} r="7" fill="#10B981" opacity="0.3" className="animate-ping" />
-                          <circle cx={pt.x} cy={pt.y} r="5" fill="#10B981" stroke="#ffffff" strokeWidth="2" />
-                        </>
-                      ) : (
-                        <circle cx={pt.x} cy={pt.y} r="3.5" fill="#10B981" stroke="#0f172a" strokeWidth="1.5" />
-                      )}
-                    </g>
+                  return (
+                    <div
+                      key={pt.monthStr}
+                      style={{
+                        left: `${leftPercent}%`,
+                        top: `${topPercent}%`
+                      }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer"
+                      onClick={() => setSelectedMonth(pt.monthStr)}
+                      title={`${pt.label}: ${formatVND(pt.netWorth)}`}
+                    >
+                      {/* Vùng chạm rộng 32x32px */}
+                      <div className="w-8 h-8 flex items-center justify-center">
+                        {isSelected ? (
+                          <div className="relative flex items-center justify-center">
+                            {/* Vòng lan tỏa (ping ring) - chuẩn tâm 100%, không bị văng */}
+                            <span className="absolute w-5 h-5 rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                            {/* Điểm chính */}
+                            <span className="relative w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white shadow-lg shadow-emerald-500/50" />
+                          </div>
+                        ) : (
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 border border-slate-900 hover:scale-150 hover:bg-emerald-400 transition-all duration-150" />
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </svg>
+              </div>
             </div>
 
             {/* Các nhãn tháng tương ứng bên dưới */}
@@ -1326,9 +1386,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                 >
                   <span>{selectedNetWorthMoM.diff >= 0 ? '▲ +' : '▼ '}</span>
                   <span>{formatVND(Math.abs(selectedNetWorthMoM.diff))}</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    ({selectedNetWorthMoM.percent >= 0 ? '+' : ''}{selectedNetWorthMoM.percent.toFixed(1)}%)
-                  </span>
+                  {!selectedNetWorthMoM.isPrevZero && (
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      ({selectedNetWorthMoM.percent >= 0 ? '+' : ''}{selectedNetWorthMoM.percent.toFixed(1)}%)
+                    </span>
+                  )}
                 </div>
               )}
             </div>

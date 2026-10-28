@@ -1,6 +1,6 @@
 // src/services/transactionService.ts
 import { db } from '../db';
-import type { Transaction, RecurringFrequency, Wallet, WalletType } from '../types';
+import type { Transaction, RecurringFrequency, Wallet, WalletType, GoldDetails } from '../types';
 import { generateUUID } from '../utils/uuid';
 import { recordDeletedEntity } from './syncService';
 import { getCurrentDate, getCurrentTime } from '../utils/formatters';
@@ -77,6 +77,7 @@ export async function createWallet(params: {
   color: string;
   isExcludedFromTotal?: boolean;
   order?: number;
+  goldDetails?: GoldDetails;
 }): Promise<Wallet> {
   const now = new Date().toISOString();
   const count = await db.wallets.count();
@@ -91,6 +92,7 @@ export async function createWallet(params: {
     color: params.color || '#10B981',
     isExcludedFromTotal: Boolean(params.isExcludedFromTotal),
     order: typeof params.order === 'number' ? params.order : count,
+    goldDetails: params.goldDetails,
     createdAt: now,
     updatedAt: now
   };
