@@ -18,6 +18,7 @@ import {
   clearDeletedEntities
 } from './syncService';
 import * as XLSX from 'xlsx';
+import { ensureStandardizedCategories } from '../db/seed';
 
 export interface FullBackupPayload {
   version: string;
@@ -269,6 +270,7 @@ export async function restoreBackupData(
 
   // 2. Nạp dữ liệu vào IndexedDB máy (dùng applyMergedDataToIndexedDB để bảo vệ config và chạy trong runWithoutDirtyTracking)
   await applyMergedDataToIndexedDB(cleanSyncPayload);
+  await ensureStandardizedCategories(true);
 
   // 3. Cập nhật mốc thời gian đồng bộ trùng khớp với Cloud
   if (cloudSynced) {

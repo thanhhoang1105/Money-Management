@@ -85,7 +85,8 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
   const [formParentId, setFormParentId] = useState<string>('');
   const [formIcon, setFormIcon] = useState('Tag');
   const [formColor, setFormColor] = useState('#3B82F6');
-  const [formTagsStr, setFormTagsStr] = useState('');
+  const [formTags, setFormTags] = useState<string[]>([]);
+  const [tagInputText, setTagInputText] = useState('');
   const [formIsStarred, setFormIsStarred] = useState(false);
   const [formError, setFormError] = useState('');
   const [iconSearch, setIconSearch] = useState('');
@@ -209,7 +210,8 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
     }
 
     setFormIcon('Tag');
-    setFormTagsStr('');
+    setFormTags([]);
+    setTagInputText('');
     setFormIsStarred(false);
     setFormError('');
     setIconSearch('');
@@ -224,7 +226,8 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
     setFormParentId(cat.parentId || (parentCategories[0]?.id || ''));
     setFormIcon(cat.icon || 'Tag');
     setFormColor(cat.color || '#3B82F6');
-    setFormTagsStr(cat.quickTags?.join(', ') || '');
+    setFormTags(cat.quickTags ? [...cat.quickTags] : []);
+    setTagInputText('');
     setFormIsStarred(!!cat.isStarred);
     setFormError('');
     setIconSearch('');
@@ -254,10 +257,19 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
     }
 
     const now = new Date().toISOString();
-    const tags = formTagsStr
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const leftover = tagInputText.trim();
+    const finalTags = [...formTags];
+    if (leftover) {
+      const parts = leftover
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        if (!finalTags.includes(p)) {
+          finalTags.push(p);
+        }
+      }
+    }
 
     try {
       if (editingCat) {
@@ -267,7 +279,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           parentId: resolvedParentId,
           icon: formIcon,
           color: formColor,
-          quickTags: tags,
+          quickTags: finalTags,
           isStarred: formIsStarred,
           updatedAt: now
         });
@@ -280,7 +292,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           parentId: resolvedParentId,
           icon: formIcon,
           color: formColor,
-          quickTags: tags,
+          quickTags: finalTags,
           isDefault: false,
           isStarred: formIsStarred,
           createdAt: now
@@ -586,16 +598,85 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           {/* Quick tags */}
           {!isFixedExpenseParent && (
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Gợi ý ghi chú nhanh (cách nhau bằng dấu phẩy)
+              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                Gợi ý ghi chú nhanh (Tag)
               </label>
-              <input
-                type="text"
-                value={formTagsStr}
-                onChange={(e) => setFormTagsStr(e.target.value)}
-                placeholder="Ví dụ: Ăn sáng, Cơm trưa, Cà phê"
-                className="input-ios w-full bg-slate-800 rounded-xl px-3.5 py-2.5 text-white border border-white/10"
-              />
+
+              {/* Danh sách các tag hiện tại kèm nút X để xóa */}
+              {formTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2.5 p-2 rounded-xl bg-slate-800/60 border border-white/5 max-h-32 overflow-y-auto">
+                  {formTags.map((tag, idx) => (
+                    <span
+                      key={`${tag}-${idx}`}
+                      className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-slate-700/80 border border-white/10 text-xs text-slate-200 hover:border-rose-400/50 transition-colors"
+                    >
+                      <span className="font-medium select-none">{tag}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormTags((prev) => prev.filter((_, i) => i !== idx));
+                        }}
+                        className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-500/80 transition-all cursor-pointer"
+                        title={`Xóa tag "${tag}"`}
+                      >
+                        <X size={11} strokeWidth={2.5} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Ô nhập thêm tag mới */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tagInputText}
+                  onChange={(e) => setTagInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      const trimmed = tagInputText.trim();
+                      if (trimmed) {
+                        const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+                        setFormTags((prev) => {
+                          const next = [...prev];
+                          for (const p of parts) {
+                            if (!next.includes(p)) next.push(p);
+                          }
+                          return next;
+                        });
+                        setTagInputText('');
+                      }
+                    }
+                  }}
+                  placeholder="Nhập tag rồi nhấn Enter hoặc dấu phẩy..."
+                  className="input-ios flex-1 bg-slate-800 rounded-xl px-3.5 py-2.5 text-white border border-white/10 placeholder:text-slate-500 text-sm focus:border-sky-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const trimmed = tagInputText.trim();
+                    if (trimmed) {
+                      const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+                      setFormTags((prev) => {
+                        const next = [...prev];
+                        for (const p of parts) {
+                          if (!next.includes(p)) next.push(p);
+                        }
+                        return next;
+                      });
+                      setTagInputText('');
+                    }
+                  }}
+                  className="touch-btn h-10 px-3.5 rounded-xl bg-sky-500/20 border border-sky-400/40 text-sky-300 hover:bg-sky-500/30 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shrink-0"
+                >
+                  <Plus size={14} /> Thêm
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Bấm vào dấu <span className="text-rose-400 font-bold">✕</span> trên từng tag để xóa nhanh.
+              </p>
             </div>
           )}
 
