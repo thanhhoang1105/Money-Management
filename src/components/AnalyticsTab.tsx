@@ -490,7 +490,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
       const pctText = '100%';
       const badgeW = 52;
       const badgeH = 20;
-      const badgeX = 314;
+      const badgeX = 298;
       const endX = badgeX - 5;
       const endY = cy;
       const badgeY = endY - badgeH / 2;
@@ -508,7 +508,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
             isRight: true,
             startX: cx + R_out + 1,
             startY: cy,
-            elbowX: 276,
+            elbowX: 274,
             elbowY: cy,
             endX,
             endY,
@@ -675,11 +675,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
         const badgeH = 20;
 
         if (isRight) {
-          s.badgeX = 314;
+          s.badgeX = 298;
           s.badgeW = badgeW;
           s.badgeH = badgeH;
           s.endX = s.badgeX - 5;
-          s.elbowX = Math.min(s.endX - 8, Math.max(s.startX + 12, 276));
+          s.elbowX = Math.min(s.endX - 8, Math.max(s.startX + 12, 274));
           s.badgeY = s.endY - badgeH / 2;
           s.iconX = s.badgeX + 6;
           s.iconY = s.badgeY + 4.5;
@@ -1881,7 +1881,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                 if (!slice.showLeader) return null;
                 const color = slice.category?.color || '#38bdf8';
                 const catName = slice.category?.name || 'Khác';
-                const truncatedName = catName.length > 11 ? `${catName.slice(0, 10)}…` : catName;
+                const truncatedName = catName.length > 17 ? `${catName.slice(0, 16)}…` : catName;
                 const IconComp = (slice.category?.icon && ICON_MAP[slice.category.icon]) || CircleDot;
 
                 return (
