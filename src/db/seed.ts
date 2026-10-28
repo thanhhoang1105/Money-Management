@@ -23,6 +23,7 @@ export interface SeedCategoryItem {
   quickTags?: string[];
   isDefault: boolean;
   isStarred?: boolean;
+  order?: number;
 }
 
 export const SEED_CATEGORIES: SeedCategoryItem[] = [
@@ -36,7 +37,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     icon: 'CheckCircle2',
     color: '#10B981',
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 0
   },
   {
     id: PARENT_NICE_TO_HAVE_ID,
@@ -45,7 +47,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     icon: 'Sparkles',
     color: '#3B82F6',
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 1
   },
   {
     id: PARENT_WASTED_ID,
@@ -54,11 +57,12 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     icon: 'AlertCircle',
     color: '#EF4444',
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
   },
 
   // ==========================================
-  // 1.1 MUST HAVE (14 MỤC CON)
+  // 1.1 MUST HAVE (15 MỤC CON)
   // ==========================================
   {
     id: 'cat_exp_groceries',
@@ -69,7 +73,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#10B981',
     quickTags: ['Rau củ', 'Thịt cá', 'Gia vị', 'Trái cây', 'Gạo', 'Đi chợ'],
     isDefault: true,
-    isStarred: false
+    isStarred: true,
+    order: 0
   },
   {
     id: 'cat_exp_fuel',
@@ -80,128 +85,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#0284C7',
     quickTags: ['Đổ xăng', 'Vé xe', 'Gửi xe', 'Rửa xe'],
     isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_vehicle_maintenance',
-    name: 'Sửa xe & Bảo dưỡng',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Wrench',
-    color: '#64748B',
-    quickTags: ['Thay nhớt', 'Vá xe', 'Sửa xe', 'Bảo dưỡng định kỳ'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_rent',
-    name: 'Tiền trọ / Thuê nhà',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Home',
-    color: '#3B82F6',
-    quickTags: ['Tiền phòng', 'Tiền nhà tháng', 'Cọc phòng'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_electricity',
-    name: 'Điện sinh hoạt',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Lightbulb',
-    color: '#F59E0B',
-    quickTags: ['Tiền điện tháng'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_water',
-    name: 'Nước sinh hoạt',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Droplets',
-    color: '#06B6D4',
-    quickTags: ['Tiền nước tháng'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_internet',
-    name: 'Mạng Internet / 4G',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Wifi',
-    color: '#8B5CF6',
-    quickTags: ['Cước wifi', 'Gói cước 4G'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_phone',
-    name: 'Điện thoại nạp thẻ',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Smartphone',
-    color: '#0EA5E9',
-    quickTags: ['Nạp tiền điện thoại', 'Thẻ cào'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_medicine',
-    name: 'Thuốc & Khám bệnh',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'HeartPulse',
-    color: '#F43F5E',
-    quickTags: ['Thuốc cảm', 'Khám bệnh', 'Khẩu trang', 'Vitamin'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_household',
-    name: 'Đồ dùng gia dụng thiết yếu',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Package',
-    color: '#14B8A6',
-    quickTags: ['Bột giặt', 'Nước xả', 'Kem đánh răng', 'Dầu gội', 'Giấy vệ sinh'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_family_support',
-    name: 'Gửi tiền về cho Bố Mẹ / Gia đình',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'Heart',
-    color: '#EC4899',
-    quickTags: ['Gửi bố mẹ', 'Phụ gia đình', 'Biếu ông bà'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_insurance',
-    name: 'Bảo hiểm (Y tế / Xe máy / Tai nạn)',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'ShieldCheck',
-    color: '#1E40AF',
-    quickTags: ['BHYT', 'Bảo hiểm xe máy', 'Bảo hiểm tai nạn'],
-    isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_loan_installment',
-    name: 'Trả nợ / Trả góp định kỳ',
-    type: 'EXPENSE',
-    parentId: PARENT_MUST_HAVE_ID,
-    icon: 'CreditCard',
-    color: '#DC2626',
-    quickTags: ['Trả góp điện thoại', 'Trả góp xe', 'Trả nợ vay'],
-    isDefault: true,
-    isStarred: false
+    isStarred: true,
+    order: 1
   },
   {
     id: GRAB_FEE_CAT_ID,
@@ -212,11 +97,156 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#6366F1',
     quickTags: ['Chiết khấu Grab', 'Phí nền tảng'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
+  },
+  {
+    id: 'cat_exp_education',
+    name: 'Giáo dục & Con cái',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'GraduationCap',
+    color: '#06B6D4',
+    quickTags: ['Học phí', 'Sách vở', 'Khóa học', 'Đồ dùng học tập', 'Sữa cho con'],
+    isDefault: true,
+    isStarred: false,
+    order: 3
+  },
+  {
+    id: 'cat_exp_insurance',
+    name: 'Bảo hiểm (Y tế / Xe máy / Tai nạn)',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'ShieldCheck',
+    color: '#1E40AF',
+    quickTags: ['BHYT', 'Bảo hiểm xe máy', 'Bảo hiểm tai nạn'],
+    isDefault: true,
+    isStarred: false,
+    order: 4
+  },
+  {
+    id: 'cat_exp_electricity',
+    name: 'Điện sinh hoạt',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Lightbulb',
+    color: '#F59E0B',
+    quickTags: ['Tiền điện tháng'],
+    isDefault: true,
+    isStarred: false,
+    order: 5
+  },
+  {
+    id: 'cat_exp_phone',
+    name: 'Điện thoại nạp thẻ',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Smartphone',
+    color: '#0EA5E9',
+    quickTags: ['Nạp tiền điện thoại', 'Thẻ cào'],
+    isDefault: true,
+    isStarred: false,
+    order: 6
+  },
+  {
+    id: 'cat_exp_household',
+    name: 'Đồ dùng gia dụng thiết yếu',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Package',
+    color: '#14B8A6',
+    quickTags: ['Bột giặt', 'Nước xả', 'Kem đánh răng', 'Dầu gội', 'Giấy vệ sinh'],
+    isDefault: true,
+    isStarred: false,
+    order: 7
+  },
+  {
+    id: 'cat_exp_family_support',
+    name: 'Gửi tiền về cho Bố Mẹ / Gia đình',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Heart',
+    color: '#EC4899',
+    quickTags: ['Gửi bố mẹ', 'Phụ gia đình', 'Biếu ông bà'],
+    isDefault: true,
+    isStarred: false,
+    order: 8
+  },
+  {
+    id: 'cat_exp_vehicle_maintenance',
+    name: 'Sửa xe & Bảo dưỡng',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Wrench',
+    color: '#64748B',
+    quickTags: ['Thay nhớt', 'Vá xe', 'Sửa xe', 'Bảo dưỡng định kỳ'],
+    isDefault: true,
+    isStarred: false,
+    order: 9
+  },
+  {
+    id: 'cat_exp_rent',
+    name: 'Tiền trọ / Thuê nhà',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Home',
+    color: '#3B82F6',
+    quickTags: ['Tiền phòng', 'Tiền nhà tháng', 'Cọc phòng'],
+    isDefault: true,
+    isStarred: false,
+    order: 10
+  },
+  {
+    id: 'cat_exp_water',
+    name: 'Nước sinh hoạt',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Droplets',
+    color: '#06B6D4',
+    quickTags: ['Tiền nước tháng'],
+    isDefault: true,
+    isStarred: false,
+    order: 11
+  },
+  {
+    id: 'cat_exp_internet',
+    name: 'Mạng Internet / 4G',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'Wifi',
+    color: '#8B5CF6',
+    quickTags: ['Cước wifi', 'Gói cước 4G'],
+    isDefault: true,
+    isStarred: false,
+    order: 12
+  },
+  {
+    id: 'cat_exp_medicine',
+    name: 'Thuốc & Khám bệnh',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'HeartPulse',
+    color: '#F43F5E',
+    quickTags: ['Thuốc cảm', 'Khám bệnh', 'Khẩu trang', 'Vitamin'],
+    isDefault: true,
+    isStarred: false,
+    order: 13
+  },
+  {
+    id: 'cat_exp_loan_installment',
+    name: 'Trả nợ / Trả góp định kỳ',
+    type: 'EXPENSE',
+    parentId: PARENT_MUST_HAVE_ID,
+    icon: 'CreditCard',
+    color: '#DC2626',
+    quickTags: ['Trả góp điện thoại', 'Trả góp xe', 'Trả nợ vay'],
+    isDefault: true,
+    isStarred: false,
+    order: 14
   },
 
   // ==========================================
-  // 1.2 NICE TO HAVE (12 MỤC CON)
+  // 1.2 NICE TO HAVE (11 MỤC CON)
   // ==========================================
   {
     id: 'cat_exp_dining_out',
@@ -227,7 +257,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#F97316',
     quickTags: ['Ăn sáng', 'Cơm trưa', 'Ăn tối', 'Đặt GrabFood', 'ShopeeFood'],
     isDefault: true,
-    isStarred: false
+    isStarred: true,
+    order: 0
   },
   {
     id: 'cat_exp_cafe',
@@ -238,7 +269,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#D97706',
     quickTags: ['Cà phê sáng', 'Trà sữa', 'Nước ngọt', 'Sinh tố'],
     isDefault: true,
-    isStarred: false
+    isStarred: true,
+    order: 1
   },
   {
     id: 'cat_exp_clothing',
@@ -249,7 +281,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#EC4899',
     quickTags: ['Áo quần', 'Giày dép', 'Túi xách'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
   },
   {
     id: 'cat_exp_personal_care',
@@ -260,7 +293,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#F472B6',
     quickTags: ['Cắt tóc', 'Gội đầu', 'Mỹ phẩm', 'Skincare'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 3
   },
   {
     id: 'cat_exp_sports',
@@ -271,7 +305,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#22C55E',
     quickTags: ['Tiền sân cầu', 'Mua cầu', 'Tập gym', 'Đan vợt'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 4
   },
   {
     id: 'cat_exp_online_shopping',
@@ -282,7 +317,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#FB923C',
     quickTags: ['Shopee', 'Lazada', 'TikTok Shop', 'Mua sắm lặt vặt'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 5
   },
   {
     id: 'cat_exp_entertainment',
@@ -293,7 +329,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#8B5CF6',
     quickTags: ['Xem phim rạp', 'Chơi game', 'Bida'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 6
   },
   {
     id: 'cat_exp_subscription',
@@ -304,7 +341,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#A855F7',
     quickTags: ['Netflix', 'Spotify', 'YouTube Premium', 'iCloud'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 7
   },
   {
     id: 'cat_exp_travel',
@@ -315,7 +353,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#38BDF8',
     quickTags: ['Vé xe', 'Vé máy bay', 'Khách sạn', 'Tour'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 8
   },
   {
     id: 'cat_exp_gifts',
@@ -326,18 +365,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#FBBF24',
     quickTags: ['Đám cưới', 'Sinh nhật', 'Thôi nôi', 'Quà tặng'],
     isDefault: true,
-    isStarred: false
-  },
-  {
-    id: 'cat_exp_education',
-    name: 'Học tập / Nâng cao tay nghề',
-    type: 'EXPENSE',
-    parentId: PARENT_NICE_TO_HAVE_ID,
-    icon: 'GraduationCap',
-    color: '#0EA5E9',
-    quickTags: ['Học lái xe', 'Khóa học', 'Sách vở', 'Tài liệu'],
-    isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 9
   },
   {
     id: 'cat_exp_tech_gadgets',
@@ -348,7 +377,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#3B82F6',
     quickTags: ['Giá đỡ điện thoại', 'Mũ bảo hiểm', 'Pin dự phòng', 'Tai nghe', 'Cáp sạc'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 10
   },
 
   // ==========================================
@@ -363,7 +393,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#EF4444',
     quickTags: ['Mua rồi bỏ xó', 'Thích nhất thời', 'Hối hận'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 0
   },
   {
     id: 'cat_exp_heavy_drinking',
@@ -374,7 +405,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#EA580C',
     quickTags: ['Bia rượu', 'Tăng 2 tăng 3', 'Nhậu nhẹt'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 1
   },
   {
     id: 'cat_exp_spoiled_goods',
@@ -385,7 +417,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#64748B',
     quickTags: ['Thức ăn hết hạn', 'Đồ để mốc', 'Bỏ quên trong tủ'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
   },
   {
     id: 'cat_exp_fines',
@@ -396,7 +429,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#DC2626',
     quickTags: ['Phạt giao thông', 'Phạt nộp muộn', 'Lãi quá hạn'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 3
   },
   {
     id: 'cat_exp_toxic_habits',
@@ -407,7 +441,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#991B1B',
     quickTags: ['Thuốc lá', 'Chất kích thích'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 4
   },
   {
     id: 'cat_exp_gambling',
@@ -418,7 +453,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#7C3AED',
     quickTags: ['Vé số', 'Vé cào', 'Vietlott'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 5
   },
   {
     id: 'cat_exp_bank_fees',
@@ -429,7 +465,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#475569',
     quickTags: ['Phí rút tiền ATM', 'Phí chuyển khoản', 'Hao hụt lặt vặt'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 6
   },
 
   // ==========================================
@@ -443,7 +480,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#10B981',
     quickTags: ['Cuốc GrabBike', 'Cuốc GrabFood', 'Tiền tip'],
     isDefault: true,
-    isStarred: false
+    isStarred: true,
+    order: 0
   },
   {
     id: 'cat_income_salary',
@@ -453,7 +491,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#3B82F6',
     quickTags: ['Lương chuyển khoản', 'Lương cứng', 'Lương tạm ứng'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 1
   },
   {
     id: 'cat_income_bonus',
@@ -463,7 +502,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#0284C7',
     quickTags: ['Thưởng KPI', 'Thưởng Tết', 'Tăng ca', 'Làm thêm'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
   },
   {
     id: 'cat_income_gift',
@@ -473,7 +513,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#EC4899',
     quickTags: ['Bố mẹ cho', 'Lì xì', 'Người thân tặng'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 3
   },
   {
     id: 'cat_income_saving_interest',
@@ -483,7 +524,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#F59E0B',
     quickTags: ['Lãi có kỳ hạn', 'Lãi không kỳ hạn', 'Lãi cổ tức', 'Lãi chứng khoán'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 4
   },
   {
     id: 'cat_income_inflow',
@@ -493,7 +535,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#14B8A6',
     quickTags: ['Bán đồ cũ', 'Thanh lý', 'Thu nhập phụ'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 5
   },
   {
     id: 'cat_income_other',
@@ -503,7 +546,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#64748B',
     quickTags: ['Khoản thu bất ngờ', 'Lặt vặt'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 6
   },
 
   // ==========================================
@@ -517,7 +561,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#F59E0B',
     quickTags: ['Bạn bè vay', 'Đồng nghiệp mượn', 'Người thân vay'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 0
   },
   {
     id: 'cat_debt_borrow',
@@ -527,7 +572,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#8B5CF6',
     quickTags: ['Vay ngân hàng', 'Mượn bạn', 'Vay người thân'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 1
   },
   {
     id: 'cat_debt_collect',
@@ -537,7 +583,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#10B981',
     quickTags: ['Thu nợ bạn trả', 'Thu hồi nợ cũ'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 2
   },
   {
     id: 'cat_debt_pay',
@@ -547,7 +594,8 @@ export const SEED_CATEGORIES: SeedCategoryItem[] = [
     color: '#EF4444',
     quickTags: ['Trả nợ ngân hàng', 'Trả tiền bạn', 'Thanh toán thẻ tín dụng'],
     isDefault: true,
-    isStarred: false
+    isStarred: false,
+    order: 3
   }
 ];
 
@@ -644,21 +692,24 @@ export async function ensureHierarchicalCategories(): Promise<void> {
         name: 'Must have (Thiết yếu)',
         type: 'EXPENSE' as const,
         icon: 'CheckCircle2',
-        color: '#10B981'
+        color: '#10B981',
+        order: 0
       },
       {
         id: PARENT_NICE_TO_HAVE_ID,
         name: 'Nice to have (Nâng cao)',
         type: 'EXPENSE' as const,
         icon: 'Sparkles',
-        color: '#3B82F6'
+        color: '#3B82F6',
+        order: 1
       },
       {
         id: PARENT_WASTED_ID,
         name: 'Wasted (Lãng phí)',
         type: 'EXPENSE' as const,
         icon: 'AlertCircle',
-        color: '#EF4444'
+        color: '#EF4444',
+        order: 2
       }
     ];
 
@@ -672,6 +723,8 @@ export async function ensureHierarchicalCategories(): Promise<void> {
           icon: p.icon,
           color: p.color,
           isDefault: true,
+          isStarred: false,
+          order: p.order,
           createdAt: now
         });
       }
@@ -698,6 +751,7 @@ export async function ensureHierarchicalCategories(): Promise<void> {
           quickTags: item.quickTags || [],
           isDefault: true,
           isStarred: !!item.isStarred,
+          order: item.order ?? 0,
           createdAt: now
         });
         existingNameSet.add(key);
@@ -734,7 +788,7 @@ export async function ensureDefaultSettings(): Promise<void> {
  */
 export async function ensureStandardizedCategories(force = false): Promise<void> {
   if (!force) {
-    const versionSetting = await db.settings.get('has_synced_categories_v7');
+    const versionSetting = await db.settings.get('has_synced_categories_v8');
     if (versionSetting?.value) {
       return;
     }
@@ -798,6 +852,9 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
         'trả nợ / trả góp định kỳ': 'cat_exp_loan_installment',
         'trả góp': 'cat_exp_loan_installment',
         'phí dịch vụ grab': GRAB_FEE_CAT_ID,
+        'giáo dục & con cái': 'cat_exp_education',
+        'giáo dục': 'cat_exp_education',
+        'con cái': 'cat_exp_education',
 
         // Nice to have
         'ăn tiệm': 'cat_exp_dining_out',
@@ -904,7 +961,8 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
         '311fe1e2-b7b5-4bfe-a28a-ce42be1508db': 'cat_income_saving_interest',
         '376045d6-d74c-473c-ba30-7c2a7e7a83d7': 'cat_income_inflow',
         'bf23fe9b-d748-43d8-ad97-e7d6928e100f': 'cat_income_other',
-        '64a4b127-ec14-411a-b328-765f02f928e6': 'cat_income_other'
+        '64a4b127-ec14-411a-b328-765f02f928e6': 'cat_income_other',
+        '806c6fa8-a55b-4e4f-8e42-dc3072cc3749': 'cat_exp_education'
       };
 
       const canonicalIdSet = new Set(SEED_CATEGORIES.map((s) => s.id).filter(Boolean) as string[]);
@@ -921,11 +979,19 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
         }
       }
 
-      // 2. Upsert tất cả SEED_CATEGORIES (đảm bảo đầy đủ 14 Must have, 12 Nice to have, 7 Wasted, 7 Income, 4 Debt)
+      // 2. Upsert tất cả SEED_CATEGORIES (đảm bảo đầy đủ 15 Must have, 11 Nice to have, 7 Wasted, 7 Income, 4 Debt)
       const existingById = new Map(existingCats.map((c) => [c.id, c]));
       for (const seed of SEED_CATEGORIES) {
         if (!seed.id) continue;
         const exist = existingById.get(seed.id);
+        const mappedOldCat = existingCats.find((c) => idRedirectMap[c.id] === seed.id);
+        const resolvedStarred = exist?.isStarred !== undefined
+          ? exist.isStarred
+          : (mappedOldCat?.isStarred !== undefined ? mappedOldCat.isStarred : (seed.isStarred ?? false));
+        const resolvedOrder = exist?.order !== undefined
+          ? exist.order
+          : (mappedOldCat?.order !== undefined ? mappedOldCat.order : (seed.order ?? 0));
+
         if (exist) {
           await db.categories.update(seed.id, {
             name: seed.name,
@@ -935,7 +1001,8 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
             color: seed.color,
             quickTags: seed.quickTags || [],
             isDefault: true,
-            isStarred: exist.isStarred ?? false,
+            isStarred: resolvedStarred,
+            order: resolvedOrder,
             updatedAt: now
           });
         } else {
@@ -948,7 +1015,8 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
             color: seed.color,
             quickTags: seed.quickTags || [],
             isDefault: true,
-            isStarred: false,
+            isStarred: resolvedStarred,
+            order: resolvedOrder,
             createdAt: now,
             updatedAt: now
           });
@@ -1010,6 +1078,7 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
           await db.categories.update(cat.id, {
             parentId: 'cat_income_salary',
             type: 'INCOME',
+            order: cat.order ?? 99,
             updatedAt: now
           });
           continue;
@@ -1030,9 +1099,9 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
         }
       }
 
-      // 8. Đánh dấu đã hoàn thành đồng bộ chuẩn v7
+      // 8. Đánh dấu đã hoàn thành đồng bộ chuẩn v8
       await db.settings.put({
-        key: 'has_synced_categories_v7',
+        key: 'has_synced_categories_v8',
         value: true
       });
       await db.settings.put({

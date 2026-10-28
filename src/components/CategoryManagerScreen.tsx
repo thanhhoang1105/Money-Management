@@ -887,9 +887,9 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
           <HelpCircle size={15} className="shrink-0" />
           <span>
             {activeTab === 'EXPENSE'
-              ? 'Khoản Chi có 3 nhóm mặc định (Must have, Nice to have, Wasted). Hãy bấm "+ Thêm con" để tạo và chọn mục con bên dưới.'
+              ? 'Khoản Chi gồm 3 nhóm mặc định (Must have, Nice to have, Wasted). Hãy bấm "+ Thêm mới" bên trên để tạo thêm mục con.'
               : activeTab === 'INCOME'
-              ? 'Khoản Thu có thể chạm chọn trực tiếp mục chính hoặc bấm "+ Thêm con" để tạo mục con.'
+              ? 'Khoản Thu có thể chạm chọn trực tiếp mục chính hoặc bấm "+ Thêm mới" bên trên để tạo thêm mục.'
               : 'Vay / Nợ gồm 4 loại giao dịch cố định (không phân nhánh cha - con).'}
           </span>
         </div>
@@ -906,7 +906,7 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                 key={parent.id}
                 className="rounded-2xl bg-slate-900 border border-white/8 overflow-hidden shadow-md"
               >
-                {/* Header Nhóm cha (Không cho chọn trực tiếp làm giao dịch, chỉ dùng phân nhóm & thêm mục con) */}
+                {/* Header Nhóm cha (Chỉ dùng phân nhóm và hiển thị số lượng mục con) */}
                 <div className="px-3.5 py-3 bg-slate-800/80 border-b border-white/6 flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
@@ -918,41 +918,11 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                     <div className="truncate">
                       <div className="text-xs font-bold text-white flex items-center gap-1.5">
                         <span className="truncate">{parent.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300 font-normal shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-normal shrink-0">
                           {children.length} mục con
                         </span>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {children.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setIsReordering(!isReordering)}
-                        className={`touch-btn text-xs font-bold px-2.5 py-1.5 rounded-xl border flex items-center gap-1 cursor-pointer transition-all ${
-                          isReordering
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                            : 'bg-slate-700/60 border-white/10 text-slate-300 hover:text-white hover:bg-slate-700'
-                        }`}
-                        title={isReordering ? 'Hoàn tất sắp xếp' : 'Sắp xếp các mục con trong nhóm này'}
-                      >
-                        <ArrowUpDown size={12} className={isReordering ? 'text-emerald-400' : 'text-slate-400'} />
-                        <span className="text-[11px]">{isReordering ? 'Xong' : 'Sắp xếp'}</span>
-                      </button>
-                    )}
-
-                    {!isReordering && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAdd(parent.id)}
-                        className="touch-btn text-xs font-bold text-sky-400 bg-sky-500/15 px-2.5 py-1.5 rounded-xl border border-sky-400/25 flex items-center gap-1 cursor-pointer hover:bg-sky-500/25"
-                        title="Thêm hạng mục con vào nhóm này"
-                      >
-                        <Plus size={13} strokeWidth={2.5} />
-                        <span>Thêm con</span>
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -1278,16 +1248,6 @@ export const CategoryManagerScreen: React.FC<CategoryManagerScreenProps> = ({
                         </>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAdd(parent.id)}
-                            className="touch-btn text-[11px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-1 rounded-lg border-none flex items-center gap-0.5 cursor-pointer hover:bg-sky-500/20 mr-1"
-                            title="Thêm mục con"
-                          >
-                            <Plus size={12} />
-                            <span>Thêm con</span>
-                          </button>
-
                           <button
                             type="button"
                             onClick={() => handleToggleStar(parent, parentCategories)}

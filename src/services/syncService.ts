@@ -270,9 +270,8 @@ export function mergeTwoWayData(
       const remoteTime = remoteCat.updatedAt || remoteCat.createdAt;
       const chosen = remoteTime > localTime ? { ...remoteCat } : { ...localCat };
 
-      if (localCat.isStarred || remoteCat.isStarred) {
-        chosen.isStarred = true;
-      }
+      chosen.isStarred = remoteTime > localTime ? Boolean(remoteCat.isStarred) : Boolean(localCat.isStarred);
+      chosen.order = remoteTime > localTime ? (remoteCat.order ?? localCat.order) : (localCat.order ?? remoteCat.order);
 
       const tags = new Set([...(localCat.quickTags || []), ...(remoteCat.quickTags || [])]);
       chosen.quickTags = Array.from(tags);
@@ -497,7 +496,8 @@ export function deduplicateSyncPayload(payload: SyncDataPayload): SyncDataPayloa
     PARENT_NICE_TO_HAVE_ID,
     PARENT_WASTED_ID,
     'system_adjustment',
-    GRAB_FEE_CAT_ID
+    GRAB_FEE_CAT_ID,
+    ...SEED_CATEGORIES.map((s) => s.id).filter(Boolean) as string[]
   ]);
 
   const categoryIdMap = new Map<string, string>();
