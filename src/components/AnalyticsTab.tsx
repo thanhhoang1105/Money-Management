@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Category, Transaction, Wallet } from '../types';
-import { CategoryIcon } from './CategoryIcon';
+import { CategoryIcon, ICON_MAP } from './CategoryIcon';
 import {
   formatVND,
   formatMonthDisplay,
@@ -32,7 +32,8 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  CircleDot
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -481,10 +482,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
     const cx = 195;
     const cy = 125;
-    const R = 64;
+    const R_out = 66;
+    const R_in = 40;
 
     if (sortedCategories.length === 1) {
       const single = sortedCategories[0];
+      const pctText = '100%';
+      const badgeW = 52;
+      const badgeH = 20;
+      const badgeX = 314;
+      const endX = badgeX - 5;
+      const endY = cy;
+      const badgeY = endY - badgeH / 2;
+
       return {
         slices: [
           {
@@ -496,15 +506,24 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
             pathD: '',
             isSingle: true,
             isRight: true,
-            startX: cx + R + 1,
+            startX: cx + R_out + 1,
             startY: cy,
-            elbowX: cx + R + 16,
+            elbowX: 276,
             elbowY: cy,
-            endX: cx + R + 34,
-            endY: cy,
-            textX: cx + R + 38,
-            textY: cy + 3,
+            endX,
+            endY,
+            badgeX,
+            badgeY,
+            badgeW,
+            badgeH,
+            iconX: badgeX + 6,
+            iconY: badgeY + 4.5,
+            textX: badgeX + 20,
+            textY: badgeY + 10,
+            nameX: badgeX + 2,
+            nameY: badgeY + badgeH + 11,
             textAnchor: 'start' as const,
+            pctText,
             showLeader: true
           }
         ],
@@ -513,7 +532,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     }
 
     let currentAngle = 0;
-    const rawSlices = sortedCategories.map((item) => {
+    const rawSlices = sortedCategories.map((item, idx) => {
       const angle = (item.percentage / 100) * 360;
       const startAngle = currentAngle;
       const endAngle = currentAngle + angle;
@@ -522,22 +541,38 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
       const rad1 = ((startAngle - 90) * Math.PI) / 180;
       const rad2 = ((endAngle - 90) * Math.PI) / 180;
-      const x1 = cx + R * Math.cos(rad1);
-      const y1 = cy + R * Math.sin(rad1);
-      const x2 = cx + R * Math.cos(rad2);
-      const y2 = cy + R * Math.sin(rad2);
+
+      const x_out1 = cx + R_out * Math.cos(rad1);
+      const y_out1 = cy + R_out * Math.sin(rad1);
+      const x_out2 = cx + R_out * Math.cos(rad2);
+      const y_out2 = cy + R_out * Math.sin(rad2);
+
+      const x_in1 = cx + R_in * Math.cos(rad1);
+      const y_in1 = cy + R_in * Math.sin(rad1);
+      const x_in2 = cx + R_in * Math.cos(rad2);
+      const y_in2 = cy + R_in * Math.sin(rad2);
+
       const largeArc = angle > 180 ? 1 : 0;
-      const pathD = `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+      // Đường vẽ lát cắt Donut (Annular sector path)
+      const pathD = `M ${x_out1.toFixed(2)} ${y_out1.toFixed(2)} A ${R_out} ${R_out} 0 ${largeArc} 1 ${x_out2.toFixed(2)} ${y_out2.toFixed(2)} L ${x_in2.toFixed(2)} ${y_in2.toFixed(2)} A ${R_in} ${R_in} 0 ${largeArc} 0 ${x_in1.toFixed(2)} ${y_in1.toFixed(2)} Z`;
 
       const midRad = ((midAngle - 90) * Math.PI) / 180;
       const isRight = Math.cos(midRad) >= 0;
 
-      const startX = cx + (R + 1) * Math.cos(midRad);
-      const startY = cy + (R + 1) * Math.sin(midRad);
+      const startX = cx + (R_out + 1) * Math.cos(midRad);
+      const startY = cy + (R_out + 1) * Math.sin(midRad);
 
-      const elbowR = R + 16;
+      const elbowR = R_out + 16;
       const elbowX = cx + elbowR * Math.cos(midRad);
       const elbowY = cy + elbowR * Math.sin(midRad);
+
+      const pctText =
+        item.percentage < 1
+          ? `${item.percentage.toFixed(1)}%`
+          : `${Math.round(item.percentage)}%`;
+
+      // Hiển thị nhãn cho tất cả các danh mục có chi tiêu (tối đa 10 danh mục lớn nhất, tỷ trọng >= 0.5%)
+      const showLeader = idx < 10 && item.percentage >= 0.5;
 
       return {
         ...item,
@@ -553,33 +588,119 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
         elbowX,
         elbowY,
         endY: elbowY,
-        endX: isRight ? elbowX + 16 : elbowX - 16,
-        textX: isRight ? elbowX + 20 : elbowX - 20,
-        textY: elbowY + 3,
-        textAnchor: isRight ? ('start' as const) : ('end' as const),
-        showLeader: item.percentage >= 1.5 || sortedCategories.length <= 6
+        endX: elbowX,
+        badgeX: 0,
+        badgeY: 0,
+        badgeW: 48,
+        badgeH: 20,
+        iconX: 0,
+        iconY: 0,
+        textX: 0,
+        textY: 0,
+        nameX: 0,
+        nameY: 0,
+        textAnchor: 'start' as const,
+        pctText,
+        showLeader
       };
     });
+
+    // Bước 1: Gán hướng mặc định dựa trên midAngle (0° là 12h, 90° là 3h, 180° là 6h, 270° là 9h)
+    rawSlices.forEach((s) => {
+      s.isRight = s.midAngle >= 0 && s.midAngle < 180;
+    });
+
+    // Bước 2: Cân bằng thông minh: Nếu bên Trái quá đông mà bên Phải còn trống
+    // Lát cắt nằm sát đỉnh (midAngle >= 348° hoặc startX >= cx - 8) chuyển sang bên Phải
+    const rightCount = rawSlices.filter((s) => s.isRight && s.showLeader).length;
+    const leftCount = rawSlices.filter((s) => !s.isRight && s.showLeader).length;
+
+    if (leftCount > rightCount) {
+      const topCand = rawSlices.find(
+        (s) => !s.isRight && s.showLeader && (s.midAngle >= 348 || s.startX >= cx - 8)
+      );
+      if (topCand) {
+        topCand.isRight = true;
+      }
+    }
 
     // Chống đè nhãn (Y-collision avoidance) cho nhãn bên phải và nhãn bên trái
     ['right', 'left'].forEach((side) => {
       const isRight = side === 'right';
       const list = rawSlices
         .filter((s) => s.isRight === isRight && s.showLeader)
-        .sort((a, b) => a.elbowY - b.elbowY);
+        .sort((a, b) => b.percentage - a.percentage); // Ưu tiên các danh mục lớn
 
-      const minGap = 16;
-      for (let i = 1; i < list.length; i++) {
-        if (list[i].endY - list[i - 1].endY < minGap) {
-          list[i].endY = list[i - 1].endY + minGap;
+      // Hiển thị tối đa 6 nhãn mỗi bên (tổng cộng tối đa 12 nhãn)
+      const visibleList = list.slice(0, 6);
+      const hiddenList = list.slice(6);
+      hiddenList.forEach((s) => {
+        s.showLeader = false;
+      });
+
+      visibleList.sort((a, b) => a.elbowY - b.elbowY);
+
+      const minGap = visibleList.length >= 6 ? 32 : visibleList.length >= 5 ? 35 : 38;
+      // Pass 1: từ trên xuống dưới
+      for (let i = 1; i < visibleList.length; i++) {
+        if (visibleList[i].endY - visibleList[i - 1].endY < minGap) {
+          visibleList[i].endY = visibleList[i - 1].endY + minGap;
         }
       }
 
-      list.forEach((s) => {
-        s.endX = isRight ? Math.max(s.elbowX + 14, cx + R + 24) : Math.min(s.elbowX - 14, cx - R - 24);
-        s.textX = isRight ? s.endX + 4 : s.endX - 4;
-        s.textY = s.endY + 3;
-        s.textAnchor = isRight ? 'start' : 'end';
+      // Pass 2: chống tràn mép dưới (dành chỗ cho tên danh mục ở dòng 2)
+      const maxY = 222;
+      if (visibleList.length > 0 && visibleList[visibleList.length - 1].endY > maxY) {
+        visibleList[visibleList.length - 1].endY = maxY;
+        for (let i = visibleList.length - 2; i >= 0; i--) {
+          if (visibleList[i + 1].endY - visibleList[i].endY < minGap) {
+            visibleList[i].endY = visibleList[i + 1].endY - minGap;
+          }
+        }
+      }
+
+      // Pass 3: chống tràn mép trên
+      const minY = 26;
+      if (visibleList.length > 0 && visibleList[0].endY < minY) {
+        visibleList[0].endY = minY;
+        for (let i = 1; i < visibleList.length; i++) {
+          if (visibleList[i].endY - visibleList[i - 1].endY < minGap) {
+            visibleList[i].endY = visibleList[i - 1].endY + minGap;
+          }
+        }
+      }
+
+      visibleList.forEach((s) => {
+        const badgeW = Math.max(46, 22 + s.pctText.length * 7);
+        const badgeH = 20;
+
+        if (isRight) {
+          s.badgeX = 314;
+          s.badgeW = badgeW;
+          s.badgeH = badgeH;
+          s.endX = s.badgeX - 5;
+          s.elbowX = Math.min(s.endX - 8, Math.max(s.startX + 12, 276));
+          s.badgeY = s.endY - badgeH / 2;
+          s.iconX = s.badgeX + 6;
+          s.iconY = s.badgeY + 4.5;
+          s.textX = s.badgeX + 20;
+          s.textY = s.badgeY + 10;
+          s.nameX = s.badgeX + 2;
+          s.nameY = s.badgeY + badgeH + 11;
+        } else {
+          s.badgeX = 18;
+          s.badgeW = badgeW;
+          s.badgeH = badgeH;
+          s.endX = s.badgeX + badgeW + 5;
+          s.elbowX = Math.max(s.endX + 8, Math.min(s.startX - 12, 114));
+          s.badgeY = s.endY - badgeH / 2;
+          s.iconX = s.badgeX + 6;
+          s.iconY = s.badgeY + 4.5;
+          s.textX = s.badgeX + 20;
+          s.textY = s.badgeY + 10;
+          s.nameX = s.badgeX + 2;
+          s.nameY = s.badgeY + badgeH + 11;
+        }
       });
     });
 
@@ -1727,67 +1848,108 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
           <div className="relative w-full max-w-sm sm:max-w-md mx-auto aspect-[39/25]">
             <svg viewBox="0 0 390 250" className="w-full h-full overflow-visible">
-              {/* Vòng tròn lát cắt (Pie Slices) */}
+              {/* Biểu đồ Donut (Vành khuyên rỗng ở giữa) */}
               {pieChartData.isSingleFull ? (
                 <circle
                   cx="195"
                   cy="125"
-                  r="64"
-                  fill={pieChartData.slices[0]?.category?.color || '#38bdf8'}
-                  stroke="#090d16"
-                  strokeWidth="1.5"
-                  className="cursor-pointer transition-all hover:opacity-90"
+                  r="53"
+                  fill="none"
+                  stroke={pieChartData.slices[0]?.category?.color || '#38bdf8'}
+                  strokeWidth="26"
+                  className="cursor-pointer transition-all hover:opacity-90 hover:brightness-105"
                   onClick={() => setDrillDownCategory(pieChartData.slices[0]?.category || null)}
                 />
               ) : (
+                /* Các lát cắt Donut với khoảng cách tách lát sắc nét (stroke) */
                 pieChartData.slices.map((slice) => (
                   <path
                     key={slice.catId}
                     d={slice.pathD}
                     fill={slice.category?.color || '#64748b'}
                     stroke="#090d16"
-                    strokeWidth="1.5"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
                     className="cursor-pointer transition-all hover:opacity-90 hover:brightness-110"
                     onClick={() => setDrillDownCategory(slice.category || null)}
                   />
                 ))
               )}
 
-              {/* Đường chỉ báo chi tiết (Leader Lines dạng Hình 3) */}
+              {/* Đường gióng nét đứt & Nhãn Pill Badge kèm Icon, %, Tên danh mục */}
               {pieChartData.slices.map((slice) => {
                 if (!slice.showLeader) return null;
-                const color = slice.category?.color || '#94a3b8';
+                const color = slice.category?.color || '#38bdf8';
                 const catName = slice.category?.name || 'Khác';
-                const truncatedName = catName.length > 12 ? `${catName.slice(0, 11)}…` : catName;
+                const truncatedName = catName.length > 11 ? `${catName.slice(0, 10)}…` : catName;
+                const IconComp = (slice.category?.icon && ICON_MAP[slice.category.icon]) || CircleDot;
 
                 return (
-                  <g key={`leader-${slice.catId}`} className="transition-all">
-                    {/* Chấm tròn định vị trên viền lát cắt */}
+                  <g
+                    key={`callout-${slice.catId}`}
+                    className="cursor-pointer transition-all hover:opacity-85"
+                    onClick={() => setDrillDownCategory(slice.category || null)}
+                  >
+                    {/* 1. Điểm neo nhỏ trên viền donut */}
                     <circle cx={slice.startX} cy={slice.startY} r="1.8" fill={color} />
 
-                    {/* Đoạn đường gấp khúc gập góc ra ngoài */}
+                    {/* 2. Đường gióng nét đứt gập góc ngang (Dashed leader line) */}
                     <polyline
                       points={`${slice.startX.toFixed(1)},${slice.startY.toFixed(1)} ${slice.elbowX.toFixed(1)},${slice.endY.toFixed(1)} ${slice.endX.toFixed(1)},${slice.endY.toFixed(1)}`}
                       fill="none"
                       stroke={color}
                       strokeWidth="1.2"
+                      strokeDasharray="3.5 2.5"
+                      strokeOpacity="0.65"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      opacity="0.85"
                     />
 
-                    {/* Nhãn chữ tên danh mục & phần trăm */}
+                    {/* 3. Khung Pill Badge bo góc tròn */}
+                    <rect
+                      x={slice.badgeX}
+                      y={slice.badgeY}
+                      width={slice.badgeW}
+                      height={slice.badgeH}
+                      rx="10"
+                      ry="10"
+                      fill={color}
+                      fillOpacity="0.18"
+                      stroke={color}
+                      strokeWidth="0.8"
+                      strokeOpacity="0.4"
+                    />
+
+                    {/* 4. Icon danh mục bên trong Pill Badge */}
+                    <g transform={`translate(${slice.iconX}, ${slice.iconY})`}>
+                      <IconComp size={11} color={color} strokeWidth={2.4} />
+                    </g>
+
+                    {/* 5. Tỷ lệ phần trăm bên trong Pill Badge */}
                     <text
                       x={slice.textX}
                       y={slice.textY}
-                      textAnchor={slice.textAnchor}
-                      className="cursor-pointer select-none text-[9px] font-bold transition-opacity hover:opacity-75"
-                      onClick={() => setDrillDownCategory(slice.category || null)}
+                      fill={color}
+                      fontSize="10"
+                      fontWeight="800"
+                      textAnchor="start"
+                      className="select-none font-mono"
+                      dominantBaseline="central"
                     >
-                      <tspan fill="#e2e8f0">{truncatedName}</tspan>{' '}
-                      <tspan fill={color} fontWeight="800">
-                        {slice.percentage.toFixed(1)}%
-                      </tspan>
+                      {slice.pctText}
+                    </text>
+
+                    {/* 6. Tên danh mục bên dưới Pill Badge (Dòng 2) */}
+                    <text
+                      x={slice.nameX}
+                      y={slice.nameY}
+                      fill="#cbd5e1"
+                      fontSize="9.5"
+                      fontWeight="600"
+                      textAnchor="start"
+                      className="select-none tracking-tight"
+                    >
+                      {truncatedName}
                     </text>
                   </g>
                 );
