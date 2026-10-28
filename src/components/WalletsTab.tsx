@@ -278,6 +278,11 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   };
 
   const openAdjustModal = (w: Wallet) => {
+    if (w.goldDetails) {
+      // Đối với két vàng: Mở modal chỉnh sửa để kiểm kê số chỉ và phân
+      openEditModal(w);
+      return;
+    }
     setSelectedWallet(w);
     setBalanceStr(w.balance.toString());
     setAutoRecordAdjustTx(true);
@@ -286,16 +291,22 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
   };
 
   const openTransferModal = (w: Wallet) => {
-    if (sortedWallets.length <= 1) {
+    if (w.goldDetails) {
+      // Đối với két vàng: Chuyển hướng sang giao dịch Bán vàng thu tiền về ví
+      openGoldTradeModal(w, 'SELL');
+      return;
+    }
+    const regularWallets = sortedWallets.filter((x) => !x.goldDetails);
+    if (regularWallets.length <= 1) {
       setWalletNotice({
-        message: 'Bạn cần có ít nhất 2 tài khoản / ví để thực hiện chuyển tiền giữa các ví.',
+        message: 'Bạn cần có ít nhất 2 tài khoản / ví thông thường để chuyển tiền giữa các ví.',
         type: 'warning'
       });
       setTimeout(() => setWalletNotice(null), 3500);
       return;
     }
     setSelectedWallet(w);
-    const otherWallet = sortedWallets.find((x) => x.id !== w.id);
+    const otherWallet = regularWallets.find((x) => x.id !== w.id);
     setToWalletId(otherWallet ? otherWallet.id : '');
     setBalanceStr('');
     setTransferFeeStr('0');
@@ -1830,7 +1841,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
             {/* Ví nhận (Đến) */}
             <div>
               <WalletSelect
-                wallets={wallets}
+                wallets={wallets.filter((w) => !w.goldDetails)}
                 selectedWalletId={toWalletId}
                 onSelect={setToWalletId}
                 excludeWalletId={selectedWallet.id}
@@ -2336,54 +2347,9 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                         />
                         <div className="hidden md:block absolute right-0 top-full mt-1.5 w-60 bg-slate-900 border border-white/12 rounded-2xl shadow-2xl p-1.5 z-40 backdrop-blur-xl animate-fade-in divide-y divide-white/6">
                           <div className="py-1 flex flex-col gap-0.5">
-                            {/* 1. Chuyển khoản */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuWallet(null);
-                                openTransferModal(w);
-                              }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
-                                <ArrowRightLeft size={13} />
-                              </div>
-                              <span>Chuyển khoản (Chuyển ví)</span>
-                            </button>
-
-                            {/* 2. Điều chỉnh số dư */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuWallet(null);
-                                openAdjustModal(w);
-                              }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-                                <SlidersHorizontal size={13} />
-                              </div>
-                              <span>Điều chỉnh số dư</span>
-                            </button>
-
-                            {/* 3. Chỉnh sửa */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveMenuWallet(null);
-                                openEditModal(w);
-                              }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                                <Edit3 size={13} />
-                              </div>
-                              <span>Chỉnh sửa tài khoản</span>
-                            </button>
-
-                            {/* Mua / Bán vàng nếu là két vàng */}
-                            {w.goldDetails && (
+                            {w.goldDetails ? (
                               <>
+                                {/* Két vàng: Mua thêm vàng */}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2398,6 +2364,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                                   <span>Mua thêm vàng</span>
                                 </button>
 
+                                {/* Két vàng: Bán vàng lấy tiền */}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2411,24 +2378,84 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                                   </div>
                                   <span>Bán vàng lấy tiền</span>
                                 </button>
-                              </>
-                            )}
 
-                            {/* Cập nhật giá vàng nếu là két vàng */}
-                            {w.goldDetails && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  setActiveMenuWallet(null);
-                                  await handleRefreshSingleGoldWallet(w);
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:bg-amber-500/10 transition-colors cursor-pointer text-left"
-                              >
-                                <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                                  <RefreshCw size={13} className={isUpdatingGoldPrice ? 'animate-spin' : ''} />
-                                </div>
-                                <span>Cập nhật giá vàng mới</span>
-                              </button>
+                                {/* Két vàng: Cập nhật giá mới */}
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setActiveMenuWallet(null);
+                                    await handleRefreshSingleGoldWallet(w);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:bg-amber-500/10 transition-colors cursor-pointer text-left"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                                    <RefreshCw size={13} className={isUpdatingGoldPrice ? 'animate-spin' : ''} />
+                                  </div>
+                                  <span>Cập nhật giá vàng mới</span>
+                                </button>
+
+                                {/* Két vàng: Sửa / Kiểm kê */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuWallet(null);
+                                    openEditModal(w);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                                    <Edit3 size={13} />
+                                  </div>
+                                  <span>Sửa két / Kiểm kê vàng</span>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {/* Ví thường: 1. Chuyển khoản */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuWallet(null);
+                                    openTransferModal(w);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
+                                    <ArrowRightLeft size={13} />
+                                  </div>
+                                  <span>Chuyển khoản (Chuyển ví)</span>
+                                </button>
+
+                                {/* Ví thường: 2. Điều chỉnh số dư */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuWallet(null);
+                                    openAdjustModal(w);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                                    <SlidersHorizontal size={13} />
+                                  </div>
+                                  <span>Điều chỉnh số dư</span>
+                                </button>
+
+                                {/* Ví thường: 3. Chỉnh sửa */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuWallet(null);
+                                    openEditModal(w);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-white/8 hover:text-white transition-colors cursor-pointer text-left"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                                    <Edit3 size={13} />
+                                  </div>
+                                  <span>Chỉnh sửa tài khoản</span>
+                                </button>
+                              </>
                             )}
                           </div>
 
@@ -2547,79 +2574,9 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
 
             {/* Danh sách các chức năng */}
             <div className="flex flex-col gap-2 pt-1">
-              {/* 1. Chuyển khoản */}
-              <button
-                type="button"
-                onClick={() => {
-                  const target = activeMenuWallet;
-                  setActiveMenuWallet(null);
-                  openTransferModal(target);
-                }}
-                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
-                    <ArrowRightLeft size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-100">Chuyển khoản (Chuyển ví)</div>
-                    <div className="text-xs text-slate-400">
-                      Chuyển tiền sang ví hoặc tài khoản khác
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
-              </button>
-
-              {/* 2. Điều chỉnh số dư */}
-              <button
-                type="button"
-                onClick={() => {
-                  const target = activeMenuWallet;
-                  setActiveMenuWallet(null);
-                  openAdjustModal(target);
-                }}
-                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
-                    <SlidersHorizontal size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-100">Điều chỉnh số dư</div>
-                    <div className="text-xs text-slate-400">Cân đối lại số dư cho khớp với thực tế</div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
-              </button>
-
-              {/* 3. Chỉnh sửa */}
-              <button
-                type="button"
-                onClick={() => {
-                  const target = activeMenuWallet;
-                  setActiveMenuWallet(null);
-                  openEditModal(target);
-                }}
-                className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-400 flex items-center justify-center shrink-0">
-                    <Edit3 size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-100">Chỉnh sửa tài khoản</div>
-                    <div className="text-xs text-slate-400">
-                      Đổi tên, loại ví, màu sắc & logo ngân hàng
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
-              </button>
-
-              {/* Mua / Bán vàng nếu là két vàng */}
-              {activeMenuWallet.goldDetails && (
+              {activeMenuWallet.goldDetails ? (
                 <>
+                  {/* Két vàng: 1. Mua thêm vàng */}
                   <button
                     type="button"
                     onClick={() => {
@@ -2643,6 +2600,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                     <ChevronRight size={18} className="text-emerald-500/60 shrink-0 ml-2" />
                   </button>
 
+                  {/* Két vàng: 2. Bán vàng lấy tiền mặt */}
                   <button
                     type="button"
                     onClick={() => {
@@ -2665,33 +2623,127 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                     </div>
                     <ChevronRight size={18} className="text-amber-500/60 shrink-0 ml-2" />
                   </button>
-                </>
-              )}
 
-              {/* Cập nhật giá vàng nếu là két vàng */}
-              {activeMenuWallet.goldDetails && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const target = activeMenuWallet;
-                    setActiveMenuWallet(null);
-                    await handleRefreshSingleGoldWallet(target);
-                  }}
-                  className="touch-btn w-full p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 flex items-center justify-between text-left cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-                      <RefreshCw size={18} className={isUpdatingGoldPrice ? 'animate-spin' : ''} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-amber-300">Cập nhật giá vàng mới nhất</div>
-                      <div className="text-xs text-amber-400/80">
-                        Lấy giá thu mua nhẫn 9999 hôm nay từ thị trường
+                  {/* Két vàng: 3. Cập nhật giá vàng mới nhất */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const target = activeMenuWallet;
+                      setActiveMenuWallet(null);
+                      await handleRefreshSingleGoldWallet(target);
+                    }}
+                    className="touch-btn w-full p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 flex items-center justify-between text-left cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                        <RefreshCw size={18} className={isUpdatingGoldPrice ? 'animate-spin' : ''} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-amber-300">Cập nhật giá vàng mới nhất</div>
+                        <div className="text-xs text-amber-400/80">
+                          Lấy giá thu mua nhẫn 9999 hôm nay từ thị trường
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <ChevronRight size={18} className="text-amber-500/60 shrink-0 ml-2" />
-                </button>
+                    <ChevronRight size={18} className="text-amber-500/60 shrink-0 ml-2" />
+                  </button>
+
+                  {/* Két vàng: 4. Chỉnh sửa két vàng / Kiểm kê vàng */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = activeMenuWallet;
+                      setActiveMenuWallet(null);
+                      openEditModal(target);
+                    }}
+                    className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-400 flex items-center justify-center shrink-0">
+                        <Edit3 size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-100">Sửa két vàng / Kiểm kê vàng</div>
+                        <div className="text-xs text-slate-400">
+                          Đổi tên két hoặc kiểm kê lại số chỉ, số phân thực tế
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Ví thường: 1. Chuyển khoản */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = activeMenuWallet;
+                      setActiveMenuWallet(null);
+                      openTransferModal(target);
+                    }}
+                    className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
+                        <ArrowRightLeft size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-100">Chuyển khoản (Chuyển ví)</div>
+                        <div className="text-xs text-slate-400">
+                          Chuyển tiền sang ví hoặc tài khoản khác
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+                  </button>
+
+                  {/* Ví thường: 2. Điều chỉnh số dư */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = activeMenuWallet;
+                      setActiveMenuWallet(null);
+                      openAdjustModal(target);
+                    }}
+                    className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 flex items-center justify-center shrink-0">
+                        <SlidersHorizontal size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-100">Điều chỉnh số dư</div>
+                        <div className="text-xs text-slate-400">Cân đối lại số dư cho khớp với thực tế</div>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+                  </button>
+
+                  {/* Ví thường: 3. Chỉnh sửa */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = activeMenuWallet;
+                      setActiveMenuWallet(null);
+                      openEditModal(target);
+                    }}
+                    className="touch-btn w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/6 flex items-center justify-between text-left cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-400 flex items-center justify-center shrink-0">
+                        <Edit3 size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-100">Chỉnh sửa tài khoản</div>
+                        <div className="text-xs text-slate-400">
+                          Đổi tên, loại ví, màu sắc & logo ngân hàng
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-500 shrink-0 ml-2" />
+                  </button>
+                </>
               )}
 
               {/* 4. Xóa (chỉ khi có nhiều hơn 1 ví) */}
