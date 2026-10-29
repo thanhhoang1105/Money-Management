@@ -204,6 +204,7 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
 
       await db.wallets.update(wallet.id, {
         balance: newBalance,
+        ...(newBalance !== wallet.balance ? { initialBalance: (wallet.initialBalance ?? 0) + (newBalance - wallet.balance) } : {}),
         goldDetails: {
           ...wallet.goldDetails!,
           currentPricePerChi: price,
@@ -597,12 +598,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
       goldDetails = undefined;
     }
 
+    const wallet = selectedWallet;
     await db.wallets.update(selectedWallet.id, {
       name: name.trim(),
       type: walletType,
       icon,
       color,
       balance: newBalance,
+        ...(newBalance !== wallet.balance ? { initialBalance: (wallet.initialBalance ?? 0) + (newBalance - wallet.balance) } : {}),
       isExcludedFromTotal: isExcluded,
       goldDetails,
       updatedAt: new Date().toISOString()

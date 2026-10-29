@@ -192,21 +192,33 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     return cardTip;
   }, [mode, grabFare, cashReceived, cardTip]);
 
-  // Cước xe Grab khấu trừ từ ví tín dụng để hoàn vào ví nhận:
-  const workingCapital = useMemo(() => {
+  // Phí chiết khấu Grab trừ Ví Tín Dụng:
+  const grabFee = useMemo(() => {
     if (mode !== 'CASH') return 0;
-    return grabFare > 0 ? grabFare : cashReceived;
+    const tripFare = grabFare > 0 ? grabFare : cashReceived;
+    return Math.max(0, tripFare - netIncome);
+  }, [mode, grabFare, cashReceived, netIncome]);
+
+  // Tiền voucher Grab bù vào Ví Tiền Mặt Grab nếu khách trả ít hơn giá gốc:
+  const voucherSubsidy = useMemo(() => {
+    if (mode !== 'CASH') return 0;
+    const tripFare = grabFare > 0 ? grabFare : cashReceived;
+    return cashReceived < tripFare ? tripFare - cashReceived : 0;
   }, [mode, grabFare, cashReceived]);
+
+  // Phần thu nhập ròng nằm trong tiền mặt khách đưa:
+  const cashNetIncome = useMemo(() => {
+    if (mode !== 'CASH') return 0;
+    return Math.max(0, netIncome - voucherSubsidy);
+  }, [mode, netIncome, voucherSubsidy]);
 
   // Thu nhập thực tế tài xế giữ được từ cuốc xe
   const totalEarned = useMemo(() => {
     if (mode === 'CASH') {
-      const baseFare = grabFare > 0 ? grabFare : cashReceived;
-      const fareShortage = baseFare > cashReceived ? baseFare - cashReceived : 0;
-      return Math.max(0, netIncome - fareShortage) + autoTip;
+      return netIncome + autoTip;
     }
     return netIncome + cardTip;
-  }, [mode, grabFare, cashReceived, netIncome, autoTip, cardTip]);
+  }, [mode, netIncome, autoTip, cardTip]);
 
   // Gợi ý làm tròn tiền chẵn khách đưa (ví dụ cước 25k -> gợi ý 30k, 40k, 50k, 100k)
   const roundUpSuggestions = useMemo(() => {
@@ -251,44 +263,85 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     setTimeout(() => setFeedback(''), 2500);
   };
 
+  // Mở Numpad cho một trường cụ thể & đồng bộ bộ nhớ đệm Raw
+  const openNumpadFor = (field: 'GRAB_FARE' | 'NET_INCOME' | 'CASH_RECEIVED' | 'CARD_TIP' | 'TRANSFER_AMOUNT') => {
+    setActiveNumpadField(field);
+    if (field === 'GRAB_FARE') setGrabFareRaw(grabFare > 0 ? grabFare.toString() : '');
+    else if (field === 'NET_INCOME') setNetIncomeRaw(netIncome > 0 ? netIncome.toString() : '');
+    else if (field === 'CASH_RECEIVED') setCashReceivedRaw(cashReceived > 0 ? cashReceived.toString() : '');
+    else if (field === 'CARD_TIP') setCardTipRaw(cardTip > 0 ? cardTip.toString() : '');
+    else if (field === 'TRANSFER_AMOUNT') setTransferAmountRaw(transferAmount > 0 ? transferAmount.toString() : '');
+  };
+
+  // Làm rỗng bộ nhớ đệm và giá trị hiển thị khi người dùng xóa trường
+  const clearField = (field: 'GRAB_FARE' | 'NET_INCOME' | 'CASH_RECEIVED' | 'CARD_TIP' | 'TRANSFER_AMOUNT') => {
+    if (field === 'GRAB_FARE') {
+      const oldFare = grabFareInput;
+      setGrabFareInput('');
+      setGrabFareRaw('');
+      if (!cashReceivedInput || cashReceivedInput === oldFare) {
+        setCashReceivedInput('');
+        setCashReceivedRaw('');
+      }
+    } else if (field === 'NET_INCOME') {
+      setNetIncomeInput('');
+      setNetIncomeRaw('');
+    } else if (field === 'CASH_RECEIVED') {
+      setCashReceivedInput('');
+      setCashReceivedRaw('');
+    } else if (field === 'CARD_TIP') {
+      setCardTipInput('');
+      setCardTipRaw('');
+    } else if (field === 'TRANSFER_AMOUNT') {
+      setTransferAmountInput('');
+      setTransferAmountRaw('');
+    }
+  };
+
   // Xử lý khi nhấn phím trên Bàn phím số Numpad ảo (Web)
   const handleNumpadKeyPress = (key: string) => {
     if (!activeNumpadField) return;
 
     if (activeNumpadField === 'GRAB_FARE') {
-      const current = grabFareRaw || (grabFare > 0 ? grabFare.toString() : '0');
+      const current = grabFareRaw;
       const nextRaw = applyNumpadKey(current, key);
-      setGrabFareRaw(nextRaw);
-      const val = evaluateExpression(nextRaw);
+      const cleanedRaw = (nextRaw === '0' && (key === 'C' || key === 'CLEAR' || key === 'BACKSPACE')) ? '' : nextRaw;
+      setGrabFareRaw(cleanedRaw);
+      const val = evaluateExpression(cleanedRaw);
       const formatted = val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : '';
+      const oldFare = grabFareInput;
       setGrabFareInput(formatted);
-      if (!cashReceivedInput || cashReceivedInput === grabFareInput) {
+      if (!cashReceivedInput || cashReceivedInput === oldFare) {
         setCashReceivedInput(formatted);
-        setCashReceivedRaw(nextRaw);
+        setCashReceivedRaw(cleanedRaw);
       }
     } else if (activeNumpadField === 'NET_INCOME') {
-      const current = netIncomeRaw || (netIncome > 0 ? netIncome.toString() : '0');
+      const current = netIncomeRaw;
       const nextRaw = applyNumpadKey(current, key);
-      setNetIncomeRaw(nextRaw);
-      const val = evaluateExpression(nextRaw);
+      const cleanedRaw = (nextRaw === '0' && (key === 'C' || key === 'CLEAR' || key === 'BACKSPACE')) ? '' : nextRaw;
+      setNetIncomeRaw(cleanedRaw);
+      const val = evaluateExpression(cleanedRaw);
       setNetIncomeInput(val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : '');
     } else if (activeNumpadField === 'CASH_RECEIVED') {
-      const current = cashReceivedRaw || (cashReceived > 0 ? cashReceived.toString() : '0');
+      const current = cashReceivedRaw;
       const nextRaw = applyNumpadKey(current, key);
-      setCashReceivedRaw(nextRaw);
-      const val = evaluateExpression(nextRaw);
+      const cleanedRaw = (nextRaw === '0' && (key === 'C' || key === 'CLEAR' || key === 'BACKSPACE')) ? '' : nextRaw;
+      setCashReceivedRaw(cleanedRaw);
+      const val = evaluateExpression(cleanedRaw);
       setCashReceivedInput(val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : '');
     } else if (activeNumpadField === 'CARD_TIP') {
-      const current = cardTipRaw || (cardTip > 0 ? cardTip.toString() : '0');
+      const current = cardTipRaw;
       const nextRaw = applyNumpadKey(current, key);
-      setCardTipRaw(nextRaw);
-      const val = evaluateExpression(nextRaw);
+      const cleanedRaw = (nextRaw === '0' && (key === 'C' || key === 'CLEAR' || key === 'BACKSPACE')) ? '' : nextRaw;
+      setCardTipRaw(cleanedRaw);
+      const val = evaluateExpression(cleanedRaw);
       setCardTipInput(val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : '');
     } else if (activeNumpadField === 'TRANSFER_AMOUNT') {
-      const current = transferAmountRaw || (transferAmount > 0 ? transferAmount.toString() : '0');
+      const current = transferAmountRaw;
       const nextRaw = applyNumpadKey(current, key);
-      setTransferAmountRaw(nextRaw);
-      const val = evaluateExpression(nextRaw);
+      const cleanedRaw = (nextRaw === '0' && (key === 'C' || key === 'CLEAR' || key === 'BACKSPACE')) ? '' : nextRaw;
+      setTransferAmountRaw(cleanedRaw);
+      const val = evaluateExpression(cleanedRaw);
       setTransferAmountInput(val > 0 ? new Intl.NumberFormat('vi-VN').format(val) : '');
     }
   };
@@ -372,11 +425,12 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
   const handleGrabFareChange = (valStr: string) => {
     const rawVal = valStr.replace(/\D/g, '').slice(0, 12);
     const formatted = rawVal ? new Intl.NumberFormat('vi-VN').format(Number(rawVal)) : '';
+    const oldFare = grabFareInput;
     setGrabFareInput(formatted);
     setGrabFareRaw(rawVal);
 
     // Tự động điền tiền khách đưa bằng cước app nếu ô khách đưa đang trống hoặc bằng đúng cước cũ
-    if (!cashReceivedInput || cashReceivedInput === grabFareInput) {
+    if (!cashReceivedInput || cashReceivedInput === oldFare) {
       setCashReceivedInput(formatted);
       setCashReceivedRaw(rawVal);
     }
@@ -490,7 +544,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
       const successText =
         mode === 'CASH'
-          ? `Đã ghi cuốc Grab: +${formatVND(netIncome)} vào Ví TM Grab${res.tipAmount > 0 ? ` (+${formatVND(res.tipAmount)} tip vào ${receivingWallet?.name})` : ''} (Grab trừ ${formatVND(res.workingCapital)} Tín Dụng ➔ hoàn vào ${receivingWallet?.name})`
+          ? `Đã ghi cuốc Grab: +${formatVND(cashReceived)} vào ${receivingWallet?.name} (Grab trừ ${formatVND(res.grabFee)} Tín Dụng, ròng: +${formatVND(netIncome)}${res.voucherSubsidy > 0 ? `, hoàn voucher +${formatVND(res.voucherSubsidy)} Ví TM` : ''}${res.tipAmount > 0 ? `, tip +${formatVND(res.tipAmount)}` : ''})`
           : `Đã ghi cuốc Grab thẻ: +${formatVND(res.totalEarned)} vào Ví Tiền Mặt Grab`;
 
       if (onSuccess) onSuccess(successText);
@@ -826,10 +880,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   {grabFare > 0 && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setGrabFareInput('');
-                        if (cashReceivedInput === grabFareInput) setCashReceivedInput('');
-                      }}
+                      onClick={() => clearField('GRAB_FARE')}
                       className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
                     >
                       Xóa
@@ -841,10 +892,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('GRAB_FARE');
-                    if (!grabFareRaw && grabFare > 0) setGrabFareRaw(grabFare.toString());
-                  }}
+                  onClick={() => openNumpadFor('GRAB_FARE')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-amber-400/50 cursor-pointer min-h-[48px]"
                 >
                   <span
@@ -901,7 +949,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   {netIncome > 0 && (
                     <button
                       type="button"
-                      onClick={() => setNetIncomeInput('')}
+                      onClick={() => clearField('NET_INCOME')}
                       className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
                     >
                       Xóa
@@ -913,10 +961,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('NET_INCOME');
-                    if (!netIncomeRaw && netIncome > 0) setNetIncomeRaw(netIncome.toString());
-                  }}
+                  onClick={() => openNumpadFor('NET_INCOME')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-emerald-400/50 cursor-pointer min-h-[48px]"
                 >
                   <span
@@ -1005,7 +1050,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   {cashReceived > 0 && (
                     <button
                       type="button"
-                      onClick={() => setCashReceivedInput('')}
+                      onClick={() => clearField('CASH_RECEIVED')}
                       className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
                     >
                       Xóa
@@ -1017,10 +1062,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('CASH_RECEIVED');
-                    if (!cashReceivedRaw && cashReceived > 0) setCashReceivedRaw(cashReceived.toString());
-                  }}
+                  onClick={() => openNumpadFor('CASH_RECEIVED')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-sky-400/50 cursor-pointer min-h-[48px]"
                 >
                   <span className={`${cashReceivedInput.length > 11 ? 'text-lg' : cashReceivedInput.length > 8 ? 'text-xl' : 'text-2xl'} font-black font-heading ${autoTip > 0 ? 'text-purple-300' : 'text-sky-300'} truncate flex-1 min-w-0 mr-2`}>
@@ -1119,25 +1161,42 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
                     <div className="flex flex-col">
-                      <span className="text-slate-400">💼 Cước xe trừ Ví Tín Dụng:</span>
+                      <span className="text-slate-400">💼 Chiết khấu Grab trừ Ví Tín Dụng:</span>
                       <span className="text-[10px] text-slate-500">
-                        (Grab trừ Tín Dụng ➔ Hoàn vào {receivingWallet?.name}, KHÔNG tính chi tiêu)
+                        (Khách đưa tiền cước gồm cả phí, Grab trừ phí ở Ví Tín Dụng)
                       </span>
                     </div>
-                    <span className="font-extrabold text-sky-400 text-sm">
-                      {workingCapital > 0 ? formatVND(workingCapital) : '0 ₫'}
+                    <span className="font-extrabold text-rose-400 text-sm">
+                      -{formatVND(grabFee)}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-slate-300 py-0.5">
                     <div className="flex flex-col">
-                      <span className="text-slate-400">✨ Thu nhập ròng theo App:</span>
+                      <span className="text-slate-400">✨ Thu nhập ròng tiền mặt:</span>
                       <span className="text-[10px] text-slate-500">
-                        (Cộng vào Ví Tiền Mặt Grab trên app)
+                        (Thu nhập nằm trong tiền mặt khách đưa ➔ Vào {receivingWallet?.name})
                       </span>
                     </div>
-                    <span className="font-extrabold text-emerald-400 text-sm">+{formatVND(netIncome)}</span>
+                    <span className="font-extrabold text-emerald-400 text-sm">+{formatVND(cashNetIncome)}</span>
                   </div>
+
+                  {voucherSubsidy > 0 && (
+                    <div className="flex justify-between items-center text-sky-300 py-0.5 animate-fade-in font-bold">
+                      <div className="flex flex-col">
+                        <span className="flex items-center gap-1">
+                          <Gift size={13} />
+                          Grab hoàn Voucher / Giảm giá:
+                        </span>
+                        <span className="text-[10px] text-sky-400/80 font-normal">
+                          (Khách trả thiếu do dùng mã ➔ Grab bù vào Ví TM Grab)
+                        </span>
+                      </div>
+                      <span className="text-sky-300 text-sm font-extrabold">
+                        +{formatVND(voucherSubsidy)}
+                      </span>
+                    </div>
+                  )}
 
                   {autoTip > 0 && (
                     <div className="flex justify-between items-center text-purple-300 py-0.5 animate-fade-in font-bold">
@@ -1155,7 +1214,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                     <div className="flex flex-col">
                       <span className="text-slate-100 text-xs">💰 Tổng thu nhập thực nhận:</span>
                       <span className="text-[10px] text-emerald-400/80 font-normal">
-                        Ròng app {formatVND(netIncome)} (Ví TM Grab) {autoTip > 0 ? `+ Tip ${formatVND(autoTip)} (${receivingWallet?.name})` : ''}
+                        Ròng {formatVND(netIncome)} {voucherSubsidy > 0 ? `(Tiền mặt ${formatVND(cashNetIncome)} + Grab bù ${formatVND(voucherSubsidy)})` : ''} {autoTip > 0 ? `+ Tip ${formatVND(autoTip)}` : ''}
                       </span>
                     </div>
                     <span className="text-base font-heading font-black text-income">
@@ -1179,7 +1238,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   {netIncome > 0 && (
                     <button
                       type="button"
-                      onClick={() => setNetIncomeInput('')}
+                      onClick={() => clearField('NET_INCOME')}
                       className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
                     >
                       Xóa
@@ -1191,10 +1250,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('NET_INCOME');
-                    if (!netIncomeRaw && netIncome > 0) setNetIncomeRaw(netIncome.toString());
-                  }}
+                  onClick={() => openNumpadFor('NET_INCOME')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-emerald-400/50 cursor-pointer min-h-[48px]"
                 >
                   <span
@@ -1257,7 +1313,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                   {cardTip > 0 && (
                     <button
                       type="button"
-                      onClick={() => setCardTipInput('')}
+                      onClick={() => clearField('CARD_TIP')}
                       className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
                     >
                       Xóa
@@ -1269,10 +1325,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('CARD_TIP');
-                    if (!cardTipRaw && cardTip > 0) setCardTipRaw(cardTip.toString());
-                  }}
+                  onClick={() => openNumpadFor('CARD_TIP')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-purple-400/50 cursor-pointer min-h-[44px]"
                 >
                   <span
@@ -1407,17 +1460,25 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
               )}
 
               <div className="p-3.5 rounded-2xl bg-slate-950 border border-sky-500/30 flex flex-col gap-2">
-                <label className="text-xs font-bold text-sky-300 uppercase tracking-wide">
-                  Số tiền chuyển (VNĐ)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-sky-300 uppercase tracking-wide">
+                    Số tiền chuyển (VNĐ)
+                  </label>
+                  {transferAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => clearField('TRANSFER_AMOUNT')}
+                      className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
                 {/* Mobile touch trigger */}
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => {
-                    setActiveNumpadField('TRANSFER_AMOUNT');
-                    if (!transferAmountRaw && transferAmount > 0) setTransferAmountRaw(transferAmount.toString());
-                  }}
+                  onClick={() => openNumpadFor('TRANSFER_AMOUNT')}
                   className="md:hidden flex items-center justify-between py-2 px-3 rounded-xl bg-slate-900 border border-white/10 active:border-sky-400/50 cursor-pointer min-h-[48px]"
                 >
                   <span

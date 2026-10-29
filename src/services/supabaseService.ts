@@ -35,7 +35,8 @@ export interface SupabaseSyncConfig {
   email?: string;
 }
 
-export const SUPABASE_SETUP_SQL = `-- Chạy đoạn SQL này 1 lần trong mục SQL Editor của Supabase:
+export const SUPABASE_SETUP_SQL = `-- Chạy đoạn SQL này trong mục SQL Editor của Supabase để khởi tạo đầy đủ:
+-- 1. Bảng đồng bộ Live Sync 2 chiều:
 create table if not exists public.user_backups (
   sync_key text primary key,
   user_email text,
@@ -45,8 +46,33 @@ create table if not exists public.user_backups (
 
 alter table public.user_backups enable row level security;
 
+drop policy if exists "Allow public read/write by sync_key" on public.user_backups;
 create policy "Allow public read/write by sync_key"
   on public.user_backups
+  for all
+  using (true)
+  with check (true);
+
+-- 2. Bảng lưu trữ Snapshot lịch sử xoay vòng 5 ngày:
+create table if not exists public.user_backup_history (
+  id uuid default gen_random_uuid() primary key,
+  sync_key text not null,
+  backup_date date not null,
+  payload jsonb not null,
+  tx_count int default 0,
+  wallet_count int default 0,
+  created_at timestamptz not null default now(),
+  unique(sync_key, backup_date)
+);
+
+create index if not exists idx_backup_history_sync_date 
+  on public.user_backup_history(sync_key, backup_date desc);
+
+alter table public.user_backup_history enable row level security;
+
+drop policy if exists "Allow public read/write by sync_key for history" on public.user_backup_history;
+create policy "Allow public read/write by sync_key for history"
+  on public.user_backup_history
   for all
   using (true)
   with check (true);`;

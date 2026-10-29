@@ -139,41 +139,63 @@ export async function getLocalSyncPayload(): Promise<SyncDataPayload> {
 }
 
 /**
- * Tính toán lại số dư ví chính xác theo số dư khởi tạo (initialBalance) và các giao dịch phát sinh
+ * Tính toán lại số dư ví chính xác theo số dư khởi tạo (initialBalance) và các giao dịch phát sinh.
+ * Tự động hiệu chỉnh initialBalance chuẩn xác theo lịch sử giao dịch để bảo toàn số dư thực tế,
+ * ngăn chặn tình trạng số dư bị nhảy loạn sau mỗi lần đồng bộ 3 giây.
  */
 export function recalculateWalletBalances(
   wallets: Wallet[],
   transactions: Transaction[]
 ): Wallet[] {
-  const balanceMap = new Map<string, number>();
-
-  wallets.forEach((w) => {
-    balanceMap.set(w.id, typeof w.initialBalance === 'number' ? w.initialBalance : w.balance);
-  });
+  const txDeltaMap = new Map<string, number>();
 
   transactions.forEach((tx) => {
     if (tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT') {
-      const current = balanceMap.get(tx.walletId) ?? 0;
-      balanceMap.set(tx.walletId, current - tx.amount);
+      const current = txDeltaMap.get(tx.walletId) ?? 0;
+      txDeltaMap.set(tx.walletId, current - tx.amount);
     } else if (tx.type === 'INCOME' || tx.type === 'BORROW' || tx.type === 'COLLECT_DEBT') {
-      const current = balanceMap.get(tx.walletId) ?? 0;
-      balanceMap.set(tx.walletId, current + tx.amount);
+      const current = txDeltaMap.get(tx.walletId) ?? 0;
+      txDeltaMap.set(tx.walletId, current + tx.amount);
     } else if (tx.type === 'TRANSFER' && tx.toWalletId) {
       const fee = tx.transferFee || 0;
-      const fromCurr = balanceMap.get(tx.walletId) ?? 0;
-      balanceMap.set(tx.walletId, fromCurr - tx.amount - fee);
+      const fromCurr = txDeltaMap.get(tx.walletId) ?? 0;
+      txDeltaMap.set(tx.walletId, fromCurr - tx.amount - fee);
 
-      const toCurr = balanceMap.get(tx.toWalletId) ?? 0;
-      balanceMap.set(tx.toWalletId, toCurr + tx.amount);
+      const toCurr = txDeltaMap.get(tx.toWalletId) ?? 0;
+      txDeltaMap.set(tx.toWalletId, toCurr + tx.amount);
     }
   });
 
   const now = new Date().toISOString();
-  return wallets.map((w) => ({
-    ...w,
-    balance: balanceMap.get(w.id) ?? w.balance,
-    updatedAt: now
-  }));
+  return wallets.map((w) => {
+    const txSum = txDeltaMap.get(w.id) ?? 0;
+
+    // Xác định initialBalance:
+    // Nếu initialBalance là số hợp lệ: dùng nó. Nếu không, suy ra từ balance: initialBalance = balance - txSum
+    let initBal = typeof w.initialBalance === 'number' && !isNaN(w.initialBalance)
+      ? w.initialBalance
+      : ((typeof w.balance === 'number' ? w.balance : 0) - txSum);
+
+    // Tính toán số dư dựa trên initialBalance + tổng giao dịch
+    const calculatedBal = initBal + txSum;
+
+    // Nếu có sự chênh lệch giữa số dư thực tế w.balance và calculatedBal (do từng sửa trực tiếp số dư):
+    // Cập nhật lại initialBalance = w.balance - txSum để bảo toàn số dư thực tế w.balance
+    let finalBal = calculatedBal;
+    let finalInitBal = initBal;
+
+    if (typeof w.balance === 'number' && calculatedBal !== w.balance) {
+      finalInitBal = w.balance - txSum;
+      finalBal = w.balance;
+    }
+
+    return {
+      ...w,
+      initialBalance: finalInitBal,
+      balance: finalBal,
+      updatedAt: w.updatedAt || now
+    };
+  });
 }
 
 /**

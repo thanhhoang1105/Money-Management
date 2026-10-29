@@ -22,8 +22,15 @@ import {
   verifySyncPin,
   recoverSyncPinWithAnswer,
   setupOrUpdateSyncSecurity,
-  removeSyncSecurity
+  removeSyncSecurity,
+  SUPABASE_SETUP_SQL
 } from '../services/supabaseService';
+import {
+  checkAndCreateDailyCloudSnapshot,
+  getCloudSnapshotHistory,
+  restoreFromCloudSnapshot,
+  type CloudSnapshotItem
+} from '../services/snapshotService';
 import { PREDEFINED_SECURITY_QUESTIONS } from '../utils/crypto';
 import { getCurrentDate, getCurrentMonth, formatFriendlyDate } from '../utils/formatters';
 import { CustomSelect } from './ui/CustomSelect';
@@ -46,7 +53,11 @@ import {
   KeyRound,
   HelpCircle,
   Lock,
-  X
+  X,
+  History,
+  Camera,
+  Copy,
+  Check
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -123,6 +134,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [recoverNewPinInput, setRecoverNewPinInput] = useState('');
   const [showVerifyPin, setShowVerifyPin] = useState(false);
 
+  // Snapshot 5 ngày qua trên Supabase
+  const [snapshots, setSnapshots] = useState<CloudSnapshotItem[]>([]);
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState<boolean>(false);
+  const [snapshotTableMissing, setSnapshotTableMissing] = useState<boolean>(false);
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState<boolean>(false);
+  const [confirmRestoreSnapshot, setConfirmRestoreSnapshot] = useState<CloudSnapshotItem | null>(null);
+  const [restorePinInput, setRestorePinInput] = useState<string>('');
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
+
   // Xem trước khôi phục JSON (hiển thị phẳng không dùng Popup)
   const [restorePreview, setRestorePreview] = useState<RestorePreviewData | null>(null);
 
@@ -144,8 +165,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   }, [supabaseAutoSyncSetting]);
 
-  if (!isOpen) return null;
-
   const localStoredKey = (() => {
     try {
       return localStorage.getItem(LOCAL_CONNECTED_SYNC_KEY)?.trim() || '';
@@ -164,6 +183,80 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       supabaseEmailSetting.value.trim()) ||
     '';
   const isSupabaseConnected = Boolean(activeSyncKey);
+
+  const loadSnapshots = async () => {
+    if (!activeSyncKey) return;
+    setIsLoadingSnapshots(true);
+    try {
+      const res = await getCloudSnapshotHistory();
+      setSnapshots(res.snapshots);
+      setSnapshotTableMissing(Boolean(res.tableMissing));
+    } finally {
+      setIsLoadingSnapshots(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && isSupabaseConnected) {
+      loadSnapshots();
+    }
+  }, [isOpen, isSupabaseConnected]);
+
+  if (!isOpen) return null;
+
+  const handleCreateManualSnapshot = async () => {
+    setIsCreatingSnapshot(true);
+    try {
+      const res = await checkAndCreateDailyCloudSnapshot({ force: true });
+      if (res.created) {
+        setStatusMsg({ text: res.message, type: 'success' });
+        await loadSnapshots();
+      } else {
+        setStatusMsg({ text: res.message, type: 'info' });
+      }
+    } catch (err: any) {
+      setStatusMsg({ text: err.message || 'Lỗi tạo snapshot', type: 'error' });
+    } finally {
+      setIsCreatingSnapshot(false);
+    }
+  };
+
+  const handleConfirmRestoreSnapshot = async () => {
+    if (!confirmRestoreSnapshot) return;
+    if (hasConfiguredPin) {
+      if (!restorePinInput.trim()) {
+        setStatusMsg({ text: 'Vui lòng nhập mã PIN bảo mật để khôi phục', type: 'error' });
+        return;
+      }
+      const pinValid = await verifySyncPin(activeSyncKey, restorePinInput.trim());
+      if (!pinValid) {
+        setStatusMsg({ text: 'Mã PIN bảo mật không chính xác', type: 'error' });
+        return;
+      }
+    }
+    setIsRestoring(true);
+    try {
+      const res = await restoreFromCloudSnapshot(confirmRestoreSnapshot.id);
+      setStatusMsg({ text: res.message, type: 'success' });
+      setConfirmRestoreSnapshot(null);
+      setRestorePinInput('');
+      await loadSnapshots();
+    } catch (err: any) {
+      setStatusMsg({ text: err.message || 'Lỗi khôi phục điểm sao lưu', type: 'error' });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleCopySetupSql = async () => {
+    try {
+      await navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+      setCopiedSql(true);
+      setTimeout(() => setCopiedSql(false), 3000);
+    } catch {
+      setStatusMsg({ text: 'Không thể sao chép vào bộ nhớ tạm', type: 'error' });
+    }
+  };
 
   // Hoàn tất lưu cấu hình và đồng bộ sau khi vượt qua xác thực PIN
   const doFinishConnect = async (cleanKey: string) => {
@@ -1261,6 +1354,112 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </button>
               </div>
 
+              {/* KHU VỰC ĐIỂM KHÔI PHỤC DỮ LIỆU (5 NGÀY GẦN NHẤT) */}
+              <div className="bg-slate-950/70 rounded-xl p-3 border border-white/8 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History size={16} className="text-amber-400 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-200">
+                        Điểm khôi phục dữ liệu (5 ngày qua)
+                      </div>
+                      <div className="text-[10px] text-slate-400 m-0">
+                        Tự động snapshot hàng ngày phòng ngừa lỗi hoặc mất dữ liệu
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateManualSnapshot}
+                    disabled={isCreatingSnapshot}
+                    className="touch-btn text-[10px] font-bold py-1 px-2.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Chốt snapshot trạng thái hiện tại"
+                  >
+                    {isCreatingSnapshot ? (
+                      <RotateCw size={11} className="animate-spin" />
+                    ) : (
+                      <Camera size={11} />
+                    )}
+                    <span>Chụp ngay</span>
+                  </button>
+                </div>
+
+                {snapshotTableMissing ? (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex flex-col gap-2">
+                    <div className="text-[11px] leading-relaxed">
+                      ⚠️ Bảng lịch sử <code className="text-amber-300 font-mono">user_backup_history</code> chưa có trên Supabase của bạn. Hãy sao chép đoạn mã SQL bên dưới và dán vào mục <strong>SQL Editor</strong> trên Supabase để kích hoạt tính năng này.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopySetupSql}
+                      className="touch-btn py-1 px-2.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer self-start"
+                    >
+                      {copiedSql ? <Check size={12} /> : <Copy size={12} />}
+                      <span>{copiedSql ? 'Đã sao chép SQL!' : 'Sao chép mã SQL Supabase'}</span>
+                    </button>
+                  </div>
+                ) : isLoadingSnapshots ? (
+                  <div className="flex items-center justify-center py-3 text-slate-400 text-xs gap-2">
+                    <RotateCw size={14} className="animate-spin text-sky-400" />
+                    <span>Đang tải các điểm khôi phục...</span>
+                  </div>
+                ) : snapshots.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 italic py-2 text-center bg-slate-900/50 rounded-lg">
+                    Chưa có điểm snapshot nào. Bấm "Chụp ngay" để lưu bản đầu tiên hôm nay.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {snapshots.map((item) => {
+                      const isToday = item.backupDate === getCurrentDate();
+                      const timeStr = item.createdAt ? item.createdAt.slice(11, 16) : '';
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-2.5 rounded-lg bg-slate-900/90 border border-white/6 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                isToday ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-slate-500'
+                              }`}
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-100">
+                                  {isToday ? 'Hôm nay' : formatFriendlyDate(item.backupDate)}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  ({item.backupDate})
+                                </span>
+                                {timeStr && (
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    {timeStr}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {item.txCount} giao dịch • {item.walletCount} tài khoản/ví
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmRestoreSnapshot(item);
+                              setRestorePinInput('');
+                            }}
+                            className="touch-btn shrink-0 py-1.5 px-3 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 font-bold text-[11px] cursor-pointer transition-colors"
+                          >
+                            Khôi phục
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Tự động đồng bộ khi có thay đổi ở local */}
               <div className="flex items-center justify-between pt-2 border-t border-white/5">
                 <div>
@@ -1394,6 +1593,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </button>
           </div>
         </div>
+
+        {/* MODAL XÁC NHẬN KHÔI PHỤC SNAPSHOT CLOUD */}
+        {confirmRestoreSnapshot && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-amber-500/30 p-4 flex flex-col gap-3 shadow-2xl">
+              <div className="flex items-center gap-2.5 text-amber-400">
+                <AlertTriangle size={20} className="shrink-0" />
+                <h3 className="text-sm font-extrabold text-white m-0">
+                  Xác nhận khôi phục điểm sao lưu
+                </h3>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed m-0">
+                Bạn có chắc chắn muốn khôi phục dữ liệu về ngày <strong className="text-amber-300">{confirmRestoreSnapshot.backupDate}</strong> ({confirmRestoreSnapshot.txCount} giao dịch, {confirmRestoreSnapshot.walletCount} tài khoản/ví)?
+              </p>
+              <p className="text-[11px] text-rose-400/90 leading-relaxed m-0">
+                ⚠️ Dữ liệu hiện tại trên thiết bị sẽ được thay thế bằng bản sao lưu này.
+              </p>
+
+              {hasConfiguredPin && (
+                <div className="mt-1">
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Nhập mã PIN bảo mật để xác thực:
+                  </label>
+                  <input
+                    type="password"
+                    value={restorePinInput}
+                    onChange={(e) => setRestorePinInput(e.target.value)}
+                    placeholder="Nhập mã PIN"
+                    className="input-ios w-full text-xs font-bold tracking-wider"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmRestoreSnapshot(null);
+                    setRestorePinInput('');
+                  }}
+                  className="touch-btn flex-1 py-2 px-3 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-bold border border-white/10 cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRestoreSnapshot}
+                  disabled={isRestoring}
+                  className="touch-btn flex-1 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isRestoring ? (
+                    <RotateCw size={13} className="animate-spin" />
+                  ) : (
+                    <History size={13} />
+                  )}
+                  <span>Xác nhận</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -432,6 +432,7 @@ export async function adjustWalletBalance(params: {
     // 1. Cập nhật số dư ví
     await db.wallets.update(walletId, {
       balance: newBalance,
+      ...(!autoCreateAdjustmentTx ? { initialBalance: (wallet.initialBalance ?? 0) + diff } : {}),
       updatedAt: now
     });
 

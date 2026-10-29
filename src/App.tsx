@@ -11,7 +11,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { Toast } from './components/ui/Toast';
 import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
-import { repairCorruptedGrabBalances } from './services/grabService';
+import { checkAndCreateDailyCloudSnapshot } from './services/snapshotService';
 import { checkAndUpdateGoldOnStartup } from './services/goldService';
 import type { Transaction, AppStartupTab } from './types';
 import {
@@ -138,8 +138,8 @@ export function App() {
     requestPersistentStorage();
     initializeSeedData()
       .then(async () => {
-        // Tự động cân đối và sửa số dư các ví Grab về trạng thái chuẩn xác thực tế
-        await repairCorruptedGrabBalances();
+
+
         // Tự động kiểm tra và cập nhật định giá ví Vàng (Két vàng 9999) mỗi sáng nếu có
         await checkAndUpdateGoldOnStartup();
 
@@ -151,6 +151,9 @@ export function App() {
 
         // Khi vừa mở app: Tự động kiểm tra và kéo ngay dữ liệu mới nhất nếu Cloud có bản cập nhật mới
         await triggerStartupCheck();
+
+        // Tự động kiểm tra và tạo 1 snapshot lưu trữ 5 ngày trên Cloud (nếu hôm nay chưa tạo)
+        await checkAndCreateDailyCloudSnapshot().catch(console.warn);
       })
       .catch((err) => {
         console.error('Lỗi khởi tạo dữ liệu seed:', err);
