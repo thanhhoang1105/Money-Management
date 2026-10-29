@@ -55,7 +55,7 @@ import {
   Lock,
   X,
   History,
-  Camera,
+  BookmarkPlus,
   Copy,
   Check
 } from 'lucide-react';
@@ -143,6 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [restorePinInput, setRestorePinInput] = useState<string>('');
   const [isRestoring, setIsRestoring] = useState<boolean>(false);
   const [copiedSql, setCopiedSql] = useState<boolean>(false);
+  const [showSnapshotHelp, setShowSnapshotHelp] = useState<boolean>(false);
 
   // Xem trước khôi phục JSON (hiển thị phẳng không dùng Popup)
   const [restorePreview, setRestorePreview] = useState<RestorePreviewData | null>(null);
@@ -183,6 +184,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       supabaseEmailSetting.value.trim()) ||
     '';
   const isSupabaseConnected = Boolean(activeSyncKey);
+
+  const formatSnapshotTime = (isoString?: string) => {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '';
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    } catch {
+      return '';
+    }
+  };
 
   const loadSnapshots = async () => {
     if (!activeSyncKey) return;
@@ -1076,34 +1090,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           ) : (
             /* Trạng thái Đã kết nối Supabase */
             <div className="flex flex-col gap-3 pt-1">
-              <div className="bg-slate-800/80 rounded-2xl p-3 border border-white/8 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
-                    <UserCheck size={16} />
+              <div className="bg-slate-800/80 rounded-2xl p-3 border border-white/8 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                      <UserCheck size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-white leading-tight">
+                        Mã đồng bộ Supabase
+                      </div>
+                      <div className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                        Tài khoản đám mây cá nhân
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                      <span>Mã đồng bộ:</span>
-                      <span className="text-emerald-400 font-mono tracking-wider font-extrabold">
-                        {showSyncKey ? (activeEmail || activeSyncKey) : '••••••••••••'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowSyncKey((prev) => !prev)}
-                        className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 cursor-pointer border-none transition-colors inline-flex items-center"
-                        title={showSyncKey ? 'Ẩn mã đồng bộ' : 'Hiện mã đồng bộ'}
-                      >
-                        {showSyncKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-                    <div className="text-[11px] text-slate-400 truncate">
-                      Supabase Cloud • Đồng bộ 2 chiều
-                    </div>
+                  <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold shrink-0">
+                    Đã kết nối
+                  </span>
+                </div>
+
+                <div className="bg-slate-900/70 border border-white/6 px-3 py-2 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-emerald-400 font-mono tracking-wider font-extrabold text-xs truncate">
+                      {showSyncKey ? (activeEmail || activeSyncKey) : '••••••••••••••••'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSyncKey((prev) => !prev)}
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/60 cursor-pointer border-none transition-colors inline-flex items-center shrink-0"
+                      title={showSyncKey ? 'Ẩn mã đồng bộ' : 'Hiện mã đồng bộ'}
+                    >
+                      {showSyncKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-slate-400 shrink-0 font-medium">
+                    Đồng bộ 2 chiều
                   </div>
                 </div>
-                <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold shrink-0">
-                  Đã kết nối
-                </span>
               </div>
 
               {/* Thẻ Quản lý Bảo mật Mã PIN & Câu hỏi khôi phục */}
@@ -1290,7 +1314,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 disabled={isProcessing}
                 className="touch-btn w-full bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-teal-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-500/35 hover:border-emerald-500/50 p-3.5 rounded-2xl flex items-center justify-between cursor-pointer shadow-lg shadow-emerald-950/20 transition-all text-left"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
                     {isProcessing ? (
                       <RotateCw size={20} className="animate-spin text-emerald-400" />
@@ -1298,11 +1322,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       <CloudUpload size={20} className="text-emerald-400" />
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-xs font-black text-emerald-400 uppercase tracking-wide">
                       Sao lưu ngay lên Supabase Cloud
                     </div>
-                    <div className="text-[11px] text-slate-300 mt-0.5 truncate">
+                    <div className="text-[11px] text-slate-300 mt-0.5 leading-snug">
                       Đẩy toàn bộ ví, hạng mục, sổ nợ & giao dịch lên đám mây
                     </div>
                     {lastSupabaseBackupVal && (
@@ -1355,34 +1379,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
 
               {/* KHU VỰC ĐIỂM KHÔI PHỤC DỮ LIỆU (5 NGÀY GẦN NHẤT) */}
-              <div className="bg-slate-950/70 rounded-xl p-3 border border-white/8 flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+              <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-white/8 flex flex-col gap-3 shadow-lg">
+                {/* Header hàng 1: Icon + Tiêu đề bên trái, Icon ? bên phải (cân đối 2 mép) */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <History size={16} className="text-amber-400 shrink-0" />
-                    <div>
-                      <div className="text-xs font-bold text-slate-200">
-                        Điểm khôi phục dữ liệu (5 ngày qua)
-                      </div>
-                      <div className="text-[10px] text-slate-400 m-0">
-                        Tự động snapshot hàng ngày phòng ngừa lỗi hoặc mất dữ liệu
-                      </div>
-                    </div>
+                    <span className="text-xs font-black text-slate-100 uppercase tracking-wide">
+                      Điểm khôi phục 5 ngày qua
+                    </span>
                   </div>
                   <button
                     type="button"
-                    onClick={handleCreateManualSnapshot}
-                    disabled={isCreatingSnapshot}
-                    className="touch-btn text-[10px] font-bold py-1 px-2.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 flex items-center gap-1 cursor-pointer shrink-0"
-                    title="Chốt snapshot trạng thái hiện tại"
+                    onClick={() => setShowSnapshotHelp((prev) => !prev)}
+                    className="p-1 text-slate-400 hover:text-amber-300 transition-colors cursor-pointer border-none bg-transparent inline-flex items-center shrink-0"
+                    title="Bấm để xem giải thích chi tiết"
                   >
-                    {isCreatingSnapshot ? (
-                      <RotateCw size={11} className="animate-spin" />
-                    ) : (
-                      <Camera size={11} />
-                    )}
-                    <span>Chụp ngay</span>
+                    <HelpCircle size={15} />
                   </button>
                 </div>
+
+                {/* Hàng 2: Mô tả trải dài tự nhiên, không lệch lề */}
+                <div className="text-[11px] text-slate-400 leading-relaxed -mt-1">
+                  Tự động sao lưu mỗi ngày phòng ngừa lỗi hoặc mất dữ liệu
+                </div>
+
+                {/* Hàng 3: Nút Lưu mốc dạng thanh ngang cân đối, thanh lịch */}
+                <button
+                  type="button"
+                  onClick={handleCreateManualSnapshot}
+                  disabled={isCreatingSnapshot}
+                  className="touch-btn w-full py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 active:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 flex items-center justify-center gap-2 font-bold text-xs cursor-pointer transition-all active:scale-[0.99] shadow-sm"
+                  title="Lưu lại trạng thái an toàn ngay thời điểm này"
+                >
+                  {isCreatingSnapshot ? (
+                    <RotateCw size={13} className="animate-spin text-emerald-400" />
+                  ) : (
+                    <BookmarkPlus size={14} className="text-emerald-400" />
+                  )}
+                  <span>Lưu mốc dữ liệu hôm nay</span>
+                </button>
+
+                {/* Khung giải thích chi tiết khi bấm vào icon ? */}
+                {showSnapshotHelp && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs flex flex-col gap-1.5 animate-fade-in">
+                    <div className="flex items-center justify-between font-bold text-amber-300 text-[11px]">
+                      <span>💡 Cơ chế điểm khôi phục 5 ngày</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSnapshotHelp(false)}
+                        className="text-slate-400 hover:text-white border-none bg-transparent cursor-pointer p-0.5"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <ul className="list-disc pl-4 text-[11px] text-slate-300 space-y-1 leading-relaxed m-0">
+                      <li><strong>Tự động mỗi ngày:</strong> Khi bạn mở app lần đầu trong ngày, hệ thống sẽ tự động lưu 1 bản snapshot lên Cloud mà không cần thao tác gì.</li>
+                      <li><strong>Giới hạn 5 ngày:</strong> Các bản sao lưu cũ hơn 5 ngày sẽ tự động được xóa đi để tối ưu bộ nhớ.</li>
+                      <li><strong>Nút "Lưu mốc":</strong> Bấm bất cứ lúc nào bạn muốn ghi nhận lại trạng thái tức thì hôm nay.</li>
+                      <li><strong>Khôi phục an toàn:</strong> Bấm "Khôi phục" tại ngày mong muốn để đưa dữ liệu về đúng thời điểm đó (yêu cầu mã PIN nếu đã cài đặt).</li>
+                    </ul>
+                  </div>
+                )}
 
                 {snapshotTableMissing ? (
                   <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex flex-col gap-2">
@@ -1404,41 +1461,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <span>Đang tải các điểm khôi phục...</span>
                   </div>
                 ) : snapshots.length === 0 ? (
-                  <div className="text-[11px] text-slate-400 italic py-2 text-center bg-slate-900/50 rounded-lg">
-                    Chưa có điểm snapshot nào. Bấm "Chụp ngay" để lưu bản đầu tiên hôm nay.
+                  <div className="text-[11px] text-slate-400 italic py-2.5 text-center bg-slate-900/50 rounded-xl border border-white/5">
+                    Chưa có điểm sao lưu nào. Bấm "Lưu mốc" để lưu bản đầu tiên hôm nay.
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2">
                     {snapshots.map((item) => {
                       const isToday = item.backupDate === getCurrentDate();
-                      const timeStr = item.createdAt ? item.createdAt.slice(11, 16) : '';
+                      const timeStr = formatSnapshotTime(item.createdAt);
                       return (
                         <div
                           key={item.id}
-                          className="p-2.5 rounded-lg bg-slate-900/90 border border-white/6 flex items-center justify-between gap-2 text-xs"
+                          className="p-3 rounded-xl bg-slate-800/80 hover:bg-slate-800/95 border border-white/8 flex items-center justify-between gap-3 text-xs transition-colors shadow-sm"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div
                               className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                isToday ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-slate-500'
+                                isToday ? 'bg-emerald-400 shadow-sm shadow-emerald-400/80 animate-pulse' : 'bg-slate-500'
                               }`}
                             />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-slate-100">
+                                <span className="font-extrabold text-white text-xs">
                                   {isToday ? 'Hôm nay' : formatFriendlyDate(item.backupDate)}
                                 </span>
-                                <span className="text-[10px] text-slate-400">
-                                  ({item.backupDate})
-                                </span>
                                 {timeStr && (
-                                  <span className="text-[10px] text-slate-500 font-mono">
+                                  <span className="text-[11px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
                                     {timeStr}
                                   </span>
                                 )}
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  ({item.backupDate})
+                                </span>
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                {item.txCount} giao dịch • {item.walletCount} tài khoản/ví
+                              <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                                <span><strong className="text-slate-300 font-semibold">{item.txCount}</strong> giao dịch</span>
+                                <span className="text-slate-600">•</span>
+                                <span><strong className="text-slate-300 font-semibold">{item.walletCount}</strong> ví/tài khoản</span>
                               </div>
                             </div>
                           </div>
@@ -1449,9 +1508,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                               setConfirmRestoreSnapshot(item);
                               setRestorePinInput('');
                             }}
-                            className="touch-btn shrink-0 py-1.5 px-3 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 font-bold text-[11px] cursor-pointer transition-colors"
+                            className="touch-btn shrink-0 py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:bg-amber-500/35 text-amber-300 border border-amber-500/30 font-bold text-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1 shadow-sm"
                           >
-                            Khôi phục
+                            <RotateCw size={11} className="text-amber-400" />
+                            <span>Khôi phục</span>
                           </button>
                         </div>
                       );

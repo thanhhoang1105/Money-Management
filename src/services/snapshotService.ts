@@ -66,28 +66,53 @@ export async function checkAndCreateDailyCloudSnapshot(options?: {
     const txCount = cleanedPayload.data?.transactions?.length || 0;
     const walletCount = cleanedPayload.data?.wallets?.length || 0;
 
-    // 3. Upsert vào bảng snapshot lịch sử user_backup_history
-    const { error: upsertErr } = await client.from('user_backup_history').upsert(
-      {
-        sync_key: syncKey,
-        backup_date: today,
-        payload: cleanedPayload,
-        tx_count: txCount,
-        wallet_count: walletCount,
-        created_at: now
-      },
-      { onConflict: 'sync_key,backup_date' }
-    );
+    // 3. Ghi dữ liệu vào bảng snapshot lịch sử user_backup_history
+    // Kiểm tra xem đã có bản ghi của ngày hôm nay chưa
+    const { data: existingRecord } = await client
+      .from('user_backup_history')
+      .select('id')
+      .eq('sync_key', syncKey)
+      .eq('backup_date', today)
+      .maybeSingle();
 
-    if (upsertErr) {
+    let writeErr: any = null;
+
+    if (existingRecord?.id) {
+      // Đã có bản ghi hôm nay -> Cập nhật payload mới, số lượng mới và mốc thời gian created_at mới nhất
+      const { error } = await client
+        .from('user_backup_history')
+        .update({
+          payload: cleanedPayload,
+          tx_count: txCount,
+          wallet_count: walletCount,
+          created_at: now
+        })
+        .eq('id', existingRecord.id);
+      writeErr = error;
+    } else {
+      // Chưa có -> Tạo mới bản ghi cho ngày hôm nay
+      const { error } = await client
+        .from('user_backup_history')
+        .insert({
+          sync_key: syncKey,
+          backup_date: today,
+          payload: cleanedPayload,
+          tx_count: txCount,
+          wallet_count: walletCount,
+          created_at: now
+        });
+      writeErr = error;
+    }
+
+    if (writeErr) {
       // Nếu bảng chưa được tạo trong SQL Editor
-      if (upsertErr.message?.includes('relation') && upsertErr.message?.includes('does not exist')) {
+      if (writeErr.message?.includes('relation') && writeErr.message?.includes('does not exist')) {
         return {
           created: false,
           message: 'Bảng user_backup_history chưa được tạo trên Supabase. Vui lòng chạy mã SQL trong Cài đặt.'
         };
       }
-      throw new Error(upsertErr.message);
+      throw new Error(writeErr.message);
     }
 
     // 4. Xóa các bản snapshot cũ hơn 5 ngày (Rolling 5-day retention)
