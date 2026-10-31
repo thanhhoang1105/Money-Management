@@ -22,6 +22,7 @@ import { DatePicker } from './ui/DatePicker';
 import { WalletSelect } from './ui/WalletSelect';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
+import { MoneyInput } from './ui/MoneyInput';
 import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
 import {
   ArrowLeft,
@@ -1538,16 +1539,16 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     Phí chuyển khoản (Nếu có)
                   </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
+                  <MoneyInput
                     value={transferFeeStr === '0' ? '' : transferFeeStr}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      setTransferFeeStr(val || '0');
-                    }}
+                    onChange={(val) => setTransferFeeStr(val || '0')}
                     placeholder="0 ₫ (Miễn phí)"
-                    className="input-ios w-36 text-right py-1 px-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs font-bold text-sky-300"
+                    size="sm"
+                    type="TRANSFER"
+                    badgeLabel="Phí chuyển khoản"
+                    amountColor="text-sky-300"
+                    returnRawDigits
+                    className="w-44"
                   />
                 </div>
                 <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">

@@ -16,6 +16,7 @@ import { CategoryManagerScreen } from './CategoryManagerScreen';
 import { DatePicker } from './ui/DatePicker';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
+import { MoneyInput } from './ui/MoneyInput';
 import type { AppStartupTab, RecurringFrequency, Transaction } from '../types';
 import {
   Target,
@@ -524,18 +525,14 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Số tiền (VNĐ) *
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <MoneyInput
                   value={newDebtAmountStr}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setNewDebtAmountStr(
-                      val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                    );
-                  }}
+                  onChange={(val) => setNewDebtAmountStr(val)}
                   placeholder="0"
-                  className="input-ios font-extrabold text-amber-400"
+                  size="md"
+                  type={newDebtType}
+                  badgeLabel="Số tiền vay / nợ"
+                  amountColor="text-amber-400"
                 />
               </div>
             </div>
@@ -791,18 +788,18 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
+                        <MoneyInput
                           value={settleAmountStr}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            setSettleAmountStr(
-                              val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                            );
-                          }}
+                          onChange={(val) => setSettleAmountStr(val)}
                           placeholder="Số tiền..."
-                          className="input-ios text-sm font-extrabold text-emerald-400"
+                          size="sm"
+                          type={settleInline.mode}
+                          badgeLabel={
+                            settleInline.mode === 'COLLECT_DEBT'
+                              ? 'Số tiền thu nợ'
+                              : 'Số tiền trả nợ'
+                          }
+                          amountColor="text-emerald-400"
                         />
 
                         <CustomSelect
@@ -1052,18 +1049,14 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               <label className="text-xs font-semibold text-slate-400 block mb-1">
                 Số tiền (VNĐ)
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
+              <MoneyInput
                 value={recAmountStr}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  setRecAmountStr(
-                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                  );
-                }}
+                onChange={(val) => setRecAmountStr(val)}
                 placeholder="Ví dụ: 4.500.000"
-                className="input-ios font-extrabold text-lg text-sky-400"
+                size="md"
+                type={recType}
+                badgeLabel="Số tiền định kỳ"
+                amountColor="text-sky-400"
               />
             </div>
 
@@ -1319,18 +1312,14 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 <label className="text-xs font-semibold text-slate-400 block mb-1">
                   Ngân sách dự kiến (Tùy chọn - VNĐ)
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <MoneyInput
                   value={evBudgetStr}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setEvBudgetStr(
-                      val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                    );
-                  }}
+                  onChange={(val) => setEvBudgetStr(val)}
                   placeholder="Ví dụ: 10.000.000"
-                  className="input-ios"
+                  size="md"
+                  type="INCOME"
+                  badgeLabel="Ngân sách sự kiện"
+                  amountColor="text-emerald-400"
                 />
               </div>
 

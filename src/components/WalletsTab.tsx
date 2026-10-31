@@ -36,6 +36,7 @@ import { CustomSelect } from './ui/CustomSelect';
 import { WalletSelect } from './ui/WalletSelect';
 import { DatePicker } from './ui/DatePicker';
 import { Toast } from './ui/Toast';
+import { MoneyInput } from './ui/MoneyInput';
 import {
   Plus,
   Edit3,
@@ -867,38 +868,34 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                   <label className="text-xs font-semibold text-slate-300 uppercase block mb-1">
                     Số lượng Chỉ
                   </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={goldChi}
-                      onChange={(e) => setGoldChi(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="input-ios text-lg font-black text-amber-300 pr-12"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                      chỉ
-                    </span>
-                  </div>
+                  <MoneyInput
+                    value={goldChi}
+                    onChange={(val) => setGoldChi(val)}
+                    placeholder="0"
+                    size="md"
+                    returnRawDigits
+                    unitSuffix="chỉ"
+                    badgeLabel="Số lượng Chỉ vàng"
+                    badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                    amountColor="text-amber-300"
+                  />
                 </div>
 
                 <div>
                   <label className="text-xs font-semibold text-slate-300 uppercase block mb-1">
                     Số lượng Phân (1 chỉ = 10 phân)
                   </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={goldPhan}
-                      onChange={(e) => setGoldPhan(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="input-ios text-lg font-black text-amber-300 pr-14"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                      phân
-                    </span>
-                  </div>
+                  <MoneyInput
+                    value={goldPhan}
+                    onChange={(val) => setGoldPhan(val)}
+                    placeholder="0"
+                    size="md"
+                    returnRawDigits
+                    unitSuffix="phân"
+                    badgeLabel="Số lượng Phân vàng"
+                    badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                    amountColor="text-amber-300"
+                  />
                 </div>
               </div>
 
@@ -947,16 +944,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                     <span>Lấy giá hôm nay</span>
                   </button>
                 </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <MoneyInput
                   value={goldPriceStr}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^0-9]/g, '');
-                    setGoldPriceStr(raw ? new Intl.NumberFormat('vi-VN').format(Number(raw)) : '');
-                  }}
-                  className="input-ios text-base font-bold text-slate-100"
+                  onChange={(val) => setGoldPriceStr(val)}
                   placeholder="13.700.000"
+                  size="md"
+                  badgeLabel="Giá thu mua vàng (VNĐ/chỉ)"
+                  badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                  amountColor="text-amber-300"
                 />
                 <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
                   <span>
@@ -994,16 +989,13 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                 <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
                   3. Số dư ban đầu (VNĐ)
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0"
+                <MoneyInput
                   value={balanceStr}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^0-9]/g, '');
-                    setBalanceStr(raw ? new Intl.NumberFormat('vi-VN').format(Number(raw)) : '');
-                  }}
-                  className="input-ios font-extrabold text-xl text-emerald-400"
+                  onChange={(val) => setBalanceStr(val)}
+                  placeholder="0"
+                  type="INCOME"
+                  badgeLabel="Số dư ban đầu"
+                  amountColor="text-emerald-400"
                 />
               </div>
             )
@@ -1169,18 +1161,16 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
             <label className="text-xs font-semibold text-slate-400 uppercase block mb-1.5">
               Nhập số dư thực tế hiện tại (VNĐ)
             </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={
-                balanceStr
-                  ? new Intl.NumberFormat('vi-VN').format(
-                      Number(balanceStr.replace(/[^0-9]/g, '')) || 0
-                    )
-                  : ''
-              }
-              onChange={(e) => setBalanceStr(e.target.value.replace(/[^0-9]/g, ''))}
-              className="input-ios text-2xl font-extrabold text-sky-400"
+            <MoneyInput
+              value={balanceStr}
+              onChange={(val) => setBalanceStr(val)}
+              placeholder="0"
+              type="ADJUST"
+              badgeLabel="Số dư thực tế"
+              amountColor="text-sky-400"
+              returnRawDigits
+              allowZeroDisplay
+              currentWalletBalance={selectedWallet.balance}
               autoFocus
             />
           </div>
@@ -1390,13 +1380,15 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                 Nhập đơn giá thực tế bạn giao dịch (VNĐ / chỉ)
               </label>
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <MoneyInput
                   value={goldTradeUnitPriceStr}
-                  onChange={(e) => handleGoldTradeUnitPriceChange(e.target.value)}
-                  className="input-ios text-base font-extrabold text-amber-300 flex-1"
+                  onChange={(val) => handleGoldTradeUnitPriceChange(val)}
                   placeholder="13.700.000"
+                  size="md"
+                  badgeLabel="Đơn giá vàng (VNĐ/chỉ)"
+                  badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                  amountColor="text-amber-300"
+                  className="flex-1"
                 />
                 <button
                   type="button"
@@ -1527,36 +1519,28 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
-              <div className="relative">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={goldTradeChi}
-                  onChange={(e) =>
-                    handleGoldTradeWeightChange(e.target.value.replace(/[^0-9]/g, ''), goldTradePhan)
-                  }
-                  className="input-ios font-black text-lg text-amber-300 pr-10"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                  chỉ
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={goldTradePhan}
-                  onChange={(e) =>
-                    handleGoldTradeWeightChange(goldTradeChi, e.target.value.replace(/[^0-9]/g, ''))
-                  }
-                  className="input-ios font-black text-lg text-amber-300 pr-12"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                  phân
-                </span>
-              </div>
+              <MoneyInput
+                value={goldTradeChi}
+                onChange={(val) => handleGoldTradeWeightChange(val, goldTradePhan)}
+                placeholder="0"
+                size="md"
+                returnRawDigits
+                unitSuffix="chỉ"
+                badgeLabel="Số lượng Chỉ vàng"
+                badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                amountColor="text-amber-300"
+              />
+              <MoneyInput
+                value={goldTradePhan}
+                onChange={(val) => handleGoldTradeWeightChange(goldTradeChi, val)}
+                placeholder="0"
+                size="md"
+                returnRawDigits
+                unitSuffix="phân"
+                badgeLabel="Số lượng Phân vàng"
+                badgeStyle="bg-amber-500/20 text-amber-300 border-amber-500/30"
+                amountColor="text-amber-300"
+              />
             </div>
 
             {/* Quick chips chọn nhanh */}
@@ -1643,18 +1627,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
               </label>
               <span className="text-[11px] text-slate-400">VNĐ</span>
             </div>
-            <div className="relative">
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="0"
-                value={goldTradeAmountStr}
-                onChange={(e) => handleGoldTradeAmountChange(e.target.value)}
-                className={`input-ios text-2xl font-black ${
-                  goldTradeAction === 'BUY' ? 'text-rose-400' : 'text-emerald-400'
-                }`}
-              />
-            </div>
+            <MoneyInput
+              value={goldTradeAmountStr}
+              onChange={(val) => handleGoldTradeAmountChange(val)}
+              placeholder="0"
+              type={goldTradeAction === 'BUY' ? 'EXPENSE' : 'INCOME'}
+              badgeLabel={goldTradeAction === 'BUY' ? 'Số tiền mua vàng' : 'Số tiền bán vàng'}
+              amountColor={goldTradeAction === 'BUY' ? 'text-rose-400' : 'text-emerald-400'}
+            />
             <span className="text-[11px] text-slate-400 block mt-1">
               Bạn có thể tự gõ số tiền để ứng dụng tự tính ra số chỉ và phân tương ứng.
             </span>
@@ -1869,19 +1849,14 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                 </button>
               )}
             </div>
-            <input
-              type="text"
-              inputMode="numeric"
+            <MoneyInput
+              value={balanceStr}
+              onChange={(val) => setBalanceStr(val)}
               placeholder="0"
-              value={
-                balanceStr
-                  ? new Intl.NumberFormat('vi-VN').format(
-                      Number(balanceStr.replace(/[^0-9]/g, '')) || 0
-                    )
-                  : ''
-              }
-              onChange={(e) => setBalanceStr(e.target.value.replace(/[^0-9]/g, ''))}
-              className="input-ios text-2xl font-extrabold text-sky-400"
+              type="TRANSFER"
+              badgeLabel="Số tiền chuyển"
+              amountColor="text-sky-400"
+              returnRawDigits
             />
 
             {/* Quick Amount Chips */}
@@ -1933,19 +1908,15 @@ export const WalletsTab: React.FC<WalletsTabProps> = ({ resetSignal }) => {
                 </button>
               ))}
             </div>
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="Phí tùy chỉnh..."
-              value={
-                transferFeeStr && transferFeeStr !== '0'
-                  ? new Intl.NumberFormat('vi-VN').format(
-                      Number(transferFeeStr.replace(/[^0-9]/g, '')) || 0
-                    )
-                  : ''
-              }
-              onChange={(e) => setTransferFeeStr(e.target.value.replace(/[^0-9]/g, ''))}
-              className="input-ios text-sm font-semibold"
+            <MoneyInput
+              value={transferFeeStr === '0' ? '' : transferFeeStr}
+              onChange={(val) => setTransferFeeStr(val || '0')}
+              placeholder="Phí tùy chỉnh (0 ₫)..."
+              size="sm"
+              type="TRANSFER"
+              badgeLabel="Phí chuyển khoản"
+              amountColor="text-sky-300"
+              returnRawDigits
             />
           </div>
 

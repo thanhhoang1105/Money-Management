@@ -13,6 +13,7 @@ import {
 import { TransactionHistoryView } from './TransactionHistoryView';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
+import { MoneyInput } from './ui/MoneyInput';
 import {
   formatVND,
   formatMonthDisplay,
@@ -406,16 +407,14 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
         </div>
 
         <div className="grid grid-cols-1 gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
+          <MoneyInput
             value={settleAmountInput}
-            onChange={(e) => {
-              const val = e.target.value.replace(/\D/g, '');
-              setSettleAmountInput(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
-            }}
+            onChange={(val) => setSettleAmountInput(val)}
             placeholder="Số tiền..."
-            className="input-ios text-xs py-2 font-extrabold text-emerald-400"
+            size="sm"
+            type={isCollect ? 'COLLECT_DEBT' : 'PAY_DEBT'}
+            badgeLabel={isCollect ? 'Số tiền thu nợ' : 'Số tiền trả nợ'}
+            amountColor="text-emerald-400"
           />
           <CustomSelect
             value={settleWalletIdInput || defaultSettleWalletId}
@@ -697,18 +696,14 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                 placeholder="Tên người vay / chủ nợ (VD: Anh Nam)..."
                 className="input-ios text-xs py-2"
               />
-              <input
-                type="text"
-                inputMode="numeric"
+              <MoneyInput
                 value={debtAmountInput}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  setDebtAmountInput(
-                    val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : ''
-                  );
-                }}
+                onChange={(val) => setDebtAmountInput(val)}
                 placeholder="Số tiền (VNĐ)..."
-                className="input-ios text-xs py-2 font-extrabold text-amber-400"
+                size="sm"
+                type={debtTypeInput}
+                badgeLabel="Số tiền vay / nợ"
+                amountColor="text-amber-400"
               />
             </div>
 

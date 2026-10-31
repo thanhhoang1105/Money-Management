@@ -6,6 +6,7 @@ import type { Category, Budget } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
+import { MoneyInput } from './ui/MoneyInput';
 import {
   formatVND,
   formatMonthDisplay,
@@ -325,15 +326,13 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
               Số tiền hạn mức (VNĐ)
             </label>
-            <input
-              type="text"
-              placeholder="Ví dụ: 3.500.000"
+            <MoneyInput
               value={amountStr}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                setAmountStr(val ? new Intl.NumberFormat('vi-VN').format(Number(val)) : '');
-              }}
-              className="input-ios text-emerald-400 font-extrabold text-2xl py-3 tracking-tight"
+              onChange={(val) => setAmountStr(val)}
+              placeholder="Ví dụ: 3.500.000"
+              type="INCOME"
+              badgeLabel="Hạn mức ngân sách"
+              amountColor="text-emerald-400"
               autoFocus
             />
 

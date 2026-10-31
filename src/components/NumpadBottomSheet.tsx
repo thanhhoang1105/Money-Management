@@ -18,6 +18,7 @@ interface NumpadBottomSheetProps {
   badgeLabel?: string;
   badgeStyle?: string;
   amountColor?: string;
+  unitSuffix?: string;
 }
 
 export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
@@ -32,7 +33,8 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
   adjustDiff = 0,
   badgeLabel,
   badgeStyle,
-  amountColor
+  amountColor,
+  unitSuffix
 }) => {
   useEffect(() => {
     if (!isOpen) return;
@@ -50,7 +52,7 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
       if (e.key >= '0' && e.key <= '9') {
         e.preventDefault();
         onKeyPress(e.key);
-      } else if (['+', '-', '*', '/'].includes(e.key)) {
+      } else if (['+', '-', '*', '/', '='].includes(e.key)) {
         e.preventDefault();
         onKeyPress(e.key);
       } else if (e.key === 'Backspace') {
@@ -208,7 +210,9 @@ export const NumpadBottomSheet: React.FC<NumpadBottomSheetProps> = ({
             <div
               className={`font-heading text-2xl font-black tracking-tight leading-none text-right truncate ${getAmountColor()}`}
             >
-              {formatVND(computedAmount)}
+              {unitSuffix !== undefined
+                ? `${new Intl.NumberFormat('vi-VN').format(computedAmount)}${unitSuffix ? ` ${unitSuffix}` : ''}`
+                : formatVND(computedAmount)}
             </div>
           </div>
 
