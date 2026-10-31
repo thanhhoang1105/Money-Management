@@ -249,22 +249,17 @@ export interface SaveGrabTripResult {
  * Ghi 1 cuốc xe Grab chuẩn xác 100% theo dòng tiền thực tế trên app Grab Driver:
  *
  * 1. Cuốc khách trả Thẻ/Ví (CARD):
- *    - Thu nhập ròng (netIncome) cộng vào Ví Tiền Mặt Grab.
+ *    - Thu nhập ròng (netIncome) cộng vào Ví Tiền Mặt Grab (INCOME).
  *    - Tiền tip qua app cộng vào Ví Tiền Mặt Grab; tip tiền mặt cộng vào Ví nhận ngoài.
  *    - Ví Tín Dụng Grab GIỮ NGUYÊN.
  *
- * 2. Cuốc khách trả Tiền mặt (CASH):
- *    - tripFare = grabFare > 0 ? grabFare : cashReceived
- *    - grabFee = Math.max(0, tripFare - netIncome) (Grab trừ vào Ví Tín Dụng)
- *    - voucherSubsidy = cashReceived < tripFare ? (tripFare - cashReceived) : 0 (Grab bù vào Ví Tiền Mặt Grab)
- *    - autoTip = cashReceived > tripFare ? (cashReceived - tripFare) : 0
- *    - cashNetIncome = netIncome - voucherSubsidy (Thu nhập ròng nằm trong tiền mặt khách đưa)
- *
- *    Các giao dịch sinh ra:
- *    - TRANSFER: Chuyển grabFee từ Ví Tín Dụng ➔ Ví nhận tiền mặt/BIDV (Ví Tín Dụng trừ grabFee, ví nhận tiền có tiền phí)
- *    - INCOME: Cộng cashNetIncome vào Ví nhận tiền mặt/BIDV (Khớp đúng tổng tiền khách đưa = grabFee + cashNetIncome)
- *    - INCOME (nếu voucherSubsidy > 0): Cộng voucherSubsidy vào Ví Tiền Mặt Grab (Grab hoàn tiền voucher)
- *    - INCOME (nếu autoTip > 0): Cộng autoTip vào Ví nhận tiền mặt/BIDV
+ * 2. Cuốc khách trả Tiền mặt (CASH) - Ví dụ: Cước 14k, Thu nhập ròng 8k, Thu khách 14k:
+ *    - Luân chuyển tài sản (TRANSFER - KHÔNG tính vào Thu/Chi):
+ *      Chuyển 14k (tripFare) từ Ví Tín Dụng Grab (-14k) ➔ Ví Tiền Mặt nhận từ khách (+14k).
+ *    - Thu nhập thực tế (INCOME - Tính vào báo cáo Thu nhập):
+ *      Cộng 8k (netIncome) vào Ví Tiền Mặt Grab (+8k).
+ *    - Nếu khách đưa dư tiền bo (autoTip > 0):
+ *      Cộng autoTip vào Ví Tiền Mặt nhận từ khách (INCOME).
  */
 export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGrabTripResult> {
   const {
@@ -292,7 +287,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
   const now = new Date().toISOString();
   const txIds: string[] = [];
   let grabFee = 0;
-  let voucherSubsidy = 0;
+  const voucherSubsidy = 0;
   let autoTip = 0;
   let totalEarned = 0;
 
@@ -365,7 +360,13 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         }
       }
     } else {
-      // 2. Khách trả TIỀN MẶT (hoặc chuyển khoản ngân hàng) trực tiếp cho tài xế:
+      // 2. Khách trả TIỀN MẶT (hoặc chuyển khoản) trực tiếp cho tài xế:
+      // Thực tế:
+      // - Ví Tín Dụng Grab bị trừ đúng số tiền cước thu khách (vd: -14.000₫)
+      // - Ví nhận tiền mặt ngoài đời nhận tiền từ khách (vd: +14.000₫)
+      //   => Đây là LUÂN CHUYỂN TÀI SẢN (TRANSFER 14.000₫ từ Ví Tín Dụng Grab ➔ Ví Tiền Mặt), KHÔNG phải thu nhập!
+      // - Ví Tiền Mặt Grab được cộng thu nhập ròng (vd: +8.000₫)
+      //   => Duy nhất khoản 8.000₫ này mới là THU NHẬP (INCOME)!
       const targetWalletId = receivingWalletId || physicalCashWalletId || '';
       let targetWallet = targetWalletId ? await db.wallets.get(targetWalletId) : undefined;
 
@@ -387,69 +388,71 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         value: targetWallet.id
       });
 
-      // A. Tính toán ngầm:
+      // A. Tính toán các thông số:
       const tripFare = grabFare && grabFare > 0 ? grabFare : cashReceived;
       grabFee = Math.max(0, tripFare - netIncome);
-      voucherSubsidy = cashReceived < tripFare ? (tripFare - cashReceived) : 0;
       autoTip = cashReceived > tripFare ? (cashReceived - tripFare) : (tipAmount > 0 ? tipAmount : 0);
-      const rawCashNetIncome = netIncome - voucherSubsidy;
-      const cashNetIncome = Math.max(0, rawCashNetIncome);
 
-      // B. Sinh các giao dịch tự động:
-      // 1. TRANSFER: Phí chiết khấu Grab trừ Ví Tín Dụng ➔ Chuyển vào Ví nhận tiền mặt/BIDV
-      if (grabFee > 0) {
+      // B. Sinh các giao dịch chuẩn xác:
+      // 1. TRANSFER (Luân chuyển tài sản - Không tính vào Thu/Chi):
+      //    Trừ tripFare (14k) từ Ví Tín Dụng Grab ➔ Cộng tripFare (14k) vào Ví nhận tiền mặt
+      if (tripFare > 0) {
         const currentCredit = await db.wallets.get(creditWalletId);
         const creditBal = currentCredit ? currentCredit.balance : creditWallet.balance;
         const currentTarget = await db.wallets.get(targetWallet.id);
         const targetBal = currentTarget ? currentTarget.balance : targetWallet.balance;
 
         await db.wallets.update(creditWalletId, {
-          balance: creditBal - grabFee,
+          balance: creditBal - tripFare,
           updatedAt: now
         });
         await db.wallets.update(targetWallet.id, {
-          balance: targetBal + grabFee,
+          balance: targetBal + tripFare,
           updatedAt: now
         });
 
-        const feeTxId = generateUUID();
+        const transferTxId = generateUUID();
         const transferTx: Transaction = {
-          id: feeTxId,
+          id: transferTxId,
           walletId: creditWalletId,
           toWalletId: targetWallet.id,
           type: 'TRANSFER',
-          amount: grabFee,
+          amount: tripFare,
           date,
           time,
-          note: `Grab trừ chiết khấu cuốc xe (Cước: ${new Intl.NumberFormat('vi-VN').format(tripFare)}₫, Phí: ${new Intl.NumberFormat('vi-VN').format(grabFee)}₫)`,
+          note: `Luân chuyển tiền cuốc Grab (Trừ Ví Tín Dụng ${new Intl.NumberFormat('vi-VN').format(tripFare)}₫ ➔ Thu tiền mặt vào ${targetWallet.name})`,
           createdAt: now,
           updatedAt: now
         };
         await db.transactions.add(transferTx);
-        txIds.push(feeTxId);
+        txIds.push(transferTxId);
       }
 
-      // 2. INCOME: Thu nhập ròng tiền mặt cộng vào Ví nhận tiền (Tiền mặt/BIDV)
-      if (cashNetIncome > 0) {
-        const currentTarget = await db.wallets.get(targetWallet.id);
-        const targetBal = currentTarget ? currentTarget.balance : targetWallet.balance;
-        await db.wallets.update(targetWallet.id, {
-          balance: targetBal + cashNetIncome,
+      // 2. INCOME (Duy nhất khoản này là Thu nhập ròng):
+      //    Cộng netIncome (8k) vào Ví Tiền Mặt Grab
+      if (netIncome > 0) {
+        const currentGrabCash = await db.wallets.get(grabCashWalletId);
+        const grabCashBal = currentGrabCash ? currentGrabCash.balance : grabCashWallet.balance;
+
+        await db.wallets.update(grabCashWalletId, {
+          balance: grabCashBal + netIncome,
           updatedAt: now
         });
 
         const incomeTxId = generateUUID();
         const incomeNoteParts: string[] = [];
         if (note?.trim()) incomeNoteParts.push(note.trim());
-        incomeNoteParts.push(`Cước: ${new Intl.NumberFormat('vi-VN').format(tripFare)}₫`);
-        incomeNoteParts.push(`Thu nhập ròng tiền mặt: +${new Intl.NumberFormat('vi-VN').format(cashNetIncome)}₫`);
+        incomeNoteParts.push(`Thu nhập ròng cuốc Grab (+${new Intl.NumberFormat('vi-VN').format(netIncome)}₫ vào Ví TM Grab)`);
+        if (tripFare > 0) {
+          incomeNoteParts.push(`Cước: ${new Intl.NumberFormat('vi-VN').format(tripFare)}₫`);
+        }
 
         const incomeTx: Transaction = {
           id: incomeTxId,
-          walletId: targetWallet.id,
+          walletId: grabCashWalletId,
           categoryId: GRAB_INCOME_CAT_ID,
           type: 'INCOME',
-          amount: cashNetIncome,
+          amount: netIncome,
           date,
           time,
           note: incomeNoteParts.join(' • '),
@@ -460,33 +463,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         txIds.push(incomeTxId);
       }
 
-      // 3. INCOME: Tiền Grab bù Voucher/Khuyến mãi vào Ví Tiền Mặt Grab (nếu voucherSubsidy > 0)
-      if (voucherSubsidy > 0) {
-        const currentGrabCash = await db.wallets.get(grabCashWalletId);
-        const grabCashBal = currentGrabCash ? currentGrabCash.balance : grabCashWallet.balance;
-        await db.wallets.update(grabCashWalletId, {
-          balance: grabCashBal + voucherSubsidy,
-          updatedAt: now
-        });
-
-        const voucherTxId = generateUUID();
-        const voucherTx: Transaction = {
-          id: voucherTxId,
-          walletId: grabCashWalletId,
-          categoryId: GRAB_INCOME_CAT_ID,
-          type: 'INCOME',
-          amount: voucherSubsidy,
-          date,
-          time,
-          note: `Grab hoàn tiền khuyến mãi / voucher cho khách (+${new Intl.NumberFormat('vi-VN').format(voucherSubsidy)}₫ vào Ví TM Grab)`,
-          createdAt: now,
-          updatedAt: now
-        };
-        await db.transactions.add(voucherTx);
-        txIds.push(voucherTxId);
-      }
-
-      // 4. INCOME: Tiền tip nếu khách đưa dư (nếu autoTip > 0) vào Ví nhận tiền mặt/BIDV
+      // 3. INCOME (Nếu khách đưa dư tiền Tip > 0): Cộng vào Ví nhận tiền mặt
       if (autoTip > 0) {
         const currentTarget = await db.wallets.get(targetWallet.id);
         const targetBal = currentTarget ? currentTarget.balance : targetWallet.balance;

@@ -7,7 +7,8 @@ import {
   createTransaction,
   deleteTransaction,
   computeNextRunDate,
-  processDueRecurringTransactions
+  processDueRecurringTransactions,
+  buildDebtSummary
 } from '../services/transactionService';
 import { formatVND, getCurrentDate, getCurrentTime, formatFriendlyDate } from '../utils/formatters';
 import { generateUUID } from '../utils/uuid';
@@ -159,6 +160,18 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
   // Thống kê Sổ Nợ theo từng Người vay / Chủ nợ
   const debtSummaryByContact = useMemo(() => {
+    const savedNames = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    const summary = buildDebtSummary(transactions, savedNames, categories);
+    return {
+      contacts: summary.allContacts,
+      totalReceivable: summary.totalReceivable,
+      totalPayable: summary.totalPayable
+    };
+  }, [transactions, savedContactsSetting?.value, categories]);
+
+  const _unusedLegacyDebtSummary = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -241,6 +254,7 @@ export const MoreTab: React.FC<MoreTabProps> = ({
     };
   }, [transactions, savedContactsSetting?.value]);
 
+  void _unusedLegacyDebtSummary;
   // MÀN HÌNH NGHIỆP VỤ GRABBIKE (DẠNG PHẲNG TOÀN MÀN HÌNH)
   if (isGrabModalOpen) {
     return (

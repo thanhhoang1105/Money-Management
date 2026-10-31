@@ -6,7 +6,9 @@ import type { Transaction, Category, Wallet, EventTrip } from '../types';
 import {
   createTransaction,
   deleteTransaction,
-  SYSTEM_ADJUSTMENT_CATEGORY_ID
+  SYSTEM_ADJUSTMENT_CATEGORY_ID,
+  getEffectiveTransactionType,
+  isDebtType
 } from '../services/transactionService';
 import { GRAB_FEE_CAT_ID, GRAB_INCOME_CAT_ID } from '../db/seed';
 import { CategoryIcon } from './CategoryIcon';
@@ -101,7 +103,8 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
   // Bộ lọc đa năng
   const filteredTransactions = useMemo(() => {
     return allMonthTransactions.filter((tx) => {
-      if (typeFilter !== 'ALL' && tx.type !== typeFilter) {
+      const effectiveType = getEffectiveTransactionType(tx, categoryMap);
+      if (typeFilter !== 'ALL' && effectiveType !== typeFilter) {
         return false;
       }
 
@@ -130,13 +133,13 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
             );
           if (!isDebtTx) return false;
         } else if (categoryFilter === 'cat_debt_lend') {
-          if (tx.categoryId !== 'cat_debt_lend' && tx.type !== 'LEND') return false;
+          if (effectiveType !== 'LEND') return false;
         } else if (categoryFilter === 'cat_debt_borrow') {
-          if (tx.categoryId !== 'cat_debt_borrow' && tx.type !== 'BORROW') return false;
+          if (effectiveType !== 'BORROW') return false;
         } else if (categoryFilter === 'cat_debt_collect') {
-          if (tx.categoryId !== 'cat_debt_collect' && tx.type !== 'COLLECT_DEBT') return false;
+          if (effectiveType !== 'COLLECT_DEBT') return false;
         } else if (categoryFilter === 'cat_debt_pay') {
-          if (tx.categoryId !== 'cat_debt_pay' && tx.type !== 'PAY_DEBT') return false;
+          if (effectiveType !== 'PAY_DEBT') return false;
         } else if (categoryFilter === 'cat_parent_expense_other') {
           const isOrphanExpense =
             txCat?.type === 'EXPENSE' && (!txCat.parentId || !categoryMap.has(txCat.parentId));
@@ -201,6 +204,17 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
     let exp = 0;
     filteredTransactions.forEach((tx) => {
       if (tx.excludeFromReport) return;
+      const effectiveType = getEffectiveTransactionType(tx, categoryMap);
+      const isDebtFilterActive =
+        isDebtType(typeFilter as any) ||
+        categoryFilter === 'cat_parent_debt' ||
+        categoryFilter.startsWith('cat_debt_');
+      if (isDebtFilterActive && (effectiveType === 'COLLECT_DEBT' || effectiveType === 'BORROW')) {
+        inc += tx.amount;
+      }
+      if (isDebtFilterActive && (effectiveType === 'LEND' || effectiveType === 'PAY_DEBT')) {
+        exp += tx.amount;
+      }
       if (tx.type === 'INCOME') inc += tx.amount;
       if (tx.type === 'EXPENSE') exp += tx.amount;
       if (tx.type === 'TRANSFER' && tx.transferFee && tx.transferFee > 0) {
@@ -208,7 +222,7 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
       }
     });
     return { filteredIncome: inc, filteredExpense: exp };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, categoryMap, typeFilter, categoryFilter]);
 
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -263,7 +277,7 @@ export const TransactionHistoryView: React.FC<TransactionHistoryViewProps> = ({
     });
 
     return groups;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, categoryMap, typeFilter, categoryFilter]);
 
   // Các ngày hiển thị theo thứ tự giảm dần (ngày mới nhất ở trên đầu)
   const sortedDates = useMemo(() => {

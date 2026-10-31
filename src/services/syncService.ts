@@ -150,13 +150,23 @@ export function recalculateWalletBalances(
   const txDeltaMap = new Map<string, number>();
 
   transactions.forEach((tx) => {
-    if (tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT') {
+    const effectiveType =
+      tx.categoryId === 'cat_debt_collect'
+        ? 'COLLECT_DEBT'
+        : tx.categoryId === 'cat_debt_lend'
+        ? 'LEND'
+        : tx.categoryId === 'cat_debt_borrow'
+        ? 'BORROW'
+        : tx.categoryId === 'cat_debt_pay'
+        ? 'PAY_DEBT'
+        : tx.type;
+    if (effectiveType === 'EXPENSE' || effectiveType === 'LEND' || effectiveType === 'PAY_DEBT') {
       const current = txDeltaMap.get(tx.walletId) ?? 0;
       txDeltaMap.set(tx.walletId, current - tx.amount);
-    } else if (tx.type === 'INCOME' || tx.type === 'BORROW' || tx.type === 'COLLECT_DEBT') {
+    } else if (effectiveType === 'INCOME' || effectiveType === 'BORROW' || effectiveType === 'COLLECT_DEBT') {
       const current = txDeltaMap.get(tx.walletId) ?? 0;
       txDeltaMap.set(tx.walletId, current + tx.amount);
-    } else if (tx.type === 'TRANSFER' && tx.toWalletId) {
+    } else if (effectiveType === 'TRANSFER' && tx.toWalletId) {
       const fee = tx.transferFee || 0;
       const fromCurr = txDeltaMap.get(tx.walletId) ?? 0;
       txDeltaMap.set(tx.walletId, fromCurr - tx.amount - fee);

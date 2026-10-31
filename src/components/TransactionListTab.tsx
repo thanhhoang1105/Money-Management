@@ -3,7 +3,13 @@ import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import type { Transaction } from '../types';
-import { createTransaction, sortWallets } from '../services/transactionService';
+import {
+  createTransaction,
+  sortWallets,
+  buildDebtSummary,
+  getEffectiveTransactionType,
+  isDebtType
+} from '../services/transactionService';
 import { TransactionHistoryView } from './TransactionHistoryView';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
@@ -109,7 +115,8 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
             tx.type === 'LEND' ||
             tx.type === 'BORROW' ||
             tx.type === 'COLLECT_DEBT' ||
-            tx.type === 'PAY_DEBT'
+            tx.type === 'PAY_DEBT' ||
+            isDebtType(getEffectiveTransactionType(tx))
         )
         .reverse()
         .sortBy('date');
@@ -132,6 +139,13 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
   // Tổng hợp Sổ Vay / Nợ ngay trên Tổng quan: Ai đang nợ mình (Cần thu) & Đang nợ ai (Phải trả)
   const debtOverview = useMemo(() => {
+    const savedNames = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    return buildDebtSummary(allDebtTransactions, savedNames, categories);
+  }, [allDebtTransactions, savedContactsSetting?.value, categories]);
+
+  const _unusedLegacyDebtOverview = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -219,6 +233,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
     };
   }, [allDebtTransactions, savedContactsSetting?.value]);
 
+  void _unusedLegacyDebtOverview;
   // Tính tổng Thu & Chi thuần của tháng đang chọn
   const { monthIncome, monthExpense } = useMemo(() => {
     let inc = 0;
@@ -801,20 +816,29 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                             <span>Đã cho vay: {formatVND(person.lent)}</span>
                             <span>Đã thu: {formatVND(person.collected)}</span>
                           </div>
-                          {person.txs.slice(0, 4).map((t) => (
+                          <div className="max-h-60 overflow-y-auto flex flex-col gap-1.5">
+                          {person.txs.map((t) => (
                             <div
                               key={t.id}
                               onClick={() => onEditTransaction(t)}
                               className="flex justify-between items-center py-1 px-2 rounded bg-slate-900/90 hover:bg-slate-800 cursor-pointer"
                             >
                               <span className="truncate text-slate-300">
-                                {t.date} • {t.note || 'Giao dịch vay/nợ'}
+                                {t.date}{t.time ? ` (${t.time})` : ''} • {t.note || 'Giao dịch vay/nợ'}
                               </span>
-                              <span className="font-bold text-amber-300 shrink-0 ml-2">
+                                <span
+                                  className={`font-bold shrink-0 ml-2 ${
+                                    t.type === 'COLLECT_DEBT'
+                                      ? 'text-emerald-400'
+                                      : 'text-amber-300'
+                                  }`}
+                                >
+                                  {t.type === 'COLLECT_DEBT' ? 'Thu nợ +' : 'Cho vay -'}
                                 {formatVND(t.amount)}
                               </span>
                             </div>
                           ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -888,20 +912,29 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
                             <span>Đã vay: {formatVND(person.borrowed)}</span>
                             <span>Đã trả: {formatVND(person.paid)}</span>
                           </div>
-                          {person.txs.slice(0, 4).map((t) => (
+                          <div className="max-h-60 overflow-y-auto flex flex-col gap-1.5">
+                          {person.txs.map((t) => (
                             <div
                               key={t.id}
                               onClick={() => onEditTransaction(t)}
                               className="flex justify-between items-center py-1 px-2 rounded bg-slate-900/90 hover:bg-slate-800 cursor-pointer"
                             >
                               <span className="truncate text-slate-300">
-                                {t.date} • {t.note || 'Giao dịch vay/nợ'}
+                                {t.date}{t.time ? ` (${t.time})` : ''} • {t.note || 'Giao dịch vay/nợ'}
                               </span>
-                              <span className="font-bold text-purple-300 shrink-0 ml-2">
+                                <span
+                                  className={`font-bold shrink-0 ml-2 ${
+                                    t.type === 'PAY_DEBT'
+                                      ? 'text-emerald-400'
+                                      : 'text-purple-300'
+                                  }`}
+                                >
+                                  {t.type === 'PAY_DEBT' ? 'Trả nợ -' : 'Đi vay +'}
                                 {formatVND(t.amount)}
                               </span>
                             </div>
                           ))}
+                          </div>
                         </div>
                       )}
                     </div>

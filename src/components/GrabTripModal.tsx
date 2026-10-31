@@ -192,27 +192,12 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
     return cardTip;
   }, [mode, grabFare, cashReceived, cardTip]);
 
-  // Phí chiết khấu Grab trừ Ví Tín Dụng:
-  const grabFee = useMemo(() => {
-    if (mode !== 'CASH') return 0;
-    const tripFare = grabFare > 0 ? grabFare : cashReceived;
-    return Math.max(0, tripFare - netIncome);
-  }, [mode, grabFare, cashReceived, netIncome]);
+  // Giá cước gốc luân chuyển từ Ví Tín Dụng sang Ví Tiền Mặt:
+  const tripFare = useMemo(() => {
+    return grabFare > 0 ? grabFare : cashReceived;
+  }, [grabFare, cashReceived]);
 
-  // Tiền voucher Grab bù vào Ví Tiền Mặt Grab nếu khách trả ít hơn giá gốc:
-  const voucherSubsidy = useMemo(() => {
-    if (mode !== 'CASH') return 0;
-    const tripFare = grabFare > 0 ? grabFare : cashReceived;
-    return cashReceived < tripFare ? tripFare - cashReceived : 0;
-  }, [mode, grabFare, cashReceived]);
-
-  // Phần thu nhập ròng nằm trong tiền mặt khách đưa:
-  const cashNetIncome = useMemo(() => {
-    if (mode !== 'CASH') return 0;
-    return Math.max(0, netIncome - voucherSubsidy);
-  }, [mode, netIncome, voucherSubsidy]);
-
-  // Thu nhập thực tế tài xế giữ được từ cuốc xe
+  // Thu nhập thực tế tài xế giữ được từ cuốc xe (Duy nhất phần này tính là Thu nhập)
   const totalEarned = useMemo(() => {
     if (mode === 'CASH') {
       return netIncome + autoTip;
@@ -544,7 +529,7 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
       const successText =
         mode === 'CASH'
-          ? `Đã ghi cuốc Grab: +${formatVND(cashReceived)} vào ${receivingWallet?.name} (Grab trừ ${formatVND(res.grabFee)} Tín Dụng, ròng: +${formatVND(netIncome)}${res.voucherSubsidy > 0 ? `, hoàn voucher +${formatVND(res.voucherSubsidy)} Ví TM` : ''}${res.tipAmount > 0 ? `, tip +${formatVND(res.tipAmount)}` : ''})`
+          ? `Đã ghi cuốc Grab: Luân chuyển ${formatVND(tripFare)} (Ví Tín Dụng ➔ ${receivingWallet?.name}) • Thu nhập ròng: +${formatVND(netIncome)} vào Ví TM Grab${res.tipAmount > 0 ? ` • Tip +${formatVND(res.tipAmount)}` : ''}`
           : `Đã ghi cuốc Grab thẻ: +${formatVND(res.totalEarned)} vào Ví Tiền Mặt Grab`;
 
       if (onSuccess) onSuccess(successText);
@@ -1154,52 +1139,35 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-300 py-0.5">
-                    <span className="text-slate-400">💵 Tiền nhận vào {receivingWallet?.name}:</span>
-                    <span className="font-extrabold text-amber-400 text-sm">+{formatVND(cashReceived)}</span>
+                  {/* 1. LUÂN CHUYỂN TÀI SẢN (TRANSFER - KHÔNG TÍNH VÀO THU/CHI) */}
+                  <div className="p-2.5 rounded-xl bg-slate-900/90 border border-white/6 flex flex-col gap-1.5">
+                    <div className="text-[10px] font-bold text-sky-400 uppercase tracking-wide flex items-center justify-between">
+                      <span>🔄 Luân chuyển tài sản (Chuyển khoản nội bộ)</span>
+                      <span className="text-[9px] text-slate-400 font-normal normal-case">Không tính vào Thu/Chi</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400">💼 Trừ Ví Tín Dụng Grab:</span>
+                      <span className="font-extrabold text-rose-400 text-sm">-{formatVND(tripFare)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400">💵 Thu tiền khách vào {receivingWallet?.name}:</span>
+                      <span className="font-extrabold text-amber-400 text-sm">+{formatVND(tripFare)}</span>
+                    </div>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-300 py-0.5">
+                  {/* 2. THU NHẬP RÒNG THỰC TẾ (INCOME - TÍNH VÀO THU NHẬP) */}
+                  <div className="flex justify-between items-center text-slate-300 py-0.5 px-1">
                     <div className="flex flex-col">
-                      <span className="text-slate-400">💼 Chiết khấu Grab trừ Ví Tín Dụng:</span>
-                      <span className="text-[10px] text-slate-500">
-                        (Khách đưa tiền cước gồm cả phí, Grab trừ phí ở Ví Tín Dụng)
+                      <span className="text-emerald-300 font-bold">✨ Thu nhập ròng (Vào Ví TM Grab):</span>
+                      <span className="text-[10px] text-slate-400">
+                        (Khoản duy nhất được ghi nhận là Thu nhập)
                       </span>
                     </div>
-                    <span className="font-extrabold text-rose-400 text-sm">
-                      -{formatVND(grabFee)}
-                    </span>
+                    <span className="font-extrabold text-emerald-400 text-sm">+{formatVND(netIncome)}</span>
                   </div>
-
-                  <div className="flex justify-between items-center text-slate-300 py-0.5">
-                    <div className="flex flex-col">
-                      <span className="text-slate-400">✨ Thu nhập ròng tiền mặt:</span>
-                      <span className="text-[10px] text-slate-500">
-                        (Thu nhập nằm trong tiền mặt khách đưa ➔ Vào {receivingWallet?.name})
-                      </span>
-                    </div>
-                    <span className="font-extrabold text-emerald-400 text-sm">+{formatVND(cashNetIncome)}</span>
-                  </div>
-
-                  {voucherSubsidy > 0 && (
-                    <div className="flex justify-between items-center text-sky-300 py-0.5 animate-fade-in font-bold">
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-1">
-                          <Gift size={13} />
-                          Grab hoàn Voucher / Giảm giá:
-                        </span>
-                        <span className="text-[10px] text-sky-400/80 font-normal">
-                          (Khách trả thiếu do dùng mã ➔ Grab bù vào Ví TM Grab)
-                        </span>
-                      </div>
-                      <span className="text-sky-300 text-sm font-extrabold">
-                        +{formatVND(voucherSubsidy)}
-                      </span>
-                    </div>
-                  )}
 
                   {autoTip > 0 && (
-                    <div className="flex justify-between items-center text-purple-300 py-0.5 animate-fade-in font-bold">
+                    <div className="flex justify-between items-center text-purple-300 py-0.5 px-1 animate-fade-in font-bold">
                       <span className="flex items-center gap-1">
                         <Gift size={13} />
                         Tiền Tip khách cho thêm (Vào {receivingWallet?.name}):
@@ -1210,11 +1178,11 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center pt-2 mt-0.5 border-t border-white/8 font-extrabold">
+                  <div className="flex justify-between items-center pt-2 mt-0.5 border-t border-white/8 font-extrabold px-1">
                     <div className="flex flex-col">
-                      <span className="text-slate-100 text-xs">💰 Tổng thu nhập thực nhận:</span>
+                      <span className="text-slate-100 text-xs">💰 Tổng thu nhập ghi nhận báo cáo:</span>
                       <span className="text-[10px] text-emerald-400/80 font-normal">
-                        Ròng {formatVND(netIncome)} {voucherSubsidy > 0 ? `(Tiền mặt ${formatVND(cashNetIncome)} + Grab bù ${formatVND(voucherSubsidy)})` : ''} {autoTip > 0 ? `+ Tip ${formatVND(autoTip)}` : ''}
+                        Ròng +{formatVND(netIncome)} vào Ví TM Grab {autoTip > 0 ? `+ Tip ${formatVND(autoTip)}` : ''}
                       </span>
                     </div>
                     <span className="text-base font-heading font-black text-income">

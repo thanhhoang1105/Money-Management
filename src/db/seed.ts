@@ -3,6 +3,11 @@ import { db, requestPersistentStorage, runWithoutDirtyTracking } from './index';
 import type { Wallet } from '../types';
 import { generateUUID } from '../utils/uuid';
 import { ensureGrabCategories } from '../services/grabService';
+import {
+  DEBT_TYPE_TO_CATEGORY_ID,
+  isDebtType,
+  resolveDebtTypeFromCategory
+} from '../services/transactionService';
 
 // 3 HẠNG MỤC CHA MẶC ĐỊNH CỦA KHOẢN CHI (EXPENSE)
 export const PARENT_MUST_HAVE_ID = 'cat_parent_must_have';
@@ -1112,6 +1117,61 @@ export async function ensureStandardizedCategories(force = false): Promise<void>
   );
 }
 
+/**
+ * Tự động phát hiện và sửa các giao dịch vay/nợ bị lệch `type` so với `categoryId`
+ * (ví dụ: chọn danh mục "Thu nợ" `cat_debt_collect` nhưng `type` vẫn đang lưu là `LEND`),
+ * đồng thời hiệu chỉnh lại số dư ví chuẩn xác trong 1 ACID transaction.
+ */
+export async function repairDebtTransactionsAndBalances(): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction('rw', [db.categories, db.transactions, db.wallets], async () => {
+    const [categories, transactions] = await Promise.all([
+      db.categories.toArray(),
+      db.transactions.toArray()
+    ]);
+    const categoryMap = new Map(categories.map((c) => [c.id, c]));
+
+    for (const tx of transactions) {
+      const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : null;
+      const expectedDebtType = resolveDebtTypeFromCategory(cat, tx.categoryId);
+
+      if (expectedDebtType && tx.type !== expectedDebtType) {
+        const oldDelta =
+          tx.type === 'EXPENSE' || tx.type === 'LEND' || tx.type === 'PAY_DEBT'
+            ? -tx.amount
+            : tx.type === 'INCOME' || tx.type === 'BORROW' || tx.type === 'COLLECT_DEBT'
+            ? tx.amount
+            : 0;
+        const newDelta =
+          expectedDebtType === 'LEND' || expectedDebtType === 'PAY_DEBT'
+            ? -tx.amount
+            : tx.amount;
+        const balanceDiff = newDelta - oldDelta;
+
+        if (balanceDiff !== 0) {
+          const wallet = await db.wallets.get(tx.walletId);
+          if (wallet) {
+            await db.wallets.update(tx.walletId, {
+              balance: wallet.balance + balanceDiff,
+              updatedAt: now
+            });
+          }
+        }
+
+        await db.transactions.update(tx.id, {
+          type: expectedDebtType,
+          updatedAt: now
+        });
+      } else if (isDebtType(tx.type) && !tx.categoryId) {
+        await db.transactions.update(tx.id, {
+          categoryId: DEBT_TYPE_TO_CATEGORY_ID[tx.type],
+          updatedAt: now
+        });
+      }
+    }
+  });
+}
+
 export async function initializeSeedData(): Promise<void> {
   await requestPersistentStorage();
   await runWithoutDirtyTracking(async () => {
@@ -1120,6 +1180,7 @@ export async function initializeSeedData(): Promise<void> {
     await ensureHierarchicalCategories();
     await ensureStandardizedCategories();
     await ensureGrabCategories();
+    await repairDebtTransactionsAndBalances();
 
     const isInitialized = await db.settings.get('has_seeded_v3');
     if (isInitialized?.value) {

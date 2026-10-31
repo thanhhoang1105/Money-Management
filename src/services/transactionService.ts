@@ -1,11 +1,414 @@
 // src/services/transactionService.ts
 import { db } from '../db';
-import type { Transaction, RecurringFrequency, Wallet, WalletType, GoldDetails } from '../types';
+import type {
+  Transaction,
+  TransactionType,
+  Category,
+  RecurringFrequency,
+  Wallet,
+  WalletType,
+  GoldDetails
+} from '../types';
 import { generateUUID } from '../utils/uuid';
 import { recordDeletedEntity } from './syncService';
 import { getCurrentDate, getCurrentTime } from '../utils/formatters';
 
 export const SYSTEM_ADJUSTMENT_CATEGORY_ID = 'system_adjustment';
+
+export const DEBT_CATEGORY_TO_TYPE: Record<string, 'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT'> = {
+  cat_debt_lend: 'LEND',
+  cat_debt_borrow: 'BORROW',
+  cat_debt_collect: 'COLLECT_DEBT',
+  cat_debt_pay: 'PAY_DEBT'
+};
+
+export const DEBT_TYPE_TO_CATEGORY_ID: Record<
+  'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT',
+  string
+> = {
+  LEND: 'cat_debt_lend',
+  BORROW: 'cat_debt_borrow',
+  COLLECT_DEBT: 'cat_debt_collect',
+  PAY_DEBT: 'cat_debt_pay'
+};
+
+export function isDebtType(
+  type: TransactionType
+): type is 'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT' {
+  return (
+    type === 'LEND' ||
+    type === 'BORROW' ||
+    type === 'COLLECT_DEBT' ||
+    type === 'PAY_DEBT'
+  );
+}
+
+/**
+ * Suy ra loại giao dịch vay/nợ chính xác từ hạng mục (ID hoặc tên hạng mục DEBT)
+ */
+export function resolveDebtTypeFromCategory(
+  category?: Pick<Category, 'id' | 'name' | 'type'> | null,
+  categoryId?: string
+): 'LEND' | 'BORROW' | 'COLLECT_DEBT' | 'PAY_DEBT' | null {
+  const cid = category?.id || categoryId;
+  if (cid && DEBT_CATEGORY_TO_TYPE[cid]) {
+    return DEBT_CATEGORY_TO_TYPE[cid];
+  }
+  if (category?.type === 'DEBT' && category.name) {
+    const clean = category.name.trim().toLowerCase();
+    if (clean === 'thu nợ') return 'COLLECT_DEBT';
+    if (clean === 'trả nợ') return 'PAY_DEBT';
+    if (clean === 'đi vay') return 'BORROW';
+    if (clean === 'cho vay') return 'LEND';
+  }
+  return null;
+}
+
+/**
+ * Lấy loại giao dịch thực tế (tự động sửa sai nếu giao dịch chọn danh mục Thu nợ / Trả nợ / Cho vay / Đi vay
+ * nhưng trường `type` bị lệch sang loại khác).
+ */
+export function getEffectiveTransactionType(
+  tx: Pick<Transaction, 'type' | 'categoryId'>,
+  categoryMap?: Map<string, Category>
+): TransactionType {
+  const cat = tx.categoryId && categoryMap ? categoryMap.get(tx.categoryId) : null;
+  const debtType = resolveDebtTypeFromCategory(cat, tx.categoryId);
+  if (debtType) {
+    return debtType;
+  }
+  return tx.type;
+}
+
+const GENERIC_DEBT_QUICK_TAGS = new Set([
+  'bạn bè vay',
+  'đồng nghiệp mượn',
+  'người thân vay',
+  'thu nợ bạn trả',
+  'thu hồi nợ cũ',
+  'mượn bạn',
+  'vay người thân',
+  'trả tiền bạn',
+  'giao dịch vay/nợ',
+  'vay nợ'
+]);
+
+const BANK_DEBT_QUICK_TAGS = new Set([
+  'vay ngân hàng',
+  'trả nợ ngân hàng',
+  'thanh toán thẻ tín dụng'
+]);
+
+export interface DebtContactSummary {
+  contactName: string;
+  lent: number;
+  collected: number;
+  borrowed: number;
+  paid: number;
+  receivable: number;
+  payable: number;
+  txs: Transaction[];
+}
+
+export interface DebtOverviewSummary {
+  allContacts: DebtContactSummary[];
+  whoOwesMe: DebtContactSummary[];
+  whoIOwe: DebtContactSummary[];
+  settledList: DebtContactSummary[];
+  totalReceivable: number;
+  totalPayable: number;
+}
+
+/**
+ * Trích xuất tên người vay / chủ nợ từ giao dịch, xử lý thông minh cả trường hợp:
+ * - Người dùng để trống `contactName` và chỉ chọn Quick Tag hoặc ghi vào `note`
+ * - Ghi chú tự động sinh dạng "Thu nợ từ X", "Trả nợ cho X", "Cho vay - X", v.v.
+ */
+export function resolveDebtContactName(
+  tx: Pick<Transaction, 'contactName' | 'note'>,
+  knownContactMap?: Map<string, string>
+): string {
+  const direct = tx.contactName?.trim();
+  if (direct) {
+    return direct;
+  }
+
+  const rawNote = tx.note?.trim() || '';
+  if (!rawNote) {
+    return 'Chưa ghi tên';
+  }
+
+  // 1. Kiểm tra mẫu ghi chú tự sinh: "Thu nợ từ X", "Trả nợ cho X", "Cho vay - X", "Đi vay - X"...
+  const prefixMatch = rawNote.match(
+    /^(?:thu nợ từ|trả nợ cho|cho vay\s*-\s*|đi vay\s*-\s*|thu nợ\s*-\s*|trả nợ\s*-\s*|vay nợ\s*-\s*)(.+)$/i
+  );
+  if (prefixMatch && prefixMatch[1]?.trim()) {
+    return prefixMatch[1].trim();
+  }
+
+  // 2. Tách các tag ngăn cách bằng dấu phẩy trong note
+  const parts = rawNote
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  // Nếu có danh sách tên người nợ đã biết, ưu tiên khớp theo tên đã biết
+  if (knownContactMap && knownContactMap.size > 0) {
+    const lowerNote = rawNote.toLowerCase();
+    if (knownContactMap.has(lowerNote)) {
+      return knownContactMap.get(lowerNote)!;
+    }
+    for (const part of parts) {
+      const lowerPart = part.toLowerCase();
+      if (knownContactMap.has(lowerPart)) {
+        return knownContactMap.get(lowerPart)!;
+      }
+    }
+    for (const [lowerKnown, displayKnown] of knownContactMap.entries()) {
+      if (lowerKnown.length >= 2 && lowerNote.includes(lowerKnown)) {
+        return displayKnown;
+      }
+    }
+  }
+
+  // 3. Nếu chỉ toàn là các Quick Tag mặc định (VD: "Bạn bè vay", "Thu nợ bạn trả") thì gom chung
+  // để khoản "Cho vay" và "Thu nợ" không bị tách thành 2 người khác nhau!
+  if (parts.length > 0) {
+    const allBankTags = parts.every((p) => BANK_DEBT_QUICK_TAGS.has(p.toLowerCase()));
+    if (allBankTags) {
+      return 'Ngân hàng';
+    }
+
+    const nonGenericParts = parts.filter(
+      (p) =>
+        !GENERIC_DEBT_QUICK_TAGS.has(p.toLowerCase()) &&
+        !BANK_DEBT_QUICK_TAGS.has(p.toLowerCase())
+    );
+    if (nonGenericParts.length === 0) {
+      if (parts.some((p) => BANK_DEBT_QUICK_TAGS.has(p.toLowerCase()))) {
+        return 'Ngân hàng';
+      }
+      return 'Chưa ghi tên';
+    }
+
+    return nonGenericParts.join(', ');
+  }
+
+  return rawNote;
+}
+
+/**
+ * Tổng hợp toàn bộ Sổ Vay / Nợ chuẩn xác tuyệt đối:
+ * - Tự động nhận diện đúng giao dịch Thu nợ / Trả nợ / Cho vay / Đi vay (kể cả khi `type` cũ bị lệch với `categoryId`)
+ * - Tự động gom nhóm và đối chiếu khoản Thu nợ (`COLLECT_DEBT`) vào khoản Cho vay (`LEND`),
+ *   tránh lỗi khoản Thu nợ bị tách sang nhóm khác và bị `Math.max(0, 0 - collected)` triệt tiêu mất.
+ */
+export function buildDebtSummary(
+  transactions: Transaction[],
+  savedNames: string[] = [],
+  categories: Category[] = []
+): DebtOverviewSummary {
+  const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+
+  // Lọc và chuẩn hóa các giao dịch vay/nợ
+  const debtTxs: Transaction[] = [];
+  for (const tx of transactions) {
+    const effectiveType = getEffectiveTransactionType(tx, categoryMap);
+    if (isDebtType(effectiveType)) {
+      debtTxs.push(effectiveType === tx.type ? tx : { ...tx, type: effectiveType });
+    }
+  }
+
+  // Thu thập danh sách tên người nợ tường minh từ contactName hoặc mẫu note tự động
+  const knownContactMap = new Map<string, string>();
+  for (const s of savedNames) {
+    const clean = s.trim();
+    if (clean) {
+      knownContactMap.set(clean.toLowerCase(), clean);
+    }
+  }
+  for (const tx of debtTxs) {
+    if (tx.contactName?.trim()) {
+      const clean = tx.contactName.trim();
+      knownContactMap.set(clean.toLowerCase(), clean);
+    } else if (tx.note?.trim()) {
+      const m = tx.note
+        .trim()
+        .match(
+          /^(?:thu nợ từ|trả nợ cho|cho vay\s*-\s*|đi vay\s*-\s*|thu nợ\s*-\s*|trả nợ\s*-\s*|vay nợ\s*-\s*)(.+)$/i
+        );
+      if (m && m[1]?.trim()) {
+        const clean = m[1].trim();
+        knownContactMap.set(clean.toLowerCase(), clean);
+      }
+    }
+  }
+
+  const map = new Map<
+    string,
+    {
+      contactName: string;
+      lent: number;
+      collected: number;
+      borrowed: number;
+      paid: number;
+      txs: Transaction[];
+    }
+  >();
+
+  savedNames.forEach((n) => {
+    const clean = n.trim();
+    if (clean) {
+      map.set(clean.toLowerCase(), {
+        contactName: clean,
+        lent: 0,
+        collected: 0,
+        borrowed: 0,
+        paid: 0,
+        txs: []
+      });
+    }
+  });
+
+  debtTxs.forEach((tx) => {
+    const name = resolveDebtContactName(tx, knownContactMap);
+    const key = name.toLowerCase();
+    const entry = map.get(key) || {
+      contactName: name,
+      lent: 0,
+      collected: 0,
+      borrowed: 0,
+      paid: 0,
+      txs: []
+    };
+    entry.txs.push(tx);
+    if (tx.type === 'LEND') entry.lent += tx.amount;
+    if (tx.type === 'COLLECT_DEBT') entry.collected += tx.amount;
+    if (tx.type === 'BORROW') entry.borrowed += tx.amount;
+    if (tx.type === 'PAY_DEBT') entry.paid += tx.amount;
+    map.set(key, entry);
+  });
+
+  // Đối chiếu bù trừ các khoản Thu nợ (collected > lent) hoặc Trả nợ (paid > borrowed)
+  // bị ghi thiếu tên hoặc lệch tên với người đang có dư nợ gốc (lent > collected / borrowed > paid)
+  const entries = Array.from(map.values());
+
+  const isRelatedName = (a: string, b: string): boolean => {
+    const la = a.toLowerCase().trim();
+    const lb = b.toLowerCase().trim();
+    if (la === 'chưa ghi tên' || lb === 'chưa ghi tên') return true;
+    if (la.includes(lb) || lb.includes(la)) return true;
+    return false;
+  };
+
+  // 1. Bù trừ chiều Cho vay (LEND) <-> Thu nợ (COLLECT_DEBT)
+  for (const pass of ['RELATED', 'ANY'] as const) {
+    for (const collector of entries) {
+      let excessCollected = collector.collected - collector.lent;
+      if (excessCollected <= 0) continue;
+
+      for (const lender of entries) {
+        if (lender === collector) continue;
+        const openReceivable = lender.lent - lender.collected;
+        if (openReceivable <= 0) continue;
+        if (pass === 'RELATED' && !isRelatedName(collector.contactName, lender.contactName)) {
+          continue;
+        }
+
+        if (collector.lent === 0 && collector.borrowed === 0 && collector.paid === 0) {
+          lender.collected += collector.collected;
+          lender.txs.push(...collector.txs);
+          lender.txs.sort((x, y) => {
+            if (x.date !== y.date) return y.date.localeCompare(x.date);
+            return (y.createdAt || '').localeCompare(x.createdAt || '');
+          });
+          collector.collected = 0;
+          collector.txs = [];
+          excessCollected = 0;
+          break;
+        } else {
+          const transferAmt = Math.min(excessCollected, openReceivable);
+          lender.collected += transferAmt;
+          collector.collected -= transferAmt;
+          excessCollected -= transferAmt;
+          if (excessCollected <= 0) break;
+        }
+      }
+    }
+  }
+
+  // 2. Bù trừ chiều Đi vay (BORROW) <-> Trả nợ (PAY_DEBT)
+  for (const pass of ['RELATED', 'ANY'] as const) {
+    for (const payer of entries) {
+      let excessPaid = payer.paid - payer.borrowed;
+      if (excessPaid <= 0) continue;
+
+      for (const borrower of entries) {
+        if (borrower === payer) continue;
+        const openPayable = borrower.borrowed - borrower.paid;
+        if (openPayable <= 0) continue;
+        if (pass === 'RELATED' && !isRelatedName(payer.contactName, borrower.contactName)) {
+          continue;
+        }
+
+        if (payer.borrowed === 0 && payer.lent === 0 && payer.collected === 0) {
+          borrower.paid += payer.paid;
+          borrower.txs.push(...payer.txs);
+          borrower.txs.sort((x, y) => {
+            if (x.date !== y.date) return y.date.localeCompare(x.date);
+            return (y.createdAt || '').localeCompare(x.createdAt || '');
+          });
+          payer.paid = 0;
+          payer.txs = [];
+          excessPaid = 0;
+          break;
+        } else {
+          const transferAmt = Math.min(excessPaid, openPayable);
+          borrower.paid += transferAmt;
+          payer.paid -= transferAmt;
+          excessPaid -= transferAmt;
+          if (excessPaid <= 0) break;
+        }
+      }
+    }
+  }
+
+  let totalReceivable = 0;
+  let totalPayable = 0;
+
+  const allContacts: DebtContactSummary[] = entries
+    .filter(
+      (c) =>
+        c.txs.length > 0 ||
+        savedNames.some((s) => s.trim().toLowerCase() === c.contactName.toLowerCase())
+    )
+    .map((c) => {
+      const receivable = Math.max(0, c.lent - c.collected);
+      const payable = Math.max(0, c.borrowed - c.paid);
+      totalReceivable += receivable;
+      totalPayable += payable;
+      return {
+        ...c,
+        receivable,
+        payable
+      };
+    });
+
+  const whoOwesMe = allContacts.filter((c) => c.receivable > 0);
+  const whoIOwe = allContacts.filter((c) => c.payable > 0);
+  const settledList = allContacts.filter(
+    (c) => c.receivable === 0 && c.payable === 0 && c.txs.length > 0
+  );
+
+  return {
+    allContacts,
+    whoOwesMe,
+    whoIOwe,
+    settledList,
+    totalReceivable,
+    totalPayable
+  };
+}
 
 /**
  * Sắp xếp danh sách ví theo thứ tự `order` tùy chỉnh của người dùng
@@ -135,7 +538,22 @@ export async function createTransaction(
 ): Promise<string> {
   const id = generateUUID();
   const createdAt = new Date().toISOString();
-  const newTx: Transaction = { ...data, id, createdAt, updatedAt: createdAt };
+  const normalizedType: TransactionType =
+    data.categoryId && DEBT_CATEGORY_TO_TYPE[data.categoryId]
+      ? DEBT_CATEGORY_TO_TYPE[data.categoryId]
+      : data.type;
+  const normalizedCategoryId =
+    isDebtType(normalizedType) && !data.categoryId
+      ? DEBT_TYPE_TO_CATEGORY_ID[normalizedType]
+      : data.categoryId;
+  const newTx: Transaction = {
+    ...data,
+    type: normalizedType,
+    categoryId: normalizedCategoryId,
+    id,
+    createdAt,
+    updatedAt: createdAt
+  };
 
   await db.transaction('rw', [db.wallets, db.transactions, db.settings], async () => {
     // 1. Cập nhật số dư ví
@@ -234,9 +652,23 @@ export async function updateTransaction(
     }
 
     // --- BƯỚC 2: TÍNH TOÁN DỮ LIỆU MỚI VÀ ÁP DỤNG TÁC ĐỘNG MỚI ---
+    const resolvedUpdates = { ...updates };
+    if (
+      resolvedUpdates.type &&
+      isDebtType(resolvedUpdates.type) &&
+      resolvedUpdates.type !== oldTx.type &&
+      (!resolvedUpdates.categoryId || resolvedUpdates.categoryId === oldTx.categoryId)
+    ) {
+      resolvedUpdates.categoryId = DEBT_TYPE_TO_CATEGORY_ID[resolvedUpdates.type];
+    } else if (
+      resolvedUpdates.categoryId &&
+      DEBT_CATEGORY_TO_TYPE[resolvedUpdates.categoryId]
+    ) {
+      resolvedUpdates.type = DEBT_CATEGORY_TO_TYPE[resolvedUpdates.categoryId];
+    }
     const newTx: Transaction = {
       ...oldTx,
-      ...updates,
+      ...resolvedUpdates,
       updatedAt: now
     };
 

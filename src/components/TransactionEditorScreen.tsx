@@ -8,7 +8,11 @@ import {
   updateTransaction,
   deleteTransaction,
   adjustWalletBalance,
-  sortWallets
+  sortWallets,
+  resolveDebtTypeFromCategory,
+  getEffectiveTransactionType,
+  buildDebtSummary,
+  resolveDebtContactName
 } from '../services/transactionService';
 import { CategoryIcon } from './CategoryIcon';
 import { CategoryManagerScreen } from './CategoryManagerScreen';
@@ -216,6 +220,27 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const prevIsOpenRef = useRef(false);
   const desktopAmountInputRef = useRef<HTMLInputElement>(null);
 
+  const debtSummary = useMemo(() => {
+    const savedList = Array.isArray(savedContactsSetting?.value)
+      ? (savedContactsSetting.value as string[])
+      : [];
+    return buildDebtSummary(transactions, savedList, categories);
+  }, [transactions, savedContactsSetting?.value, categories]);
+
+  const handleSelectCategory = (cat: Category) => {
+    setSelectedCategoryId(cat.id);
+    if (cat.type === 'EXPENSE') {
+      setType('EXPENSE');
+    } else if (cat.type === 'INCOME') {
+      setType('INCOME');
+    } else if (cat.type === 'DEBT') {
+      const resolvedDebtType = resolveDebtTypeFromCategory(cat, cat.id);
+      if (resolvedDebtType) {
+        setType(resolvedDebtType);
+      }
+    }
+  };
+
   // Danh sách tên người vay / chủ nợ (kết hợp lịch sử giao dịch + danh bạ lưu trữ)
   const existingContacts = useMemo(() => {
     const hiddenSet = new Set<string>(
@@ -379,7 +404,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     if (!isOpen) return;
 
     if (editingTransaction) {
-      setType(editingTransaction.type);
+      setType(getEffectiveTransactionType(editingTransaction));
       setAmountStr(editingTransaction.amount.toString());
       setSelectedCategoryId(editingTransaction.categoryId || '');
       setSelectedWalletId(editingTransaction.walletId);
@@ -655,7 +680,33 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       type === 'TRANSFER'
         ? Math.max(0, parseInt(transferFeeStr.replace(/\D/g, ''), 10) || 0)
         : undefined;
-    const trimmedContact = isDebtTransactionType(type) ? contactName.trim() || undefined : undefined;
+    let trimmedContact: string | undefined;
+    if (isDebtTransactionType(type)) {
+      let candidate = contactName.trim();
+      if (!candidate) {
+        const fromNote = resolveDebtContactName({ contactName: '', note: finalNote });
+        if (fromNote && fromNote !== 'Chưa ghi tên') {
+          candidate = fromNote;
+        } else if (type === 'COLLECT_DEBT' && debtSummary.whoOwesMe.length === 1) {
+          candidate = debtSummary.whoOwesMe[0].contactName;
+        } else if (type === 'PAY_DEBT' && debtSummary.whoIOwe.length === 1) {
+          candidate = debtSummary.whoIOwe[0].contactName;
+        }
+      }
+      if (!candidate && type === 'COLLECT_DEBT' && debtSummary.whoOwesMe.length > 1) {
+        setErrorMsg(
+          'Vui lòng chọn người trả nợ ở mục "Người vay tiền (Con nợ)" bên dưới để trừ nợ chính xác'
+        );
+        return;
+      }
+      if (!candidate && type === 'PAY_DEBT' && debtSummary.whoIOwe.length > 1) {
+        setErrorMsg(
+          'Vui lòng chọn chủ nợ ở mục "Người cho vay (Chủ nợ)" bên dưới để trừ nợ chính xác'
+        );
+        return;
+      }
+      trimmedContact = candidate || undefined;
+    }
     const chosenEventId =
       type === 'EXPENSE' || type === 'INCOME' ? eventId || undefined : undefined;
     const chosenExclude =
@@ -1334,7 +1385,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                       <button
                         key={cat.id}
                         type="button"
-                        onClick={() => setSelectedCategoryId(cat.id)}
+                        onClick={() => handleSelectCategory(cat)}
                         className={`touch-btn h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer transition-all ${
                           isSelected
                             ? 'border-sky-400 bg-sky-500/20 text-sky-200 font-bold ring-1 ring-sky-400 shadow-sm'
@@ -1565,6 +1616,83 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                 placeholder="Nhập tên người giao dịch (VD: Anh Nam, Chị Lan...)"
                 className="input-ios w-full bg-slate-800/90 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500"
               />
+
+              {/* Gợi ý nhanh người đang nợ (khi Thu nợ) hoặc chủ nợ (khi Trả nợ) kèm số dư nợ còn lại */}
+              {!isManagingContacts &&
+                type === 'COLLECT_DEBT' &&
+                debtSummary.whoOwesMe.length > 0 && (
+                  <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                    <span className="text-[11px] font-bold text-emerald-300">
+                      🐷 Đang nợ bạn (chạm để chọn người & điền nhanh số nợ):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {debtSummary.whoOwesMe.map((item) => {
+                        const isSelected =
+                          contactName.trim().toLowerCase() === item.contactName.toLowerCase();
+                        return (
+                          <button
+                            key={item.contactName}
+                            type="button"
+                            onClick={() => {
+                              setContactName(item.contactName);
+                              if (amountStr === '0' || !amountStr) {
+                                setAmountStr(item.receivable.toString());
+                              }
+                            }}
+                            className={`touch-btn px-2.5 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5 transition-all ${
+                              isSelected
+                                ? 'bg-emerald-500 text-slate-950 font-extrabold border border-emerald-300'
+                                : 'bg-slate-900/90 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20'
+                            }`}
+                          >
+                            {isSelected && <Check size={12} strokeWidth={3} />}
+                            <span>
+                              {item.contactName} ({formatVND(item.receivable)})
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+              {!isManagingContacts &&
+                type === 'PAY_DEBT' &&
+                debtSummary.whoIOwe.length > 0 && (
+                  <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/25">
+                    <span className="text-[11px] font-bold text-purple-300">
+                      💳 Bạn đang nợ (chạm để chọn chủ nợ & điền nhanh số tiền trả):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {debtSummary.whoIOwe.map((item) => {
+                        const isSelected =
+                          contactName.trim().toLowerCase() === item.contactName.toLowerCase();
+                        return (
+                          <button
+                            key={item.contactName}
+                            type="button"
+                            onClick={() => {
+                              setContactName(item.contactName);
+                              if (amountStr === '0' || !amountStr) {
+                                setAmountStr(item.payable.toString());
+                              }
+                            }}
+                            className={`touch-btn px-2.5 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5 transition-all ${
+                              isSelected
+                                ? 'bg-purple-500 text-slate-950 font-extrabold border border-purple-300'
+                                : 'bg-slate-900/90 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20'
+                            }`}
+                          >
+                            {isSelected && <Check size={12} strokeWidth={3} />}
+                            <span>
+                              {item.contactName} ({formatVND(item.payable)})
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
               {/* Chế độ chọn nhanh người nợ */}
               {!isManagingContacts && existingContacts.length > 0 && (
