@@ -13,7 +13,7 @@ import { checkAndRunSupabaseAutoSync } from './services/supabaseService';
 import { processDueRecurringTransactions } from './services/transactionService';
 import { checkAndCreateDailyCloudSnapshot } from './services/snapshotService';
 import { checkAndUpdateGoldOnStartup } from './services/goldService';
-import type { Transaction, AppStartupTab } from './types';
+import type { Transaction, TransactionType, AppStartupTab } from './types';
 import {
   Share,
   X,
@@ -70,6 +70,7 @@ export function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(defaultInitialTab === 'editor');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editorInitialType, setEditorInitialType] = useState<TransactionType | undefined>(undefined);
   const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
 
   const handleSelectTab = (tab: TabType) => {
@@ -184,8 +185,9 @@ export function App() {
     };
   }, []);
 
-  const handleOpenQuickAdd = () => {
+  const handleOpenQuickAdd = (initialType?: TransactionType) => {
     setEditingTransaction(null);
+    setEditorInitialType(initialType);
     setIsSettingsOpen(false);
     setIsEditorOpen(true);
     setEditorResetSignal((prev) => prev + 1);
@@ -302,7 +304,7 @@ export function App() {
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={handleOpenQuickAdd}
+              onClick={() => handleOpenQuickAdd()}
               className={`hidden md:flex items-center gap-1.5 py-2 px-4 rounded-xl text-xs font-extrabold cursor-pointer shadow-lg transition-all active:scale-95 ${
                 isEditorOpen
                   ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300'
@@ -412,6 +414,7 @@ export function App() {
                 setEditingTransaction(tx);
               }}
               resetSignal={editorResetSignal}
+              initialType={editorInitialType}
             />
           ) : isSettingsOpen ? (
             <SettingsModal

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import type { Transaction } from '../types';
+import type { Transaction, TransactionType } from '../types';
 import {
   createTransaction,
   sortWallets,
@@ -44,13 +44,13 @@ import { useGrabDriverMode } from '../services/grabService';
 
 interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
-  onOpenQuickAdd: () => void;
+  onOpenQuickAdd: (initialType?: TransactionType) => void;
   resetSignal?: number;
 }
 
 export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   onEditTransaction,
-  onOpenQuickAdd: _onOpenQuickAdd,
+  onOpenQuickAdd,
   resetSignal
 }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
@@ -639,10 +639,7 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              setDebtWalletIdInput(wallets[0]?.id || '');
-              setIsAddingDebtQuick(!isAddingDebtQuick);
-            }}
+            onClick={() => onOpenQuickAdd('LEND')}
             className="touch-btn py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs flex items-center gap-1 cursor-pointer border-none shrink-0"
           >
             <Plus size={14} strokeWidth={2.5} />

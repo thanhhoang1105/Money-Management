@@ -64,6 +64,7 @@ interface TransactionEditorScreenProps {
   editingTransaction?: Transaction | null;
   onSelectTransactionToEdit?: (tx: Transaction) => void;
   resetSignal?: number;
+  initialType?: TransactionType;
 }
 
 /**
@@ -122,7 +123,8 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   onClose,
   editingTransaction,
   onSelectTransactionToEdit,
-  resetSignal
+  resetSignal,
+  initialType
 }) => {
   const rawCategories = useLiveQuery(() => db.categories.toArray());
   const rawWallets = useLiveQuery(() => db.wallets.toArray());
@@ -183,7 +185,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       setIsNumpadOpen(false);
 
       if (!editingTransaction) {
-        setType('EXPENSE');
+        setType(initialType ?? 'EXPENSE');
         setAmountStr('0');
         setSelectedCategoryId('');
         setTransferFeeStr('0');
@@ -422,7 +424,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       setNewTagInput('');
       setIsNumpadOpen(false);
     } else if (justOpened) {
-      setType('EXPENSE');
+      setType(initialType ?? 'EXPENSE');
       setAmountStr('0');
       setSelectedCategoryId('');
       setTransferFeeStr('0');
@@ -1084,7 +1086,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
                   >
                     <div className="flex items-center gap-2">
                       <MotorcycleIcon size={18} className="text-emerald-400 shrink-0" strokeWidth={2.2} />
-                      <span>Nghiệp vụ Chạy GrabBike (Tự động chia tiền mặt & tín dụng)</span>
+                      <span>Nghiệp vụ Chạy GrabBike</span>
                     </div>
                     <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">
                       Mở ➔

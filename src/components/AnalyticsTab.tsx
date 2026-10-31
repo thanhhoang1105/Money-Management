@@ -1646,57 +1646,101 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                         role="button"
                         tabIndex={0}
                         onClick={() => toggleDailyExpand(day.date)}
-                        className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/60 transition-colors"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleDailyExpand(day.date);
+                          }
+                        }}
+                        className="p-3.5 cursor-pointer hover:bg-slate-800/50 transition-colors select-none"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0">
-                            <Calendar size={15} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-bold text-slate-100 truncate">
-                              {formatFriendlyDate(day.date)}
+                        {/* Hàng 1: Ngày tháng + số lượng GD (trái) và Dòng tiền Ròng + Mũi tên (phải) */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/25 text-sky-400 flex items-center justify-center shrink-0 shadow-sm shadow-sky-500/10">
+                              <Calendar size={15} />
                             </div>
-                            <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                              <span>{day.txCount} giao dịch</span>
-                              <span>•</span>
-                              <span
-                                className={`font-semibold ${
-                                  day.net >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                                }`}
-                              >
-                                Ròng: {day.net >= 0 ? `+${formatVND(day.net)}` : formatVND(day.net)}
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-slate-100 truncate">
+                                {formatFriendlyDate(day.date)}
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                {day.txCount} giao dịch
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div
+                              className={`px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap border flex items-center gap-1.5 shadow-sm ${
+                                day.net >= 0
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              }`}
+                            >
+                              <span className="text-[10px] font-medium opacity-75 uppercase tracking-wider">
+                                Ròng
                               </span>
+                              <span>
+                                {day.net >= 0 ? `+${formatVND(day.net)}` : formatVND(day.net)}
+                              </span>
+                            </div>
+                            <div className="text-slate-400 p-0.5">
+                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0 ml-2">
-                          <div className="text-right">
-                            {day.income > 0 && (
-                              <div className="text-xs font-bold text-income">
-                                +{formatVND(day.income)}
-                              </div>
-                            )}
-                            {day.expense > 0 && (
-                              <div className="text-xs font-bold text-expense">
-                                -{formatVND(day.expense)}
-                              </div>
-                            )}
+                        {/* Hàng 2: Chi tiết Thu & Chi cân đối, rõ ràng, không bao giờ bị chèn ép */}
+                        <div className="mt-2.5 pt-2 border-t border-white/6 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                day.income > 0 ? 'bg-emerald-400' : 'bg-slate-600'
+                              }`}
+                            />
+                            <span className="text-slate-400 text-[11px]">Thu:</span>
+                            <span
+                              className={`truncate font-medium ${
+                                day.income > 0 ? 'text-income font-semibold' : 'text-slate-500'
+                              }`}
+                            >
+                              {day.income > 0 ? `+${formatVND(day.income)}` : '0 đ'}
+                            </span>
                           </div>
-                          <div className="text-slate-400">
-                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          <div className="flex items-center gap-1.5 min-w-0 justify-end">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                day.expense > 0 ? 'bg-rose-400' : 'bg-slate-600'
+                              }`}
+                            />
+                            <span className="text-slate-400 text-[11px]">Chi:</span>
+                            <span
+                              className={`truncate font-medium ${
+                                day.expense > 0 ? 'text-expense font-semibold' : 'text-slate-500'
+                              }`}
+                            >
+                              {day.expense > 0 ? `-${formatVND(day.expense)}` : '0 đ'}
+                            </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Danh sách giao dịch chi tiết của ngày khi mở rộng */}
                       {isExpanded && (
-                        <div className="p-3 pt-0 border-t border-white/6 flex flex-col gap-1.5 mt-1">
+                        <div className="p-3 pt-2.5 border-t border-white/6 flex flex-col gap-1.5 bg-slate-950/20">
                           {day.txs.map((tx) => {
                             const wallet = walletMap.get(tx.walletId);
+                            const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
                             const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
-                            const isIncome = tx.type === 'INCOME';
-                            const isExpense = tx.type === 'EXPENSE';
+                            const isPositive =
+                              tx.type === 'INCOME' ||
+                              tx.type === 'COLLECT_DEBT' ||
+                              tx.type === 'BORROW';
+                            const isNegative =
+                              tx.type === 'EXPENSE' ||
+                              tx.type === 'PAY_DEBT' ||
+                              tx.type === 'LEND';
 
                             return (
                               <div
@@ -1706,50 +1750,95 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                                     onEditTransaction(tx);
                                   }
                                 }}
-                                className="touch-btn flex items-center justify-between p-2.5 bg-slate-800/60 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors"
+                                className="touch-btn flex items-center justify-between p-2.5 bg-slate-800/60 rounded-xl border border-white/5 cursor-pointer hover:bg-slate-800 transition-colors gap-3"
                               >
-                                <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <div
-                                    className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                    className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
                                     style={{
-                                      backgroundColor: cat?.color ? `${cat.color}25` : '#64748b25',
-                                      color: cat?.color || '#94a3b8'
+                                      backgroundColor:
+                                        tx.type === 'TRANSFER'
+                                          ? '#0284c725'
+                                          : cat?.color
+                                          ? `${cat.color}25`
+                                          : '#64748b25',
+                                      color:
+                                        tx.type === 'TRANSFER'
+                                          ? '#38bdf8'
+                                          : cat?.color || '#94a3b8',
+                                      border: `1px solid ${
+                                        tx.type === 'TRANSFER'
+                                          ? '#0284c740'
+                                          : cat?.color
+                                          ? `${cat.color}40`
+                                          : '#64748b30'
+                                      }`
                                     }}
                                   >
                                     <CategoryIcon
-                                      name={cat?.icon || 'CircleDot'}
-                                      size={13}
-                                      color={cat?.color || '#94a3b8'}
+                                      name={
+                                        tx.type === 'TRANSFER'
+                                          ? 'ArrowRightLeft'
+                                          : cat?.icon || 'CircleDot'
+                                      }
+                                      size={14}
+                                      color={
+                                        tx.type === 'TRANSFER'
+                                          ? '#38bdf8'
+                                          : cat?.color || '#94a3b8'
+                                      }
                                     />
                                   </div>
-                                  <div className="min-w-0">
+
+                                  <div className="min-w-0 flex-1">
                                     <div className="text-xs font-semibold text-slate-100 truncate">
-                                      {tx.note || cat?.name || 'Giao dịch'}
+                                      {tx.note?.trim() || cat?.name || (tx.type === 'TRANSFER' ? (toWallet ? `Chuyển sang ${toWallet.name}` : 'Chuyển tiền') : 'Giao dịch')}
                                     </div>
-                                    <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                                      <span>lúc {tx.time || '00:00'}</span>
-                                      <span>•</span>
-                                      <span className="text-slate-300">{wallet?.name || 'Ví'}</span>
-                                      {cat && (
+                                    <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 whitespace-nowrap overflow-hidden">
+                                      <span className="text-slate-300 truncate max-w-[110px]">
+                                        {tx.type === 'TRANSFER'
+                                          ? `${wallet?.name || 'Ví'}${toWallet ? ` ➔ ${toWallet.name}` : ''}`
+                                          : wallet?.name || 'Ví'}
+                                      </span>
+                                      {cat && tx.note?.trim() && tx.note.trim() !== cat.name && (
                                         <>
-                                          <span>•</span>
-                                          <span className="text-slate-300">{cat.name}</span>
+                                          <span className="text-slate-600 shrink-0">•</span>
+                                          <span className="text-slate-400 truncate">
+                                            {cat.name}
+                                          </span>
+                                        </>
+                                      )}
+                                      {tx.contactName && (
+                                        <>
+                                          <span className="text-slate-600 shrink-0">•</span>
+                                          <span className="text-amber-400/90 truncate">
+                                            {tx.contactName}
+                                          </span>
                                         </>
                                       )}
                                     </div>
                                   </div>
                                 </div>
 
-                                <div
-                                  className={`text-xs font-bold shrink-0 ml-2 ${
-                                    isIncome
-                                      ? 'text-income'
-                                      : isExpense
-                                      ? 'text-expense'
-                                      : 'text-sky-400'
-                                  }`}
-                                >
-                                  {isIncome ? `+${formatVND(tx.amount)}` : isExpense ? `-${formatVND(tx.amount)}` : formatVND(tx.amount)}
+                                <div className="text-right shrink-0">
+                                  <div
+                                    className={`text-xs font-bold whitespace-nowrap ${
+                                      isPositive
+                                        ? 'text-income'
+                                        : isNegative
+                                        ? 'text-expense'
+                                        : 'text-sky-400'
+                                    }`}
+                                  >
+                                    {isPositive
+                                      ? `+${formatVND(tx.amount)}`
+                                      : isNegative
+                                      ? `-${formatVND(tx.amount)}`
+                                      : formatVND(tx.amount)}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-medium mt-0.5 whitespace-nowrap">
+                                    {tx.time || '00:00'}
+                                  </div>
                                 </div>
                               </div>
                             );
