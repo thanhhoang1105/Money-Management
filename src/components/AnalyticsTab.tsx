@@ -45,6 +45,223 @@ type ReportType = 'EXPENSE' | 'INCOME';
 type ExpenseGroupingMode = 'DETAIL' | 'PARENT';
 type ReportDimension = 'CATEGORY' | 'DAILY';
 
+/**
+ * Tinh gọn thông tin hiển thị của từng giao dịch trong Báo cáo:
+ * - Loại bỏ hoàn toàn thông tin dư thừa / lặp lại (tên ví lặp, số tiền lặp trong ghi chú, tên danh mục lặp)
+ * - Giữ lại đúng những thông tin cốt lõi để nhìn lướt qua là hiểu ngay bản chất giao dịch
+ */
+function getCompactTxDisplay(
+  tx: Transaction,
+  wallet?: Wallet,
+  toWallet?: Wallet,
+  cat?: Category
+): {
+  title: string;
+  walletLabel: string;
+  extraMeta?: string;
+  contactLabel?: string;
+} {
+  const rawNote = (tx.note || '').trim();
+  const walletName = wallet?.name?.replace(/^Ví\s+/i, '').trim() || 'Ví';
+  const toWalletName = toWallet?.name?.replace(/^Ví\s+/i, '').trim() || '';
+  const catName = (cat?.name || '').trim();
+
+  // 1. Giao dịch Điều chỉnh số dư (System Adjustment)
+  const isAdjustment =
+    tx.type === 'ADJUST' ||
+    tx.categoryId === 'system_adjustment' ||
+    catName.toLowerCase().includes('điều chỉnh số dư') ||
+    /^điều chỉnh số dư/i.test(rawNote);
+
+  if (isAdjustment) {
+    return {
+      title: 'Điều chỉnh số dư',
+      walletLabel: walletName
+    };
+  }
+
+  // 2. Giao dịch Chuyển tiền / Luân chuyển giữa các ví (TRANSFER)
+  if (tx.type === 'TRANSFER') {
+    let destName = toWalletName;
+    if (!destName) {
+      const mTo = rawNote.match(/^chuyển\s+(?:tiền|khoản)\s+(?:sang|đến|tới|vào)\s+(.+)$/i);
+      if (mTo?.[1]) destName = mTo[1].replace(/^Ví\s+/i, '').trim();
+    }
+    const flowLabel = destName ? `${walletName} ➔ ${destName}` : walletName;
+
+    // 2a. Grab trừ chiết khấu cuốc xe
+    if (/chiết khấu cuốc xe|chiết khấu phí grab|trừ chiết khấu/i.test(rawNote)) {
+      const fareMatch = rawNote.match(/Cước:\s*([\d.,]+)\s*[₫đ]?/i);
+      return {
+        title: fareMatch ? `Chiết khấu Grab • Cước ${fareMatch[1]}đ` : 'Chiết khấu cuốc Grab',
+        walletLabel: flowLabel
+      };
+    }
+
+    // 2b. Luân chuyển tiền cuốc Grab
+    if (/luân chuyển.*cuốc grab|luân chuyển ví tín dụng|hoàn vốn tín dụng/i.test(rawNote)) {
+      return {
+        title: 'Luân chuyển cước Grab',
+        walletLabel: flowLabel
+      };
+    }
+
+    // 2c. Ghi chú chuyển tiền tự động ("Chuyển tiền sang X"...) -> Đã có "Ví A ➔ Ví B" ở dưới nên chỉ cần hiện "Chuyển tiền"
+    const isAutoTransferNote =
+      !rawNote ||
+      /^chuyển\s+(?:tiền|khoản)(?:\s+(?:sang|đến|tới|vào)\s+.+)?$/i.test(rawNote);
+
+    if (isAutoTransferNote) {
+      return {
+        title:
+          tx.transferFee && tx.transferFee > 0
+            ? `Chuyển tiền (Phí ${formatVND(tx.transferFee)})`
+            : 'Chuyển tiền',
+        walletLabel: flowLabel
+      };
+    }
+
+    // 2d. Người dùng có nhập ghi chú chuyển tiền riêng
+    return {
+      title: rawNote,
+      walletLabel: flowLabel
+    };
+  }
+
+  // 3. Giao dịch Vay / Nợ (LEND, BORROW, COLLECT_DEBT, PAY_DEBT)
+  const isDebtTx =
+    tx.type === 'LEND' ||
+    tx.type === 'BORROW' ||
+    tx.type === 'COLLECT_DEBT' ||
+    tx.type === 'PAY_DEBT' ||
+    cat?.type === 'DEBT';
+
+  if (isDebtTx) {
+    const debtAction =
+      tx.type === 'LEND'
+        ? 'Cho vay'
+        : tx.type === 'BORROW'
+        ? 'Đi vay'
+        : tx.type === 'COLLECT_DEBT'
+        ? 'Thu nợ'
+        : tx.type === 'PAY_DEBT'
+        ? 'Trả nợ'
+        : catName || 'Vay/Nợ';
+
+    let contact = (tx.contactName || '').trim();
+    if (!contact) {
+      const mContact = rawNote.match(
+        /^(?:thu nợ từ|trả nợ cho|cho vay\s*-\s*|đi vay\s*-\s*|thu nợ\s*-\s*|trả nợ\s*-\s*|vay nợ\s*-\s*)(.+)$/i
+      );
+      if (mContact?.[1]) contact = mContact[1].trim();
+    }
+
+    const isGenericDebtNote =
+      !rawNote ||
+      /^(?:thu nợ từ|trả nợ cho|cho vay|đi vay|thu nợ|trả nợ|giao dịch vay\/nợ)/i.test(rawNote);
+
+    const customNote = isGenericDebtNote ? '' : rawNote;
+
+    let title = debtAction;
+    if (contact && customNote && customNote.toLowerCase() !== contact.toLowerCase()) {
+      title = `${debtAction}: ${contact} (${customNote})`;
+    } else if (contact) {
+      title = `${debtAction}: ${contact}`;
+    } else if (customNote) {
+      title = `${debtAction}: ${customNote}`;
+    }
+
+    return {
+      title,
+      walletLabel: walletName
+    };
+  }
+
+  // 4. Giao dịch Thu nhập / Chi phí Grab
+  const isGrabTx =
+    tx.categoryId === 'cat_inc_grab' ||
+    tx.categoryId === 'cat_exp_grab_fee' ||
+    /grab/i.test(catName) ||
+    /cuốc grab|tiền tip grab|thu nhập ròng.*grab|grab hoàn tiền/i.test(rawNote);
+
+  if (isGrabTx) {
+    if (/tiền tip khách đưa trực tiếp/i.test(rawNote)) {
+      return {
+        title: 'Tiền tip khách đưa',
+        walletLabel: walletName
+      };
+    }
+
+    if (/hoàn tiền khuyến mãi|voucher/i.test(rawNote)) {
+      return {
+        title: 'Grab bù khuyến mãi',
+        walletLabel: walletName
+      };
+    }
+
+    const rawParts = rawNote
+      .split(/[•,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const cleanedParts: string[] = [];
+    for (const part of rawParts) {
+      // Bỏ phần lặp lại số tiền thu nhập ròng vì cột phải đã hiển thị
+      if (/^thu nhập ròng/i.test(part)) continue;
+      // Bỏ tag "Tiền tip Grab" bị lặp lại
+      if (/^tiền tip grab$/i.test(part) && rawParts.length > 1) continue;
+
+      const p = part
+        .replace(/^Cước:\s*([\d.,]+)\s*[₫đ]?$/i, 'Cước $1đ')
+        .replace(/^Đã gồm\s*([\d.,]+)\s*[₫đ]?\s*tip app$/i, 'Gồm $1đ tip')
+        .replace(/^Cuốc Grab\s*-\s*Khách trả thẻ\/ví$/i, 'Cuốc Grab (Thẻ/Ví)');
+
+      cleanedParts.push(p);
+    }
+
+    const finalTitle = cleanedParts.join(' • ') || catName || 'Thu nhập Grab';
+    const needCatMeta =
+      !/grab/i.test(finalTitle) &&
+      catName &&
+      finalTitle.toLowerCase() !== catName.toLowerCase();
+
+    return {
+      title: finalTitle,
+      walletLabel: walletName,
+      extraMeta: needCatMeta ? catName : undefined
+    };
+  }
+
+  // 5. Giao dịch Thu / Chi thông thường
+  let cleanNote = rawNote.replace(/\s*\([+-]?[\d.,]+\s*[₫đ]\)\s*$/i, '').trim();
+
+  if (cleanNote && catName && cleanNote.includes(',')) {
+    const parts = cleanNote
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p && p.toLowerCase() !== catName.toLowerCase());
+    cleanNote = parts.join(', ');
+  }
+
+  if (!cleanNote || cleanNote.toLowerCase() === catName.toLowerCase()) {
+    return {
+      title: catName || 'Giao dịch',
+      walletLabel: walletName,
+      contactLabel: tx.contactName?.trim() || undefined
+    };
+  }
+
+  const showCategoryMeta =
+    catName && !cleanNote.toLowerCase().includes(catName.toLowerCase());
+
+  return {
+    title: cleanNote,
+    walletLabel: walletName,
+    extraMeta: showCategoryMeta ? catName : undefined,
+    contactLabel: tx.contactName?.trim() || undefined
+  };
+}
+
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, resetSignal }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
@@ -1050,7 +1267,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                   <div className="flex flex-col gap-2">
                     {txs.map((tx) => {
                       const wallet = walletMap.get(tx.walletId);
+                      const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
                       const txCat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+                      const displayInfo = getCompactTxDisplay(
+                        tx,
+                        wallet,
+                        toWallet,
+                        txCat || drillDownCategory
+                      );
                       return (
                         <div
                           key={tx.id}
@@ -1061,34 +1285,39 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                               onEditTransaction(tx);
                             }
                           }}
-                          className="touch-btn flex items-center justify-between p-3.5 bg-slate-900/80 rounded-2xl border border-white/8 cursor-pointer hover:bg-slate-800 transition-colors"
+                          className="touch-btn flex items-center justify-between p-3 bg-slate-900/80 rounded-2xl border border-white/8 cursor-pointer hover:bg-slate-800 transition-colors gap-3"
                         >
-                          <div className="min-w-0 pr-2">
+                          <div className="min-w-0 flex-1">
                             <div className="text-xs font-bold text-slate-100 truncate">
-                              {tx.note || txCat?.name || drillDownCategory.name}
+                              {displayInfo.title}
                             </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                              <span>lúc {tx.time || '00:00'}</span>
-                              <span>•</span>
-                              <span className="text-slate-300 font-medium">
-                                {wallet?.name || 'Ví'}
+                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                              <span className="text-slate-300 font-medium truncate">
+                                {displayInfo.walletLabel}
                               </span>
                               {txCat && txCat.id !== drillDownCategory.id && (
                                 <>
-                                  <span>•</span>
-                                  <span className="text-sky-400 font-medium">{txCat.name}</span>
+                                  <span className="text-slate-600 shrink-0">•</span>
+                                  <span className="text-sky-400 font-medium truncate">
+                                    {txCat.name}
+                                  </span>
                                 </>
                               )}
                             </div>
                           </div>
-                          <div
-                            className={`text-sm font-bold shrink-0 ml-1 ${
-                              reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
-                            }`}
-                          >
-                            {reportType === 'EXPENSE'
-                              ? `-${formatVND(tx.amount)}`
-                              : `+${formatVND(tx.amount)}`}
+                          <div className="text-right shrink-0">
+                            <div
+                              className={`text-sm font-bold whitespace-nowrap ${
+                                reportType === 'EXPENSE' ? 'text-expense' : 'text-income'
+                              }`}
+                            >
+                              {reportType === 'EXPENSE'
+                                ? `-${formatVND(tx.amount)}`
+                                : `+${formatVND(tx.amount)}`}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium mt-0.5 whitespace-nowrap">
+                              {tx.time || '00:00'}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1733,6 +1962,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                             const wallet = walletMap.get(tx.walletId);
                             const toWallet = tx.toWalletId ? walletMap.get(tx.toWalletId) : undefined;
                             const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+                            const displayInfo = getCompactTxDisplay(tx, wallet, toWallet, cat);
                             const isPositive =
                               tx.type === 'INCOME' ||
                               tx.type === 'COLLECT_DEBT' ||
@@ -1792,27 +2022,31 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
 
                                   <div className="min-w-0 flex-1">
                                     <div className="text-xs font-semibold text-slate-100 truncate">
-                                      {tx.note?.trim() || cat?.name || (tx.type === 'TRANSFER' ? (toWallet ? `Chuyển sang ${toWallet.name}` : 'Chuyển tiền') : 'Giao dịch')}
+                                      {displayInfo.title}
                                     </div>
                                     <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 whitespace-nowrap overflow-hidden">
-                                      <span className="text-slate-300 truncate max-w-[110px]">
-                                        {tx.type === 'TRANSFER'
-                                          ? `${wallet?.name || 'Ví'}${toWallet ? ` ➔ ${toWallet.name}` : ''}`
-                                          : wallet?.name || 'Ví'}
+                                      <span
+                                        className={`text-slate-300 truncate ${
+                                          displayInfo.extraMeta || displayInfo.contactLabel
+                                            ? 'shrink-0 max-w-[130px]'
+                                            : ''
+                                        }`}
+                                      >
+                                        {displayInfo.walletLabel}
                                       </span>
-                                      {cat && tx.note?.trim() && tx.note.trim() !== cat.name && (
+                                      {displayInfo.extraMeta && (
                                         <>
                                           <span className="text-slate-600 shrink-0">•</span>
                                           <span className="text-slate-400 truncate">
-                                            {cat.name}
+                                            {displayInfo.extraMeta}
                                           </span>
                                         </>
                                       )}
-                                      {tx.contactName && (
+                                      {displayInfo.contactLabel && (
                                         <>
                                           <span className="text-slate-600 shrink-0">•</span>
                                           <span className="text-amber-400/90 truncate">
-                                            {tx.contactName}
+                                            {displayInfo.contactLabel}
                                           </span>
                                         </>
                                       )}
