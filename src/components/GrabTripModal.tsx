@@ -13,7 +13,8 @@ import {
   Smartphone,
   Wallet as WalletIcon,
   Clock,
-  Calculator
+  Calculator,
+  Target
 } from 'lucide-react';
 import { MotorcycleIcon } from './MotorcycleIcon';
 import {
@@ -21,7 +22,9 @@ import {
   getCurrentDate,
   getCurrentTime,
   evaluateExpression,
-  applyNumpadKey
+  applyNumpadKey,
+  getEventEmoji,
+  isEventDateActive
 } from '../utils/formatters';
 import { DatePicker } from './ui/DatePicker';
 import { CustomSelect } from './ui/CustomSelect';
@@ -76,6 +79,11 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
 
   // Ví nhận tiền thực tế từ khách (Tiền mặt, Vietcombank, MoMo...)
   const [receivingWalletId, setReceivingWalletId] = useState<string>('');
+
+  // Sự kiện / Mục tiêu tích lũy
+  const rawEvents = useLiveQuery(() => db.events.toArray()) || [];
+  const activeEvents = useMemo(() => rawEvents.filter((ev) => !ev.isCompleted), [rawEvents]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
 
   // Transfer states
   const [transferAction, setTransferAction] = useState<GrabTransferAction>('TOPUP_CREDIT');
@@ -135,8 +143,34 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
         const cash = allW.find((w) => w.type === 'CASH') || allW.find((w) => !w.name.toLowerCase().includes('grab'));
         if (cash) setReceivingWalletId(cash.id);
       }
+
+      // Tự động chọn Sự kiện / Mục tiêu đang trong thời gian diễn ra (Auto-select Event)
+      const autoEv = activeEvents.find((ev) => {
+        const isSavings = ev.eventType ? ev.eventType === 'SAVINGS' : true;
+        const isGrabEnabled = ev.autoRules?.autoGrab ?? isSavings;
+        return isGrabEnabled && isEventDateActive(ev, date);
+      });
+      setSelectedEventId(autoEv ? autoEv.id : '');
     })();
-  }, [isOpen]);
+  }, [isOpen, activeEvents, date]);
+
+  // Khi ngày chạy (date) thay đổi, tự động kiểm tra lại sự kiện tích lũy đang active trong khoảng thời gian đó
+  useEffect(() => {
+    if (!isOpen) return;
+    const autoEv = activeEvents.find((ev) => {
+      const isSavings = ev.eventType ? ev.eventType === 'SAVINGS' : true;
+      const isGrabEnabled = ev.autoRules?.autoGrab ?? isSavings;
+      return isGrabEnabled && isEventDateActive(ev, date);
+    });
+    if (autoEv) {
+      setSelectedEventId(autoEv.id);
+    } else if (selectedEventId) {
+      const currentEv = activeEvents.find((e) => e.id === selectedEventId);
+      if (currentEv && !isEventDateActive(currentEv, date)) {
+        setSelectedEventId('');
+      }
+    }
+  }, [date, isOpen, activeEvents]);
 
   // Set default bank wallet for transfers
   useEffect(() => {
@@ -524,7 +558,8 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
         receivingWalletId,
         date,
         time,
-        note: fullNote
+        note: fullNote,
+        eventId: selectedEventId || undefined
       });
 
       const successText =
@@ -1521,6 +1556,56 @@ export const GrabTripModal: React.FC<GrabTripModalProps> = ({
               </div>
             </div>
           </div>
+
+          {mode !== 'TRANSFER' && activeEvents.length > 0 && (
+            <div className="flex flex-col gap-1.5 p-2.5 rounded-2xl bg-slate-950/70 border border-white/6">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <Target size={13} className="text-amber-400" />
+                  <span>Gắn vào Mục tiêu / Sự kiện:</span>
+                </span>
+                {selectedEventId && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEventId('')}
+                    className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                  >
+                    Bỏ chọn
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {activeEvents.map((ev) => {
+                  const isSelected = selectedEventId === ev.id;
+                  const isActiveForTrip = isEventDateActive(ev, date);
+                  const isUpcoming = ev.startDate && date < ev.startDate;
+                  const isExpired = ev.endDate && date > ev.endDate;
+                  return (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      onClick={() => setSelectedEventId(isSelected ? '' : ev.id)}
+                      className={`touch-btn py-1 px-2.5 rounded-xl text-[11px] font-bold border cursor-pointer transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-sm'
+                          : isActiveForTrip
+                          ? 'bg-slate-900 border-white/8 text-slate-300 hover:text-white'
+                          : 'bg-slate-950/60 border-white/5 text-slate-500 opacity-60'
+                      }`}
+                    >
+                      <span>{getEventEmoji(ev.name, ev.eventType)}</span>
+                      <span>{ev.name}</span>
+                      {!isActiveForTrip && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-normal">
+                          {isUpcoming ? 'Sắp tới' : isExpired ? 'Hết hạn' : ''}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {mode !== 'TRANSFER' && (
             <div className="flex flex-col gap-1.5">

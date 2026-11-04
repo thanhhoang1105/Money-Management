@@ -206,3 +206,77 @@ export function applyNumpadKey(currentStr: string, key: string): string {
   if (str.length >= 28) return str;
   return str + key;
 }
+
+/**
+ * Lấy Emoji đại diện phù hợp theo tên sự kiện / mục tiêu tích lũy
+ */
+export function getEventEmoji(name: string, eventType?: 'SAVINGS' | 'EXPENSE'): string {
+  const n = (name || '').toLowerCase();
+  if (n.includes('sinh nhật') || n.includes('sn') || n.includes('mẹ') || n.includes('bố') || n.includes('ba')) return '🎂';
+  if (n.includes('tết') || n.includes('quà') || n.includes('tặng') || n.includes('lễ')) return '🎁';
+  if (n.includes('du lịch') || n.includes('chuyến đi') || n.includes('đà lạt') || n.includes('phượt') || n.includes('tour') || n.includes('nghỉ') || n.includes('khách sạn') || n.includes('vé')) return '✈️';
+  if (n.includes('tiết kiệm') || n.includes('heo') || n.includes('quỹ') || n.includes('tích lũy') || n.includes('mua')) return '🐷';
+  if (n.includes('cưới') || n.includes('hỷ')) return '💍';
+  if (n.includes('tiệc') || n.includes('nhậu') || n.includes('party')) return '🎉';
+  return eventType === 'EXPENSE' ? '✈️' : '🎯';
+}
+
+/**
+ * Kiểm tra xem một Sự kiện / Mục tiêu có đang trong thời gian diễn ra (Active) hay không
+ */
+export function isEventDateActive(
+  event: { startDate?: string; endDate?: string; isCompleted?: boolean },
+  targetDate?: string
+): boolean {
+  if (event.isCompleted) return false;
+  const today = targetDate || getCurrentDate();
+  if (event.startDate && today < event.startDate) return false;
+  if (event.endDate && today > event.endDate) return false;
+  return true;
+}
+
+export type EventStatusType = 'UPCOMING' | 'ACTIVE' | 'EXPIRED' | 'COMPLETED';
+
+export interface EventStatusInfo {
+  type: EventStatusType;
+  label: string;
+  badgeClass: string;
+}
+
+/**
+ * Lấy trạng thái hiển thị chi tiết của Sự kiện / Mục tiêu theo ngày
+ */
+export function getEventStatus(
+  event: { startDate?: string; endDate?: string; isCompleted?: boolean },
+  targetDate?: string
+): EventStatusInfo {
+  if (event.isCompleted) {
+    return {
+      type: 'COMPLETED',
+      label: 'Đã hoàn thành',
+      badgeClass: 'bg-slate-800 text-slate-400 border-white/10'
+    };
+  }
+  const today = targetDate || getCurrentDate();
+  if (event.startDate && today < event.startDate) {
+    return {
+      type: 'UPCOMING',
+      label: 'Sắp diễn ra',
+      badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+    };
+  }
+  if (event.endDate && today > event.endDate) {
+    return {
+      type: 'EXPIRED',
+      label: 'Đã hết hạn',
+      badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+    };
+  }
+  return {
+    type: 'ACTIVE',
+    label: 'Đang diễn ra',
+    badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+  };
+}
+
+

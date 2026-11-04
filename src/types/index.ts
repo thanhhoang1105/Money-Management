@@ -93,6 +93,14 @@ export interface RecurringTransaction {
   updatedAt?: string;
 }
 
+export interface EventAutoRules {
+  autoGrab?: boolean;           // Tự động gắn cho cuốc Grab (khi trong thời gian diễn ra)
+  autoIncomeAll?: boolean;      // Tự động gắn cho MỌI nguồn thu nhập trong khoảng thời gian diễn ra
+  autoIncomeCatIds?: string[];  // Danh sách Category ID thu nhập tự động gắn
+  autoExpenseAll?: boolean;     // Tự động gắn cho mọi khoản chi tiêu trong khoảng thời gian diễn ra
+  autoExpenseCatIds?: string[]; // Danh sách Category ID chi tiêu cụ thể
+}
+
 export interface EventTrip {
   id: string;
   name: string;             // Ví dụ: 'Du lịch Đà Lạt 2026', 'Tết Nguyên Đán'
@@ -101,6 +109,8 @@ export interface EventTrip {
   startDate: string;        // 'YYYY-MM-DD'
   endDate?: string;         // 'YYYY-MM-DD'
   budgetAmount?: number;    // Ngân sách dự kiến cho sự kiện
+  eventType?: 'SAVINGS' | 'EXPENSE'; // 'SAVINGS': Tích lũy (tiết kiệm, sinh nhật, tết), 'EXPENSE': Sự kiện chi tiêu (du lịch, tiệc, đám cưới)
+  autoRules?: EventAutoRules; // Quy tắc tự động liên kết thông minh
   isCompleted: boolean;     // Đã kết thúc hay đang diễn ra
   createdAt: string;
   updatedAt?: string;

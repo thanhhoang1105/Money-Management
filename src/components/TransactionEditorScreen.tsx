@@ -20,10 +20,9 @@ import { TransactionHistoryView } from './TransactionHistoryView';
 import { NumpadBottomSheet } from './NumpadBottomSheet';
 import { DatePicker } from './ui/DatePicker';
 import { WalletSelect } from './ui/WalletSelect';
-import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
 import { MoneyInput } from './ui/MoneyInput';
-import { formatVND, getCurrentDate, getCurrentTime } from '../utils/formatters';
+import { formatVND, getCurrentDate, getCurrentTime, getEventEmoji, isEventDateActive } from '../utils/formatters';
 import {
   ArrowLeft,
   Check,
@@ -43,7 +42,7 @@ import {
   X,
   Star,
   UserCheck,
-  Plane,
+  Target,
   EyeOff,
   PlusCircle,
   Edit2,
@@ -138,7 +137,6 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const wallets = useMemo(() => sortWallets(rawWallets ?? EMPTY_WALLETS), [rawWallets]);
   const transactions = rawTransactions ?? EMPTY_TRANSACTIONS;
   const events = rawEvents ?? EMPTY_EVENTS;
-  const activeEvents = useMemo(() => events.filter((ev) => !ev.isCompleted), [events]);
 
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [amountStr, setAmountStr] = useState<string>('0');
@@ -148,6 +146,9 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   const [transferFeeStr, setTransferFeeStr] = useState<string>('0');
   const [contactName, setContactName] = useState<string>('');
   const [eventId, setEventId] = useState<string>('');
+  const activeEvents = useMemo(() => {
+    return events.filter((ev) => !ev.isCompleted || ev.id === eventId);
+  }, [events, eventId]);
   const [excludeFromReport, setExcludeFromReport] = useState<boolean>(false);
   const [date, setDate] = useState<string>(getCurrentDate());
   const [note, setNote] = useState<string>('');
@@ -429,9 +430,26 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       setSelectedCategoryId('');
       setTransferFeeStr('0');
       setContactName('');
-      setEventId('');
+      const today = getCurrentDate();
+      const currentType = initialType ?? 'EXPENSE';
+      let autoMatchedEventId = '';
+      if (currentType === 'EXPENSE') {
+        const autoExp = activeEvents.find((ev) => {
+          const isExp = ev.eventType === 'EXPENSE';
+          const isAuto = ev.autoRules?.autoExpenseAll ?? isExp;
+          return isAuto && isEventDateActive(ev, today);
+        });
+        if (autoExp) autoMatchedEventId = autoExp.id;
+      } else if (currentType === 'INCOME') {
+        const autoInc = activeEvents.find((ev) => {
+          const isSavings = ev.eventType ? ev.eventType === 'SAVINGS' : true;
+          return isSavings && ev.autoRules?.autoIncomeAll && isEventDateActive(ev, today);
+        });
+        if (autoInc) autoMatchedEventId = autoInc.id;
+      }
+      setEventId(autoMatchedEventId);
       setExcludeFromReport(false);
-      setDate(getCurrentDate());
+      setDate(today);
       setNote('');
       setErrorMsg('');
       setToastMsg('');
@@ -466,6 +484,49 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       }
     }
   }, [isOpen, editingTransaction, selectedWalletId, wallets, lastWalletSetting?.value]);
+
+  // Tự động nhận diện Sự kiện chi tiêu hoặc Mục tiêu tích lũy đang diễn ra trong khoảng thời gian (date)
+  useEffect(() => {
+    if (!isOpen || editingTransaction) return;
+
+    if (type === 'EXPENSE') {
+      const autoExp = activeEvents.find((ev) => {
+        const isExp = ev.eventType === 'EXPENSE';
+        const isAuto = ev.autoRules?.autoExpenseAll ?? isExp;
+        return isAuto && isEventDateActive(ev, date);
+      });
+      if (autoExp) {
+        setEventId(autoExp.id);
+      } else if (eventId) {
+        // Kiểm tra xem event hiện tại có còn active cho ngày này không
+        const currentEv = activeEvents.find((e) => e.id === eventId);
+        if (currentEv && currentEv.eventType === 'EXPENSE' && !isEventDateActive(currentEv, date)) {
+          setEventId('');
+        }
+      }
+    } else if (type === 'INCOME') {
+      const autoInc = activeEvents.find((ev) => {
+        const isSavings = ev.eventType ? ev.eventType === 'SAVINGS' : true;
+        if (!isSavings || !isEventDateActive(ev, date)) return false;
+        if (ev.autoRules?.autoIncomeAll) return true;
+        if (ev.autoRules?.autoGrab && selectedCategoryId === 'cat_income_grab') return true;
+        if (selectedCategoryId && ev.autoRules?.autoIncomeCatIds?.includes(selectedCategoryId)) return true;
+        return false;
+      });
+      if (autoInc) {
+        setEventId(autoInc.id);
+      } else if (eventId) {
+        const currentEv = activeEvents.find((e) => e.id === eventId);
+        if (currentEv && currentEv.eventType === 'SAVINGS') {
+          const isDateOk = isEventDateActive(currentEv, date);
+          const isCatOk = currentEv.autoRules?.autoIncomeAll || (selectedCategoryId && currentEv.autoRules?.autoIncomeCatIds?.includes(selectedCategoryId));
+          if (!isDateOk || (!isCatOk && currentEv.autoRules?.autoIncomeCatIds && currentEv.autoRules.autoIncomeCatIds.length > 0)) {
+            setEventId('');
+          }
+        }
+      }
+    }
+  }, [isOpen, type, date, selectedCategoryId, editingTransaction, activeEvents, eventId]);
 
   useEffect(() => {
     if (!isOpen || !isDebtTransactionType(type)) return;
@@ -711,7 +772,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
       trimmedContact = candidate || undefined;
     }
     const chosenEventId =
-      type === 'EXPENSE' || type === 'INCOME' ? eventId || undefined : undefined;
+      type === 'EXPENSE' || type === 'INCOME' || type === 'TRANSFER' ? eventId || undefined : undefined;
     const chosenExclude =
       type === 'EXPENSE' || type === 'INCOME' ? excludeFromReport : false;
 
@@ -1841,31 +1902,60 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
             </div>
           )}
 
-          {/* Tùy chọn nâng cao cho Khoản Thu/Chi */}
+          {/* Gắn vào Mục tiêu / Sự kiện (Thu nhập, Chi tiêu, Chuyển tiền tích lũy) */}
+          {(type === 'EXPENSE' || type === 'INCOME' || type === 'TRANSFER') && activeEvents.length > 0 && (
+            <div className="flex flex-col gap-1.5 p-2.5 rounded-2xl bg-slate-950/70 border border-white/6">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <Target size={13} className="text-amber-400" />
+                  <span>Gắn vào Mục tiêu / Sự kiện:</span>
+                </span>
+                {eventId && (
+                  <button
+                    type="button"
+                    onClick={() => setEventId('')}
+                    className="text-[10px] text-slate-400 hover:text-white bg-transparent border-none cursor-pointer"
+                  >
+                    Bỏ chọn
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {activeEvents.map((ev) => {
+                  const isSelected = eventId === ev.id;
+                  const isActiveForDate = isEventDateActive(ev, date);
+                  const isUpcoming = ev.startDate && date < ev.startDate;
+                  const isExpired = ev.endDate && date > ev.endDate;
+                  return (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      onClick={() => setEventId(isSelected ? '' : ev.id)}
+                      className={`touch-btn py-1 px-2.5 rounded-xl text-[11px] font-bold border cursor-pointer transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-sm'
+                          : isActiveForDate
+                          ? 'bg-slate-900 border-white/8 text-slate-300 hover:text-white'
+                          : 'bg-slate-950/60 border-white/5 text-slate-500 opacity-60'
+                      }`}
+                    >
+                      <span>{getEventEmoji(ev.name, ev.eventType)}</span>
+                      <span>{ev.name}</span>
+                      {!isActiveForDate && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-normal">
+                          {isUpcoming ? 'Sắp tới' : isExpired ? 'Hết hạn' : ''}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tùy chọn Báo cáo (chỉ cho Thu / Chi) */}
           {(type === 'EXPENSE' || type === 'INCOME') && (
             <div className="flex flex-col gap-2 pt-0.5">
-              {activeEvents.length > 0 && (
-                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900 border border-white/8">
-                  <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                    <Plane size={14} className="text-sky-400" />
-                    <span>Sự kiện / Chuyến đi</span>
-                  </span>
-                  <CustomSelect
-                    value={eventId}
-                    onChange={setEventId}
-                    options={[
-                      { value: '', label: '-- Không gắn sự kiện --' },
-                      ...activeEvents.map((ev) => ({
-                        value: ev.id,
-                        label: ev.name
-                      }))
-                    ]}
-                    className="max-w-[200px]"
-                    triggerClassName="py-1 px-2.5 text-xs rounded-xl bg-slate-800 border-white/10"
-                  />
-                </div>
-              )}
-
               <label className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-900/70 border border-white/6 cursor-pointer hover:border-white/15">
                 <div className="flex items-center gap-2">
                   <EyeOff size={15} className="text-slate-400" />

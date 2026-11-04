@@ -233,6 +233,7 @@ export interface SaveGrabTripParams {
   date: string;
   time: string;
   note?: string;
+  eventId?: string; // Gắn cuốc xe vào Sự kiện / Mục tiêu tích lũy
 }
 
 export interface SaveGrabTripResult {
@@ -275,7 +276,8 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
     physicalCashWalletId,
     date,
     time,
-    note
+    note,
+    eventId
   } = params;
 
   if (netIncome <= 0 && cashReceived <= 0 && (!grabFare || grabFare <= 0)) {
@@ -323,6 +325,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
         date,
         time,
         note: `${noteDetails.join(' • ') || 'Cuốc Grab - Khách trả thẻ/ví'}${isAppTip ? ', Tiền tip Grab' : ''}`,
+        eventId: eventId || undefined,
         createdAt: now,
         updatedAt: now
       };
@@ -353,6 +356,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
             date,
             time,
             note: `Tiền tip khách đưa trực tiếp (Cuốc thẻ), Tiền tip Grab`,
+            eventId: eventId || undefined,
             createdAt: now,
             updatedAt: now
           });
@@ -456,6 +460,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
           date,
           time,
           note: incomeNoteParts.join(' • '),
+          eventId: eventId || undefined,
           createdAt: now,
           updatedAt: now
         };
@@ -482,6 +487,7 @@ export async function recordGrabTrip(params: SaveGrabTripParams): Promise<SaveGr
           date,
           time,
           note: `Tiền tip khách đưa trực tiếp (Cuốc tiền mặt), Tiền tip Grab`,
+          eventId: eventId || undefined,
           createdAt: now,
           updatedAt: now
         };
