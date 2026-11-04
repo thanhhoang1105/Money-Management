@@ -26,6 +26,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useModalHistory } from './hooks/useModalHistory';
 
 // Kiểm tra nếu app đang chạy ở chế độ Standalone (Đã thêm vào Màn hình chính)
 function checkIsStandalone(): boolean {
@@ -73,15 +74,39 @@ export function App() {
   const [editorInitialType, setEditorInitialType] = useState<TransactionType | undefined>(undefined);
   const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
 
+  useModalHistory(
+    isEditorOpen,
+    () => {
+      setIsEditorOpen(false);
+      setEditingTransaction(null);
+    },
+    'editor'
+  );
+
+  useModalHistory(
+    isSettingsOpen,
+    () => setIsSettingsOpen(false),
+    'settings'
+  );
+
   const handleSelectTab = (tab: TabType) => {
-    setCurrentTab(tab);
-    setIsEditorOpen(false);
-    setIsSettingsOpen(false);
-    setEditingTransaction(null);
-    setTabResetSignals((prev) => ({
-      ...prev,
-      [tab]: prev[tab] + 1
-    }));
+    if (isEditorOpen) {
+      setIsEditorOpen(false);
+      setEditingTransaction(null);
+    }
+    if (isSettingsOpen) {
+      setIsSettingsOpen(false);
+    }
+
+    if (currentTab === tab) {
+      // Nhấn lần 2 vào tab hiện tại -> reset về gốc
+      setTabResetSignals((prev) => ({
+        ...prev,
+        [tab]: prev[tab] + 1
+      }));
+    } else {
+      setCurrentTab(tab);
+    }
   };
 
   // Đổi màn hình mặc định khi mở app
@@ -402,7 +427,8 @@ export function App() {
       {/* 3. TOÀN BỘ MÀN HÌNH ĐỀU LÀ MÀN HÌNH PHẲNG TRONG <main> (KHÔNG DÙNG POPUP OVERLAY) */}
       <main className="flex-1 w-full">
         <div className="w-full max-w-5xl mx-auto pb-24 md:pb-12">
-          {isEditorOpen ? (
+          {/* Màn hình Ghi / Sửa giao dịch (Dạng Stack Screen mở đè lên, bảo lưu 100% trạng thái tab bên dưới) */}
+          {isEditorOpen && (
             <TransactionEditorScreen
               isOpen={true}
               onClose={() => {
@@ -416,46 +442,50 @@ export function App() {
               resetSignal={editorResetSignal}
               initialType={editorInitialType}
             />
-          ) : isSettingsOpen ? (
+          )}
+
+          {/* Màn hình Cài đặt (Dạng Stack Screen mở đè lên) */}
+          {isSettingsOpen && (
             <SettingsModal
               isOpen={true}
               onClose={() => setIsSettingsOpen(false)}
             />
-          ) : (
-            <>
-              {currentTab === 'overview' && (
-                <TransactionListTab
-                  onEditTransaction={handleEditTransaction}
-                  onOpenQuickAdd={handleOpenQuickAdd}
-                  resetSignal={tabResetSignals.overview}
-                />
-              )}
-
-              {currentTab === 'wallets' && (
-                <WalletsTab resetSignal={tabResetSignals.wallets} />
-              )}
-
-              {currentTab === 'analytics' && (
-                <AnalyticsTab
-                  onEditTransaction={handleEditTransaction}
-                  resetSignal={tabResetSignals.analytics}
-                />
-              )}
-
-              {currentTab === 'more' && (
-                <MoreTab
-                  onOpenSettings={() => {
-                    setIsEditorOpen(false);
-                    setIsSettingsOpen(true);
-                  }}
-                  onEditTransaction={handleEditTransaction}
-                  defaultInitialTab={defaultInitialTab}
-                  onChangeDefaultTab={handleChangeDefaultTab}
-                  resetSignal={tabResetSignals.more}
-                />
-              )}
-            </>
           )}
+
+          {/* Các Tab chính: Luôn được giữ nguyên trạng thái trong DOM khi mở Editor hoặc Settings */}
+          <div className={isEditorOpen || isSettingsOpen ? 'hidden' : undefined}>
+            {currentTab === 'overview' && (
+              <TransactionListTab
+                onEditTransaction={handleEditTransaction}
+                onOpenQuickAdd={handleOpenQuickAdd}
+                resetSignal={tabResetSignals.overview}
+              />
+            )}
+
+            {currentTab === 'wallets' && (
+              <WalletsTab resetSignal={tabResetSignals.wallets} />
+            )}
+
+            {currentTab === 'analytics' && (
+              <AnalyticsTab
+                onEditTransaction={handleEditTransaction}
+                resetSignal={tabResetSignals.analytics}
+              />
+            )}
+
+            {currentTab === 'more' && (
+              <MoreTab
+                onOpenSettings={() => {
+                  setIsEditorOpen(false);
+                  setIsSettingsOpen(true);
+                }}
+                onEditTransaction={handleEditTransaction}
+                defaultInitialTab={defaultInitialTab}
+                onChangeDefaultTab={handleChangeDefaultTab}
+                resetSignal={tabResetSignals.more}
+              />
+            )}
+          </div>
         </div>
       </main>
 

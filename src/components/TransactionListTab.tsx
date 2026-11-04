@@ -41,6 +41,7 @@ import {
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 import { useGrabDriverMode } from '../services/grabService';
+import { useModalHistory } from '../hooks/useModalHistory';
 
 interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
@@ -58,6 +59,9 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   const [duplicateFeedback, setDuplicateFeedback] = useState<string>('');
   const [isGrabModalOpen, setIsGrabModalOpen] = useState<boolean>(false);
   const isGrabDriverMode = useGrabDriverMode();
+
+  useModalHistory(isHistoryOpen, () => setIsHistoryOpen(false), 'history_view');
+  useModalHistory(isGrabModalOpen, () => setIsGrabModalOpen(false), 'grab_modal');
 
   // Trạng thái cho bảng Theo dõi Vay / Nợ ngay trên màn hình Tổng quan
   const [isAddingDebtQuick, setIsAddingDebtQuick] = useState<boolean>(false);

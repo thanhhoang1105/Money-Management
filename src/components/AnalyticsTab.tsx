@@ -15,6 +15,7 @@ import {
 import { exportTransactionsToExcel } from '../services/backupService';
 import { CustomSelect } from './ui/CustomSelect';
 import { Toast } from './ui/Toast';
+import { useModalHistory } from '../hooks/useModalHistory';
 import {
   ChevronLeft,
   ChevronRight,
@@ -274,6 +275,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [trendChartMode, setTrendChartMode] = useState<'CASHFLOW' | 'NET_WORTH'>('CASHFLOW');
+
+  useModalHistory(
+    drillDownCategory !== null,
+    () => {
+      setDrillDownCategory(null);
+      setDrillDownDateFilter('ALL');
+    },
+    'analytics_drilldown'
+  );
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về báo cáo tổng quan chính
   const prevResetSignalRef = React.useRef(resetSignal);
@@ -1280,8 +1290,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
                           key={tx.id}
                           onClick={() => {
                             if (onEditTransaction) {
-                              setDrillDownCategory(null);
-                              setDrillDownDateFilter('ALL');
                               onEditTransaction(tx);
                             }
                           }}

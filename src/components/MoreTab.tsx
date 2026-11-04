@@ -48,6 +48,7 @@ import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 import { useGrabDriverMode, setGrabDriverModeEnabled } from '../services/grabService';
 import { useThemeMode } from '../services/themeService';
+import { useModalHistory } from '../hooks/useModalHistory';
 
 interface MoreTabProps {
   onOpenSettings: () => void;
@@ -80,6 +81,17 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   const isGrabDriverMode = useGrabDriverMode();
   const { mode: themeMode, setMode: setThemeMode, description: themeDescription } = useThemeMode();
   const [isPersistent, setIsPersistent] = useState<boolean>(true);
+
+  useModalHistory(
+    subView !== 'MAIN',
+    () => setSubView('MAIN'),
+    'more_subview'
+  );
+  useModalHistory(
+    isGrabModalOpen,
+    () => setIsGrabModalOpen(false),
+    'grab_modal'
+  );
 
   React.useEffect(() => {
     if (navigator.storage && navigator.storage.persisted) {

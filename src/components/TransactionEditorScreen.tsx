@@ -51,6 +51,7 @@ import {
 import { MotorcycleIcon } from './MotorcycleIcon';
 import { GrabTripModal } from './GrabTripModal';
 import { useGrabDriverMode } from '../services/grabService';
+import { useModalHistory } from '../hooks/useModalHistory';
 
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_WALLETS: Wallet[] = [];
@@ -160,10 +161,34 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   // Mở màn hình Lịch sử ghi chép (dạng màn hình phẳng)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [openedFromHistoryInEditor, setOpenedFromHistoryInEditor] = useState(false);
   const [isGrabTripModalOpen, setIsGrabTripModalOpen] = useState(false);
   const isGrabDriverMode = useGrabDriverMode();
 
+  useModalHistory(
+    isHistoryOpen,
+    () => {
+      setIsHistoryOpen(false);
+      setOpenedFromHistoryInEditor(false);
+    },
+    'editor_history'
+  );
+
+  useModalHistory(
+    isGrabTripModalOpen,
+    () => setIsGrabTripModalOpen(false),
+    'grab_trip_modal'
+  );
+
   const handleCloseOrReturnToHistory = () => {
+    if (openedFromHistoryInEditor) {
+      setOpenedFromHistoryInEditor(false);
+      setIsHistoryOpen(true);
+      if (onSelectTransactionToEdit) {
+        onSelectTransactionToEdit(null as any);
+      }
+      return;
+    }
     if (onSelectTransactionToEdit) {
       onSelectTransactionToEdit(null as any);
     }
@@ -181,6 +206,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
     ) {
       prevResetSignalRef.current = resetSignal;
       setIsHistoryOpen(false);
+      setOpenedFromHistoryInEditor(false);
       setIsCategoryManagerOpen(false);
       setIsGrabTripModalOpen(false);
       setIsNumpadOpen(false);
@@ -207,6 +233,12 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
 
   // Mở màn hình Chọn & Quản lý Hạng mục (dạng màn hình phẳng)
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+
+  useModalHistory(
+    isCategoryManagerOpen,
+    () => setIsCategoryManagerOpen(false),
+    'category_manager'
+  );
 
   // Mở/đóng Dropdown các nghiệp vụ khác (Chuyển ví, Vay nợ, Điều chỉnh số dư)
   const [isOtherTypesDropdownOpen, setIsOtherTypesDropdownOpen] = useState(false);
@@ -850,9 +882,13 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   if (isHistoryOpen) {
     return (
       <TransactionHistoryView
-        onClose={() => setIsHistoryOpen(false)}
+        onClose={() => {
+          setIsHistoryOpen(false);
+          setOpenedFromHistoryInEditor(false);
+        }}
         onEditTransaction={(tx) => {
           setIsHistoryOpen(false);
+          setOpenedFromHistoryInEditor(true);
           if (onSelectTransactionToEdit) {
             onSelectTransactionToEdit(tx);
           }
