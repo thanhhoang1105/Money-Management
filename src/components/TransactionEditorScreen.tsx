@@ -939,7 +939,7 @@ export const TransactionEditorScreen: React.FC<TransactionEditorScreenProps> = (
   return (
     <div className="w-full max-w-2xl mx-auto pb-28 animate-fade-in font-body text-slate-100">
       {/* 1. Header Bar phẳng cân đối */}
-      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-2">
+      <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-2 sticky top-0 z-20 backdrop-blur-md safe-padding-top">
         {/* Nút quay lại chỉ hiện icon kèm border */}
         <div className="w-20 shrink-0 flex items-center justify-start">
           <button

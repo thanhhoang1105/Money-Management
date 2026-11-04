@@ -40,6 +40,7 @@ import {
 interface AnalyticsTabProps {
   onEditTransaction?: (tx: Transaction) => void;
   resetSignal?: number;
+  onSubViewChange?: (isSubView: boolean) => void;
 }
 
 type ReportType = 'EXPENSE' | 'INCOME';
@@ -263,7 +264,11 @@ function getCompactTxDisplay(
   };
 }
 
-export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, resetSignal }) => {
+export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
+  onEditTransaction,
+  resetSignal,
+  onSubViewChange
+}) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [reportType, setReportType] = useState<ReportType>('EXPENSE');
   const [groupingMode, setGroupingMode] = useState<ExpenseGroupingMode>('DETAIL');
@@ -284,6 +289,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ onEditTransaction, r
     },
     'analytics_drilldown'
   );
+
+  React.useEffect(() => {
+    onSubViewChange?.(drillDownCategory !== null);
+  }, [drillDownCategory, onSubViewChange]);
 
   // Lắng nghe tín hiệu từ menu điều hướng để trở về báo cáo tổng quan chính
   const prevResetSignalRef = React.useRef(resetSignal);

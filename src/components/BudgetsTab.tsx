@@ -385,7 +385,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ onBack }) => {
   return (
     <div className="pb-28">
       {onBack && (
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-white/8 mb-2">
+        <div className="px-4 py-3 bg-slate-900/95 border-b border-white/8 flex items-center justify-between gap-3 sticky top-0 z-20 backdrop-blur-md safe-padding-top mb-2">
           <button
             type="button"
             onClick={onBack}

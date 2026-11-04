@@ -56,6 +56,7 @@ interface MoreTabProps {
   defaultInitialTab: AppStartupTab;
   onChangeDefaultTab: (tab: AppStartupTab) => void;
   resetSignal?: number;
+  onSubViewChange?: (isSubView: boolean) => void;
 }
 
 type SubViewType = 'MAIN' | 'BUDGETS' | 'CATEGORIES' | 'DEBTS' | 'RECURRING' | 'EVENTS';
@@ -73,12 +74,17 @@ export const MoreTab: React.FC<MoreTabProps> = ({
   onEditTransaction,
   defaultInitialTab,
   onChangeDefaultTab,
-  resetSignal
+  resetSignal,
+  onSubViewChange
 }) => {
   const [subView, setSubView] = useState<SubViewType>('MAIN');
   const [notice, setNotice] = useState<string | null>(null);
   const [isGrabModalOpen, setIsGrabModalOpen] = useState(false);
   const isGrabDriverMode = useGrabDriverMode();
+
+  React.useEffect(() => {
+    onSubViewChange?.(subView !== 'MAIN' || isGrabModalOpen);
+  }, [subView, isGrabModalOpen, onSubViewChange]);
   const { mode: themeMode, setMode: setThemeMode, description: themeDescription } = useThemeMode();
   const [isPersistent, setIsPersistent] = useState<boolean>(true);
 
@@ -466,30 +472,32 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+        <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between gap-2 safe-padding-top">
           <div className="w-9 shrink-0 flex items-center justify-start">
             <button
               type="button"
               onClick={() => setSubView('MAIN')}
-              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center cursor-pointer transition-colors"
               title="Quay lại"
             >
               <ArrowLeft size={18} />
             </button>
           </div>
-          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
-            Sổ Nợ (Quản lý Người Nợ)
-          </span>
+          <div className="flex-1 text-center min-w-0">
+            <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider truncate m-0">
+              Sổ Nợ & Người Nợ
+            </h2>
+          </div>
           <button
             type="button"
             onClick={() => {
               setNewDebtWalletId(wallets[0]?.id || '');
               setIsAddingDebtTx(!isAddingDebtTx);
             }}
-            className="text-xs font-extrabold text-slate-950 flex items-center gap-1 cursor-pointer bg-amber-400 px-3 py-1.5 rounded-xl border-none shrink-0"
+            className="touch-btn h-9 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 border-none cursor-pointer transition-all shrink-0"
           >
-            <Plus size={14} strokeWidth={2.5} />
-            <span>Ghi nợ mới</span>
+            <Plus size={15} strokeWidth={2.8} />
+            <span>Ghi nợ</span>
           </button>
         </div>
 
@@ -979,20 +987,22 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+        <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between gap-2 safe-padding-top">
           <div className="w-9 shrink-0 flex items-center justify-start">
             <button
               type="button"
               onClick={() => setSubView('MAIN')}
-              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center cursor-pointer transition-colors"
               title="Quay lại"
             >
               <ArrowLeft size={18} />
             </button>
           </div>
-          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
-            Ghi chép định kỳ
-          </span>
+          <div className="flex-1 text-center min-w-0">
+            <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider truncate m-0">
+              Ghi chép định kỳ
+            </h2>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -1002,9 +1012,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               );
               setIsAddingRecurring(!isAddingRecurring);
             }}
-            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1.5 rounded-xl border border-emerald-500/30 shrink-0"
+            className="touch-btn h-9 px-3 rounded-xl bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-300 hover:to-blue-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-sky-500/20 border-none cursor-pointer transition-all shrink-0"
           >
-            <Plus size={14} /> Thêm
+            <Plus size={15} strokeWidth={2.8} />
+            <span>Tạo mẫu</span>
           </button>
         </div>
 
@@ -1322,20 +1333,22 @@ export const MoreTab: React.FC<MoreTabProps> = ({
 
     return (
       <div className="pb-28 px-4 pt-3 flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-white/8 pb-2.5 gap-2">
+        <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-slate-900/95 backdrop-blur-md border-b border-white/8 flex items-center justify-between gap-2 safe-padding-top">
           <div className="w-9 shrink-0 flex items-center justify-start">
             <button
               type="button"
               onClick={() => setSubView('MAIN')}
-              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              className="touch-btn w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center cursor-pointer transition-colors"
               title="Quay lại"
             >
               <ArrowLeft size={18} />
             </button>
           </div>
-          <span className="text-xs font-bold text-slate-100 uppercase text-center flex-1 truncate mx-1">
-            Sự kiện & Mục tiêu
-          </span>
+          <div className="flex-1 text-center min-w-0">
+            <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider truncate m-0">
+              Sự kiện & Mục tiêu
+            </h2>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -1346,9 +1359,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                 setIsAddingEvent(true);
               }
             }}
-            className="text-xs font-bold text-emerald-400 flex items-center gap-1 cursor-pointer bg-emerald-500/15 px-2.5 py-1.5 rounded-xl border border-emerald-500/30 shrink-0"
+            className="touch-btn h-9 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 border-none cursor-pointer transition-all shrink-0"
           >
-            <Plus size={14} /> Tạo mới
+            <Plus size={15} strokeWidth={2.8} />
+            <span>Tạo mới</span>
           </button>
         </div>
 
@@ -1669,393 +1683,69 @@ export const MoreTab: React.FC<MoreTabProps> = ({
               return (
                 <div
                   key={ev.id}
-                  className="p-4 rounded-3xl bg-slate-900/90 border border-white/8 flex flex-col gap-3 shadow-lg"
+                  className="p-4 sm:p-5 rounded-3xl bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950 border border-white/10 flex flex-col gap-3.5 shadow-xl shadow-black/30 backdrop-blur-md relative overflow-hidden transition-all"
                 >
-                  {/* Header sự kiện */}
-                  <div className="flex items-start justify-between gap-2.5">
+                  {/* Dải sáng gradient trang trí viền trên */}
+                  <div
+                    className={`absolute top-0 inset-x-0 h-1 bg-gradient-to-r ${
+                      isSavingsMode
+                        ? 'from-emerald-500 via-teal-400 to-emerald-500/20'
+                        : 'from-sky-500 via-indigo-400 to-sky-500/20'
+                    }`}
+                  />
+
+                  {/* 1. Header sự kiện: Icon + Tên + Badge trạng thái & Loại + Cụm nút Thao tác (Sửa/Xóa) */}
+                  <div className="flex items-center justify-between gap-2.5">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div
-                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-inner border ${
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-md ${
                           isSavingsMode
-                            ? 'bg-emerald-500/15 border-emerald-500/25'
-                            : 'bg-sky-500/15 border-sky-500/25'
+                            ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-emerald-400 shadow-emerald-500/10'
+                            : 'bg-gradient-to-br from-sky-500/20 to-indigo-500/10 border border-sky-500/30 text-sky-400 shadow-sky-500/10'
                         }`}
                       >
                         {emoji}
                       </div>
+
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-extrabold text-slate-100 truncate flex items-center gap-1.5">
-                          <span className="truncate">{ev.name}</span>
+                        <h4 className="text-[15px] font-bold text-slate-100 tracking-tight leading-snug truncate m-0">
+                          {ev.name}
+                        </h4>
+
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {/* Badge trạng thái - bấm vào để chuyển đổi Hoàn thành / Mở lại */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await db.events.update(ev.id, {
+                                isCompleted: !ev.isCompleted,
+                                updatedAt: new Date().toISOString()
+                              });
+                            }}
+                            className={`touch-btn px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer border transition-colors flex items-center gap-1 ${statusInfo.badgeClass}`}
+                            title={ev.isCompleted ? 'Bấm để mở lại sự kiện' : 'Bấm để kết thúc sự kiện'}
+                          >
+                            {statusInfo.type === 'ACTIVE' && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            )}
+                            <span>{statusInfo.label}</span>
+                          </button>
+
                           <span
-                            className={`px-1.5 py-0.2 rounded-md text-[9px] font-bold shrink-0 ${
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                               isSavingsMode
-                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/25'
-                                : 'bg-sky-500/15 text-sky-300 border border-sky-500/25'
+                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                                : 'bg-sky-500/10 text-sky-300 border-sky-500/20'
                             }`}
                           >
-                            {isSavingsMode ? 'Tích lũy' : 'Chuyến đi'}
+                            {isSavingsMode ? '🎯 Tích lũy' : '✈️ Chi tiêu'}
                           </span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span>Bắt đầu: {formatFriendlyDate(ev.startDate)}</span>
-                          {ev.endDate && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-amber-300/90 font-medium">Hạn: {formatFriendlyDate(ev.endDate)}</span>
-                            </>
-                          )}
-                          <span className="text-slate-600">•</span>
-                          <span>{evTxs.length} giao dịch</span>
-                          {ev.autoRules?.autoGrab && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-amber-400 font-semibold">⚡ Grab</span>
-                            </>
-                          )}
-                          {ev.autoRules?.autoIncomeAll && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-emerald-400 font-semibold">⚡ Mọi nguồn thu</span>
-                            </>
-                          )}
-                          {!ev.autoRules?.autoIncomeAll && ev.autoRules?.autoIncomeCatIds && ev.autoRules.autoIncomeCatIds.length > 0 && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-emerald-400 font-semibold">
-                                ⚡ {ev.autoRules.autoIncomeCatIds.length} nguồn thu
-                              </span>
-                            </>
-                          )}
-                          {ev.autoRules?.autoExpenseAll && (
-                            <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-sky-400 font-semibold">⚡ Tự động gom chi</span>
-                            </>
-                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Số tiền hiển thị bên phải */}
-                    <div className="text-right shrink-0">
-                      {isSavingsMode ? (
-                        <div>
-                          <div className="text-[10px] text-slate-400 font-medium">Đã tích lũy</div>
-                          <div className="text-base font-black text-emerald-400">
-                            +{formatVND(totalIncome)}
-                          </div>
-                          {totalSpent > 0 && (
-                            <div className="text-[10px] text-rose-400">
-                              Đã chi: -{formatVND(totalSpent)} (Còn {formatVND(netFund)})
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="text-[10px] text-slate-400 font-medium">Tổng chi sự kiện</div>
-                          <div className="text-base font-black text-rose-400">
-                            -{formatVND(totalSpent)}
-                          </div>
-                          {totalIncome > 0 && (
-                            <div className="text-[10px] text-emerald-400">
-                              Đã nạp: +{formatVND(totalIncome)} (Còn {formatVND(netFund)})
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Thanh tiến độ mục tiêu / ngân sách */}
-                  {targetAmount > 0 && (
-                    <div className="p-3 rounded-2xl bg-slate-950/80 border border-white/6 flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between text-xs font-bold">
-                        <span className="text-slate-300 flex items-center gap-1.5">
-                          <span>{isSavingsMode ? 'Tiến độ tích lũy:' : 'Ngân sách đã chi:'}</span>
-                          <span
-                            className={`font-black ${
-                              isSavingsMode
-                                ? 'text-emerald-400'
-                                : isOverBudget
-                                ? 'text-rose-400'
-                                : percent > 80
-                                ? 'text-amber-400'
-                                : 'text-sky-400'
-                            }`}
-                          >
-                            {percent}%
-                          </span>
-                        </span>
-                        <span className="text-slate-400 text-[11px]">
-                          {isSavingsMode ? 'Mục tiêu: ' : 'Hạn mức: '}
-                          <b className="text-slate-200">{formatVND(targetAmount)}</b>
-                        </span>
-                      </div>
-
-                      {/* Progress bar */}
-                      <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden relative">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isSavingsMode
-                              ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50'
-                              : isOverBudget
-                              ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
-                              : percent > 80
-                              ? 'bg-amber-500'
-                              : 'bg-sky-500'
-                          }`}
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-
-                      {/* Thông tin đếm ngược & số tiền còn thiếu / còn lại */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5 flex-wrap gap-1">
-                        <span>
-                          {isSavingsMode ? (
-                            totalIncome < targetAmount
-                              ? `Còn thiếu: ${formatVND(targetAmount - totalIncome)}`
-                              : '🎉 Đã đạt mục tiêu!'
-                          ) : isOverBudget ? (
-                            <span className="text-rose-400 font-bold">
-                              ⚠️ Vượt ngân sách: +{formatVND(totalSpent - targetAmount)}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-400 font-semibold">
-                              Còn lại: {formatVND(targetAmount - totalSpent)}
-                            </span>
-                          )}
-                        </span>
-                        {(countdownText || dailyTargetStr) && (
-                          <span className="text-amber-300 font-semibold flex items-center gap-1.5">
-                            {countdownText && <span>⏳ {countdownText}</span>}
-                            {dailyTargetStr && (
-                              <span className="bg-amber-500/15 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/25">
-                                {dailyTargetStr}
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Chi tiết lịch sử giao dịch đã gắn vào sự kiện */}
-                  {isExpanded && (
-                    <div className="pt-2.5 border-t border-white/6 flex flex-col gap-2.5 animate-fade-in">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-200">
-                            {isSavingsMode ? '📜 Lịch sử tích lũy' : '📜 Lịch sử chi tiêu'}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            ({evTxs.length} giao dịch)
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Thống kê nguồn tiền tích lũy theo từng nhóm */}
-                      {isSavingsMode && evTxs.length > 0 && (() => {
-                        const grabTxs = evTxs.filter(
-                          (t) => t.categoryId === 'cat_income_grab' || t.note?.toLowerCase().includes('grab')
-                        );
-                        const grabTotal = grabTxs.reduce((s, t) => s + t.amount, 0);
-
-                        const transferTxs = evTxs.filter((t) => t.type === 'TRANSFER');
-                        const transferTotal = transferTxs.reduce((s, t) => s + t.amount, 0);
-
-                        const otherIncomeTxs = evTxs.filter(
-                          (t) => t.type === 'INCOME' && !grabTxs.some((g) => g.id === t.id)
-                        );
-                        const otherIncomeTotal = otherIncomeTxs.reduce((s, t) => s + t.amount, 0);
-
-                        return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2 rounded-2xl bg-slate-950/80 border border-white/6 text-xs">
-                            {grabTotal > 0 && (
-                              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex flex-col">
-                                <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
-                                  <span>🏍️</span> Chạy Grab
-                                </span>
-                                <span className="text-xs font-black text-amber-200 mt-0.5">
-                                  +{formatVND(grabTotal)}
-                                </span>
-                                <span className="text-[9px] text-slate-400">{grabTxs.length} cuốc</span>
-                              </div>
-                            )}
-                            {otherIncomeTotal > 0 && (
-                              <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col">
-                                <span className="text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
-                                  <span>💼</span> Thu nhập
-                                </span>
-                                <span className="text-xs font-black text-emerald-200 mt-0.5">
-                                  +{formatVND(otherIncomeTotal)}
-                                </span>
-                                <span className="text-[9px] text-slate-400">{otherIncomeTxs.length} khoản</span>
-                              </div>
-                            )}
-                            {transferTotal > 0 && (
-                              <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 flex flex-col">
-                                <span className="text-[10px] text-sky-300 font-semibold flex items-center gap-1">
-                                  <span>🔄</span> Tự nạp / Chuyển
-                                </span>
-                                <span className="text-xs font-black text-sky-200 mt-0.5">
-                                  +{formatVND(transferTotal)}
-                                </span>
-                                <span className="text-[9px] text-slate-400">{transferTxs.length} lần</span>
-                              </div>
-                            )}
-                            {totalSpent > 0 && (
-                              <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 flex flex-col">
-                                <span className="text-[10px] text-rose-300 font-semibold flex items-center gap-1">
-                                  <span>💸</span> Đã chi từ quỹ
-                                </span>
-                                <span className="text-xs font-black text-rose-200 mt-0.5">
-                                  -{formatVND(totalSpent)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {evTxs.length === 0 ? (
-                        <div className="text-xs text-slate-400 py-3.5 px-3 text-center bg-slate-950/40 rounded-xl border border-white/4 flex flex-col gap-1">
-                          <div className="font-medium text-slate-300">
-                            {isSavingsMode
-                              ? 'Chưa có khoản thu nhập hay giao dịch tích lũy nào được ghi nhận cho mục tiêu này.'
-                              : 'Chưa có khoản chi tiêu nào phát sinh trong sự kiện / chuyến đi này.'}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {isSavingsMode
-                              ? '💡 Mẹo: Khi bạn ghi chép thu nhập (Lương, Làm thêm...) hoặc chạy Grab trong khoảng thời gian diễn ra, hệ thống sẽ tự động cộng vào đây.'
-                              : '💡 Mẹo: Gắn sự kiện này vào các khoản chi (khách sạn, vé xe, ăn uống...) để kiểm soát ngân sách chuyến đi.'}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1 max-h-60 overflow-y-auto no-scrollbar pr-1">
-                          {evTxs.map((t) => {
-                            const isTransfer = t.type === 'TRANSFER';
-                            const isGrab = t.categoryId === 'cat_income_grab' || t.note?.toLowerCase().includes('grab');
-                            const isInc = t.type === 'INCOME' || isTransfer;
-                            const catName = t.categoryId ? categoryMap.get(t.categoryId)?.name : undefined;
-                            const walletName = t.walletId ? walletMap.get(t.walletId)?.name : undefined;
-                            return (
-                              <div
-                                key={t.id}
-                                className="p-2.5 rounded-xl bg-slate-950/70 border border-white/4 flex items-center justify-between text-xs hover:border-white/10 transition-colors"
-                              >
-                                <div className="flex flex-col min-w-0 pr-2">
-                                  <div className="font-semibold text-slate-200 truncate flex items-center gap-1.5">
-                                    {isTransfer ? (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 font-bold shrink-0">
-                                        Chuyển tiền
-                                      </span>
-                                    ) : isGrab ? (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold shrink-0 flex items-center gap-0.5">
-                                        <span>🏍️</span> Grab
-                                      </span>
-                                    ) : t.type === 'INCOME' ? (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold shrink-0">
-                                        {catName || 'Thu nhập'}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-bold shrink-0">
-                                        {catName || 'Chi tiêu'}
-                                      </span>
-                                    )}
-                                    <span className="truncate">
-                                      {t.note || (isTransfer ? 'Chuyển tiền tích lũy' : isGrab ? 'Thu nhập cuốc xe Grab' : isInc ? (catName || 'Khoản thu') : 'Khoản chi')}
-                                    </span>
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
-                                    <span>{formatFriendlyDate(t.date)} {t.time || ''}</span>
-                                    {walletName && (
-                                      <>
-                                        <span className="text-slate-600">•</span>
-                                        <span className="text-slate-400">Ví: {walletName}</span>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span
-                                    className={`font-mono font-bold ${
-                                      isInc ? 'text-emerald-400' : 'text-rose-400'
-                                    }`}
-                                  >
-                                    {isInc ? '+' : '-'}{formatVND(t.amount)}
-                                  </span>
-
-                                  {/* Nút thao tác: Sửa hoặc Gỡ khỏi sự kiện */}
-                                  <div className="flex items-center gap-1 pl-1 border-l border-white/6">
-                                    {onEditTransaction && (
-                                      <button
-                                        type="button"
-                                        onClick={() => onEditTransaction(t)}
-                                        className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white border-none cursor-pointer"
-                                        title="Sửa giao dịch"
-                                      >
-                                        <Edit2 size={11} />
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        if (window.confirm('Gỡ giao dịch này khỏi mục tiêu tích lũy? (Số tiền trong ví vẫn giữ nguyên)')) {
-                                          await db.transactions.update(t.id, { eventId: undefined });
-                                          showToast('Đã gỡ giao dịch khỏi mục tiêu tích lũy');
-                                        }
-                                      }}
-                                      className="p-1 rounded bg-slate-800 text-slate-400 hover:text-rose-400 border-none cursor-pointer"
-                                      title="Gỡ khỏi mục tiêu tích lũy"
-                                    >
-                                      <X size={11} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Thanh nút bấm tương tác */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/6 text-xs gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedEventId(isExpanded ? null : ev.id)}
-                      className="touch-btn py-1 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 font-medium border border-white/6 flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                      <span>
-                        {isExpanded
-                          ? 'Thu gọn lịch sử'
-                          : isSavingsMode
-                          ? `📜 Lịch sử tích lũy (${evTxs.length})`
-                          : `📜 Lịch sử chi tiêu (${evTxs.length})`}
-                      </span>
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await db.events.update(ev.id, {
-                            isCompleted: !ev.isCompleted,
-                            updatedAt: new Date().toISOString()
-                          });
-                        }}
-                        className={`touch-btn px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer border transition-colors flex items-center gap-1.5 ${statusInfo.badgeClass}`}
-                        title={ev.isCompleted ? 'Bấm để mở lại sự kiện' : 'Bấm để kết thúc sự kiện'}
-                      >
-                        {statusInfo.type === 'ACTIVE' && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        )}
-                        <span>{statusInfo.label}</span>
-                      </button>
-
+                    {/* Cụm nút Thao tác: Sửa & Xóa gọn gàng góc trên bên phải */}
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => {
@@ -2073,10 +1763,10 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                           setIsAddingEvent(true);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className="touch-btn p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/6 cursor-pointer transition-colors"
+                        className="touch-btn w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-white/8 flex items-center justify-center cursor-pointer transition-colors"
                         title="Chỉnh sửa sự kiện"
                       >
-                        <Edit2 size={14} />
+                        <Edit2 size={13} />
                       </button>
 
                       <button
@@ -2086,12 +1776,336 @@ export const MoreTab: React.FC<MoreTabProps> = ({
                             await db.events.delete(ev.id);
                           }
                         }}
-                        className="touch-btn p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-none cursor-pointer transition-colors"
+                        className="touch-btn w-8 h-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 flex items-center justify-center cursor-pointer transition-colors"
                         title="Xóa sự kiện"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
+                  </div>
+
+                  {/* 2. Khối Số liệu tài chính nổi bật (Hero Stats Box) */}
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-white/6 flex items-center justify-between gap-3 shadow-inner">
+                    {/* Cột trái: Đã tích lũy / Đã chi */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {isSavingsMode ? 'Đã tích lũy' : 'Tổng chi sự kiện'}
+                      </div>
+                      <div
+                        className={`text-xl sm:text-2xl font-black tracking-tight mt-0.5 ${
+                          isSavingsMode ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {isSavingsMode ? `+${formatVND(totalIncome)}` : `-${formatVND(totalSpent)}`}
+                      </div>
+                      {isSavingsMode && totalSpent > 0 && (
+                        <div className="text-[10px] text-rose-400 mt-0.5">
+                          Đã chi: -{formatVND(totalSpent)} (Còn {formatVND(netFund)})
+                        </div>
+                      )}
+                      {!isSavingsMode && totalIncome > 0 && (
+                        <div className="text-[10px] text-emerald-400 mt-0.5">
+                          Đã nạp: +{formatVND(totalIncome)} (Còn {formatVND(netFund)})
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cột phải: Mục tiêu / Hạn mức */}
+                    {targetAmount > 0 && (
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {isSavingsMode ? 'Mục tiêu' : 'Hạn mức'}
+                        </div>
+                        <div className="text-base sm:text-lg font-bold text-slate-200 mt-0.5">
+                          {formatVND(targetAmount)}
+                        </div>
+                        <div
+                          className={`text-[11px] font-extrabold mt-0.5 ${
+                            isSavingsMode
+                              ? 'text-emerald-400'
+                              : isOverBudget
+                              ? 'text-rose-400'
+                              : percent > 80
+                              ? 'text-amber-400'
+                              : 'text-sky-400'
+                          }`}
+                        >
+                          {percent}% tiến độ
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Thanh tiến độ mượt mà & Thông tin cột mốc */}
+                  {targetAmount > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="w-full h-2.5 rounded-full bg-slate-950 p-0.5 border border-white/6 overflow-hidden relative shadow-inner">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isSavingsMode
+                              ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-300 shadow-sm shadow-emerald-500/50'
+                              : isOverBudget
+                              ? 'bg-gradient-to-r from-rose-500 to-rose-400 shadow-sm shadow-rose-500/50'
+                              : percent > 80
+                              ? 'bg-gradient-to-r from-amber-500 to-amber-400'
+                              : 'bg-gradient-to-r from-sky-500 to-teal-400'
+                          }`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+
+                      {/* Còn thiếu / Còn lại & Đếm ngược / Mục tiêu ngày */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5 flex-wrap gap-1.5">
+                        <span className="font-medium text-slate-300">
+                          {isSavingsMode ? (
+                            totalIncome < targetAmount ? (
+                              <>
+                                Còn thiếu:{' '}
+                                <b className="text-slate-100 font-bold">
+                                  {formatVND(targetAmount - totalIncome)}
+                                </b>
+                              </>
+                            ) : (
+                              <span className="text-emerald-400 font-bold">
+                                🎉 Đã hoàn thành mục tiêu!
+                              </span>
+                            )
+                          ) : isOverBudget ? (
+                            <span className="text-rose-400 font-bold">
+                              ⚠️ Vượt: +{formatVND(totalSpent - targetAmount)}
+                            </span>
+                          ) : (
+                            <>
+                              Còn lại:{' '}
+                              <b className="text-emerald-400 font-bold">
+                                {formatVND(targetAmount - totalSpent)}
+                              </b>
+                            </>
+                          )}
+                        </span>
+
+                        {(countdownText || dailyTargetStr) && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {countdownText && (
+                              <span className="text-amber-300 font-semibold text-[11px] flex items-center gap-1">
+                                <span>⏳</span> {countdownText}
+                              </span>
+                            )}
+                            {dailyTargetStr && (
+                              <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 text-[10px] font-bold border border-amber-500/25">
+                                {dailyTargetStr}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Meta Tags Chips (Ngày & Quy tắc thông minh) */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[10px]">
+                    <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-slate-400 border border-white/5 flex items-center gap-1">
+                      <Calendar size={11} className="text-slate-500" />
+                      <span>{formatFriendlyDate(ev.startDate)}</span>
+                      {ev.endDate && <span>→ {formatFriendlyDate(ev.endDate)}</span>}
+                    </span>
+
+                    <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-slate-400 border border-white/5">
+                      {evTxs.length} giao dịch
+                    </span>
+
+                    {ev.autoRules?.autoGrab && (
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 font-semibold border border-amber-500/20 flex items-center gap-1">
+                        <span>⚡</span> Tự gom Grab
+                      </span>
+                    )}
+
+                    {ev.autoRules?.autoIncomeAll && (
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 font-semibold border border-emerald-500/20 flex items-center gap-1">
+                        <span>⚡</span> Mọi nguồn thu
+                      </span>
+                    )}
+
+                    {!ev.autoRules?.autoIncomeAll &&
+                      ev.autoRules?.autoIncomeCatIds &&
+                      ev.autoRules.autoIncomeCatIds.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-300 font-semibold border border-emerald-500/20 flex items-center gap-1">
+                          <span>⚡</span> {ev.autoRules.autoIncomeCatIds.length} nguồn thu
+                        </span>
+                      )}
+
+                    {ev.autoRules?.autoExpenseAll && (
+                      <span className="px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-300 font-semibold border border-sky-500/20 flex items-center gap-1">
+                        <span>⚡</span> Tự gom chi
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 5. Lịch sử tích lũy (Accordion Toggle Bar) */}
+                  <div className="pt-2 border-t border-white/6 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedEventId(isExpanded ? null : ev.id)}
+                      className="touch-btn w-full py-2 px-3 rounded-xl bg-slate-950/60 hover:bg-slate-950 text-slate-300 hover:text-white font-medium border border-white/6 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>📜</span>
+                        <span className="font-semibold">
+                          {isSavingsMode ? 'Lịch sử tích lũy' : 'Lịch sử chi tiêu'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-bold">
+                          ({evTxs.length})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <span>{isExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </div>
+                    </button>
+
+                    {/* Chi tiết lịch sử giao dịch đã gắn vào sự kiện khi mở rộng */}
+                    {isExpanded && (
+                      <div className="pt-2 border-t border-white/6 flex flex-col gap-2.5 animate-fade-in">
+                        {/* Thống kê nguồn tiền tích lũy theo từng nhóm */}
+                        {isSavingsMode && evTxs.length > 0 && (() => {
+                          const grabTxs = evTxs.filter(
+                            (t) => t.categoryId === 'cat_income_grab' || t.note?.toLowerCase().includes('grab')
+                          );
+                          const grabTotal = grabTxs.reduce((s, t) => s + t.amount, 0);
+
+                          const transferTxs = evTxs.filter((t) => t.type === 'TRANSFER');
+                          const transferTotal = transferTxs.reduce((s, t) => s + t.amount, 0);
+
+                          const otherIncomeTxs = evTxs.filter(
+                            (t) => t.type === 'INCOME' && !grabTxs.some((g) => g.id === t.id)
+                          );
+                          const otherIncomeTotal = otherIncomeTxs.reduce((s, t) => s + t.amount, 0);
+
+                          return (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2 rounded-2xl bg-slate-950/80 border border-white/6 text-xs">
+                              {grabTotal > 0 && (
+                                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex flex-col">
+                                  <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
+                                    <span>🏍️</span> Chạy Grab
+                                  </span>
+                                  <span className="text-xs font-black text-amber-200 mt-0.5">
+                                    +{formatVND(grabTotal)}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">{grabTxs.length} cuốc</span>
+                                </div>
+                              )}
+                              {otherIncomeTotal > 0 && (
+                                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col">
+                                  <span className="text-[10px] text-emerald-300 font-semibold flex items-center gap-1">
+                                    <span>💼</span> Thu nhập
+                                  </span>
+                                  <span className="text-xs font-black text-emerald-200 mt-0.5">
+                                    +{formatVND(otherIncomeTotal)}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">{otherIncomeTxs.length} khoản</span>
+                                </div>
+                              )}
+                              {transferTotal > 0 && (
+                                <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 flex flex-col">
+                                  <span className="text-[10px] text-sky-300 font-semibold flex items-center gap-1">
+                                    <span>🔄</span> Tự nạp / Chuyển
+                                  </span>
+                                  <span className="text-xs font-black text-sky-200 mt-0.5">
+                                    +{formatVND(transferTotal)}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">{transferTxs.length} lần</span>
+                                </div>
+                              )}
+                              {totalSpent > 0 && (
+                                <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 flex flex-col">
+                                  <span className="text-[10px] text-rose-300 font-semibold flex items-center gap-1">
+                                    <span>💸</span> Đã chi từ quỹ
+                                  </span>
+                                  <span className="text-xs font-black text-rose-200 mt-0.5">
+                                    -{formatVND(totalSpent)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {evTxs.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-slate-500 bg-slate-950/50 rounded-2xl border border-dashed border-white/8">
+                            Chưa có giao dịch nào được gắn vào mục tiêu này.
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-0.5">
+                            {evTxs.map((t) => {
+                              const isInc = t.type === 'INCOME' || t.type === 'TRANSFER';
+                              const cat = t.categoryId ? categoryMap.get(t.categoryId) : undefined;
+                              const wallet = walletMap.get(t.walletId);
+
+                              return (
+                                <div
+                                  key={t.id}
+                                  className="p-2.5 rounded-xl bg-slate-950/80 border border-white/5 flex items-center justify-between gap-2 text-xs hover:border-white/10 transition-colors"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-semibold text-slate-200 truncate flex items-center gap-1.5">
+                                      <span>{cat?.name || (t.type === 'TRANSFER' ? 'Chuyển tiền vào quỹ' : 'Giao dịch')}</span>
+                                      {t.note && (
+                                        <span className="text-slate-400 text-[11px] font-normal truncate">
+                                          • {t.note}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                      <span>{formatFriendlyDate(t.date)}</span>
+                                      <span>•</span>
+                                      <span>{wallet?.name || 'Ví'}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span
+                                      className={`font-mono font-bold ${
+                                        isInc ? 'text-emerald-400' : 'text-rose-400'
+                                      }`}
+                                    >
+                                      {isInc ? '+' : '-'}{formatVND(t.amount)}
+                                    </span>
+
+                                    {/* Nút thao tác: Sửa hoặc Gỡ khỏi sự kiện */}
+                                    <div className="flex items-center gap-1 pl-1 border-l border-white/6">
+                                      {onEditTransaction && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onEditTransaction(t)}
+                                          className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white border-none cursor-pointer"
+                                          title="Sửa giao dịch"
+                                        >
+                                          <Edit2 size={11} />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (window.confirm('Gỡ giao dịch này khỏi mục tiêu tích lũy? (Số tiền trong ví vẫn giữ nguyên)')) {
+                                            await db.transactions.update(t.id, { eventId: undefined });
+                                            showToast('Đã gỡ giao dịch khỏi mục tiêu tích lũy');
+                                          }
+                                        }}
+                                        className="p-1 rounded bg-slate-800 text-slate-400 hover:text-rose-400 border-none cursor-pointer"
+                                        title="Gỡ khỏi mục tiêu tích lũy"
+                                      >
+                                        <X size={11} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

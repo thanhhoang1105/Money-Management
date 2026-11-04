@@ -73,6 +73,16 @@ export function App() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editorInitialType, setEditorInitialType] = useState<TransactionType | undefined>(undefined);
   const [autoBackupNotice, setAutoBackupNotice] = useState<string | null>(null);
+  const [isOverviewSubView, setIsOverviewSubView] = useState(false);
+  const [isAnalyticsSubView, setIsAnalyticsSubView] = useState(false);
+  const [isMoreSubView, setIsMoreSubView] = useState(false);
+
+  const isSubScreenActive =
+    isEditorOpen ||
+    isSettingsOpen ||
+    (currentTab === 'overview' && isOverviewSubView) ||
+    (currentTab === 'analytics' && isAnalyticsSubView) ||
+    (currentTab === 'more' && isMoreSubView);
 
   useModalHistory(
     isEditorOpen,
@@ -104,6 +114,9 @@ export function App() {
         ...prev,
         [tab]: prev[tab] + 1
       }));
+      if (tab === 'overview') setIsOverviewSubView(false);
+      if (tab === 'analytics') setIsAnalyticsSubView(false);
+      if (tab === 'more') setIsMoreSubView(false);
     } else {
       setCurrentTab(tab);
     }
@@ -238,7 +251,8 @@ export function App() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-app-bg text-text-main font-body">
       {/* 1. Header Bar chuẩn Responsive Web (Mobile + Desktop) */}
-      <header className="sticky top-0 z-30 safe-padding-top pb-3 px-4 bg-slate-900/95 backdrop-blur-md border-b border-white/8">
+      <header className={`sticky top-0 z-30 safe-padding-top pb-3 px-4 bg-slate-900/95 backdrop-blur-md border-b border-white/8 ${isSubScreenActive ? 'hidden md:block' : ''}`}>
+        {/* Global header bar - tự động ẩn trên mobile khi mở bất kỳ màn hình con nào để chống Double Header */}
         <div className="w-full max-w-5xl mx-auto flex items-center justify-between">
           {/* Logo & Tên ứng dụng */}
           <div className="flex items-center gap-3">
@@ -459,6 +473,7 @@ export function App() {
                 onEditTransaction={handleEditTransaction}
                 onOpenQuickAdd={handleOpenQuickAdd}
                 resetSignal={tabResetSignals.overview}
+                onSubViewChange={setIsOverviewSubView}
               />
             )}
 
@@ -470,6 +485,7 @@ export function App() {
               <AnalyticsTab
                 onEditTransaction={handleEditTransaction}
                 resetSignal={tabResetSignals.analytics}
+                onSubViewChange={setIsAnalyticsSubView}
               />
             )}
 
@@ -483,6 +499,7 @@ export function App() {
                 defaultInitialTab={defaultInitialTab}
                 onChangeDefaultTab={handleChangeDefaultTab}
                 resetSignal={tabResetSignals.more}
+                onSubViewChange={setIsMoreSubView}
               />
             )}
           </div>

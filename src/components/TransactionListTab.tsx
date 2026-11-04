@@ -47,12 +47,14 @@ interface TransactionListTabProps {
   onEditTransaction: (tx: Transaction) => void;
   onOpenQuickAdd: (initialType?: TransactionType) => void;
   resetSignal?: number;
+  onSubViewChange?: (isSubView: boolean) => void;
 }
 
 export const TransactionListTab: React.FC<TransactionListTabProps> = ({
   onEditTransaction,
   onOpenQuickAdd,
-  resetSignal
+  resetSignal,
+  onSubViewChange
 }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
@@ -62,6 +64,10 @@ export const TransactionListTab: React.FC<TransactionListTabProps> = ({
 
   useModalHistory(isHistoryOpen, () => setIsHistoryOpen(false), 'history_view');
   useModalHistory(isGrabModalOpen, () => setIsGrabModalOpen(false), 'grab_modal');
+
+  React.useEffect(() => {
+    onSubViewChange?.(isHistoryOpen || isGrabModalOpen);
+  }, [isHistoryOpen, isGrabModalOpen, onSubViewChange]);
 
   // Trạng thái cho bảng Theo dõi Vay / Nợ ngay trên màn hình Tổng quan
   const [isAddingDebtQuick, setIsAddingDebtQuick] = useState<boolean>(false);
